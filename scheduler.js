@@ -34,7 +34,7 @@ async function getProductDetails(link, text = "",len=0,access_token,driver) {
 
   // Format the date as YYYY-MM-DD
   const todayDate = `${year}-${month}-${day}`;
-  driver.get(link);
+  await driver.get(link);
   link = await driver.getCurrentUrl();
   if (link.includes("amazon")) {
     product = await scrapeAmazonProduct(link, text, driver);
@@ -55,7 +55,7 @@ async function getProductDetails(link, text = "",len=0,access_token,driver) {
 
   let env = constants.env
 
-  console.log("Product is ", product);
+  // console.log("Product is ", product);
 
   if (product?.price > 0 && product?.links?.avinashbmv != "") {
     postflag = await firebasepost(product, access_token, env);
@@ -71,15 +71,20 @@ async function getProductDetails(link, text = "",len=0,access_token,driver) {
         // id+=1;
         len += 1;
       } else {
-        console.log("Need to skip channel deals");
+        // console.log("Need to skip channel deals");
       }
     }
     if(postflag){
         postDeals(driver, product);
     }
     else {
-        console.log("Post Flag is false ",product?.links?.avinashbmv)
+        // console.log("Post Flag is false ",product?.links?.avinashbmv)
+        console.log("\nPost Flag is false ",link)
+      }
     }
+    else{
+    console.log("\nFirebase Post Invalid details: ",link)
+
   }
   return postflag
 }

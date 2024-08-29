@@ -1,0 +1,68 @@
+total 15 items
+URL Path
+===================
+product
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[1]/div/a - href - 1st
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[2]/div/div[2]/a - 1st 
+Deal(Category)
+//*[@id="anonCarousel1"]/ol/li[2]/div/div/div[1]/div/a
+
+
+Header
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[2]/div/div[2]/a/span/span[1] - truncate full
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[2]/div/div[2]/a/span/span[2] - truncate cut
+
+% Claimed
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[2]/div/div[3]/div/div[2]/span/span
+
+Image
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[1]/div/a/div/div/img
+//*[@id="anonCarousel1"]/ol/li[2]/div/div/div[1]/div/a/div/div/img
+
+Discount
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[2]/div/div[1]/span[1]/span/span[1]
+
+% Off
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[2]/div/div[1]/span[1]/span/span[2]
+
+Limited Time Deal
+//*[@id="anonCarousel1"]/ol/li[1]/div/div/div[2]/div/div[1]/span[2]/span/span
+
+
+
+
+==================================================================================================================
+Circle All Deals
+
+URL
+//*[@id="anonCarousel2"]/ol/li[1]/a - href
+//*[@id="anonCarousel2"]/ol/li[2]/a
+
+Image
+//*[@id="anonCarousel2"]/ol/li[1]/a/span[1]/img - src
+
+Title
+//*[@id="anonCarousel2"]/ol/li[1]/a/span[2]
+
+
+
+
+
+==============================================================
+Individual Deals
+
+Images
+//*[@id="grid-main-container"]/div[3]/div/div[1]/div/div/a/div/div/img - src
+
+Red Deals % Off
+//*[@id="grid-main-container"]/div[3]/div/div[1]/div/div/div/span/div[1]/div - 1st
+//*[@id="grid-main-container"]/div[3]/div/div[1]/div/div/div/span/div[2]/div - 1st
+
+Red highlighted Text
+//*[@id="grid-main-container"]/div[3]/div/div[1]/div/div/div/span/div[1]/time
+
+URL
+//*[@id="grid-main-container"]/div[3]/div/div[1]/div/div/div/a - href
+
+Title
+//*[@id="grid-main-container"]/div[3]/div/div[1]/div/div/div/a/div

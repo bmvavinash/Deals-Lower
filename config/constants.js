@@ -22,7 +22,8 @@ const POSTING_TYPES_CONFIG = {
     DB: 'DB1',
     postTo: {
       telegram: true,
-      whatsapp: true,
+      whatsapp: false,
+      // whatsapp: true,
       facebook: true
     },
     typeValue: 'all'

@@ -48,7 +48,7 @@ async function postDeals(driver,product) {
     // text=text+product?.productText + `\n\nhttps://dealshubglobal.com/p/${product?.id}` + " \n#"+product?.storeType + " #"+product?.category
 
     text = formatProductInfo(product);
-    console.log("Text in Telegram is ",text)
+    // console.log("Text in Telegram is ",text)
 
     if (constantsData.postTo.telegram ) {
         if(product?.photo!=""){

@@ -12,6 +12,7 @@ const { firebasepost } = require("./database/firebasepost");
 const constants = require('./config/constants');
 const config = require('./config/config');
 const { getTelegramDealLink } = require("./dataSources/telegram");
+const { getSpeedDeals } = require("./dataSources/speedDeals");
 
 
 let type=constants.type // deploy in all places
@@ -44,7 +45,10 @@ async function openAmazonWebsite() {
       await getTelegramDealLink(driver);
       break;
     case "productlinks":
-      runExcelFunction();
+      await runExcelFunction();
+      break;
+    case "speedDeals":
+      await getSpeedDeals();
       break;
     default:
       console.log("Invalid type specified");

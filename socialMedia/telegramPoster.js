@@ -3,15 +3,15 @@ try{
     var myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
 
-    console.log("telegram photo is ",photo)
-    console.log("telegram chat_id is ",chat_id)
-    console.log("telegram text is ",text)
+    // console.log("telegram photo is ",photo)
+    // console.log("telegram chat_id is ",chat_id)
+    // console.log("telegram text is ",text)
 
     let chatid = chat_id
    
 try{
 
-  console.log('entered into Telegram Seperate')
+  // console.log('entered into Telegram Seperate')
   var raw = JSON.stringify({
     photo:photo,
     chat_id: chat_id,

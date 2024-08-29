@@ -1,0 +1,58 @@
+const { Builder, By, until } = require("selenium-webdriver");
+require("chromedriver");
+const chrome = require("selenium-webdriver/chrome");
+// const { getProductDetails } = require("../scheduler");
+// const { firebaseget } = require("../database/firebaseget");
+// const { getAccessToken } = require("../database/getAccessToken");
+// const constants = require("../config/constants");
+// const { exit } = require("process");
+// const fs = require("fs").promises;
+
+async function getTwitter() {
+    try {
+      
+      // let env = constants.env;
+  
+    //   let access_token = await getAccessToken(env);
+      // let driver = await new Builder().forBrowser("chrome").setChromeOptions(new chrome.Options()).build();
+      console.log("hai")
+      //chrome
+      let options = await new chrome.Options();
+      options.debuggerAddress("localhost:9222");
+      //CHROME
+      driver = await chrome.Driver.createSession(options);
+      let n,n1;
+
+    //   await driver.get("https://twitter.com")
+      // await driver.sleep(10000);
+      // let n  = await driver.findElement(By.xpath('/*[@id="react-root"]/div/div/div[2]/header/div/div/div/div[1]/div[2]/nav/a[3]/div/div/div')).getAttribute("innerHTML");
+      // await driver.wait(until.elementLocated(By.xpath('//*[@id="main"]/footer/div[1]/div/span[2]/div/div[2]/div[1]/div/div[1]
+      try{
+        //website working
+        // n1  = await driver.wait(until.elementLocated(By.xpath('//*[@id="table-main-wrapper"]/div/div/table/tbody/tr[1]/td[1]/div/div[2]')),10000).getAttribute("innerHTML");
+        n1  = await driver.wait(until.elementLocated(By.xpath('//*[@id="xljlem"]/img')),10000).click();
+      }
+      catch(e){
+        console.log("error in n1")
+      }
+      try{
+        // extension not working
+        n  = await driver.wait(until.elementLocated(By.xpath('//*[@id="Cashtags-tab"]/div/svg')),10000).click();
+        // n  = await driver.wait(until.elementLocated(By.xpath('//*[@id="table-main-wrapper"]/div/div/table/thead/tr/th[1]/div/div')),10000).getAttribute("innerHTML");
+      }
+      catch(e){
+        console.log("error in n")
+      }
+      // let n  = await driver.findElement(By.xpath('/*[@id="react-root"]/div/div/div[2]/header/div/div/div/div[1]/div[2]/nav/a[3]/div/div/div/span')).getAttribute("innerHTML");
+      console.log("check Values are ",n1);
+      console.log("Values are ",n);
+    } 
+    catch(e) {
+        console.log("Twitter Error",e)
+    }
+}
+getTwitter();
+
+module.exports = {
+    getTwitter,
+  };

@@ -10,8 +10,8 @@ async function scrapeAmazonProduct(url,text="", driver) {
     try {product.discount = String(await extractAttribute(driver, amazonConfig?.discount)) || "";} catch(e){ console.log("discount error",e)}
     try {product.photo = await extractAttribute(driver, amazonConfig?.photo)  || "";} catch(e){ console.log("photo error")}
     try {product.productCode = await extractAttribute(driver, amazonConfig?.asin)  || "";} catch(e){ console.log("asin error")}
-    try {product.productText = await extractAttribute(driver,amazonConfig?.productText)  || "";} catch(e){ console.log("productText error")}
-    try {product.urltext = text  || "" } catch(e){ console.log("url Text error")}
+    try {product.urltext = await extractAttribute(driver,amazonConfig?.productText)  || "";} catch(e){ console.log("productText error")}
+    try {product.productText = text  || "" } catch(e){ console.log("url Text error")}
 
     product.category = {}
     try {product.category.mainCategory = await extractAttribute(driver, amazonConfig?.category?.mainCategory) || "";} catch(e){ console.log("mainCategory error")}
@@ -33,7 +33,7 @@ async function scrapeAmazonProduct(url,text="", driver) {
     // product?.brand = await extractAttribute(driver, amazonConfig?.brand);
     product.links = {};
 
-    try{product.links.avinashbmv = await amazonLinkGenerator(driver);} catch(e){ console.log("link generation error")}
+    try{product.links.avinashbmv = await amazonLinkGenerator(driver) || "";} catch(e){ console.log("link generation error")}
     // Log product or further processing
     // console.log("Product is ", product);
     return product;
@@ -90,9 +90,9 @@ catch(e){
 
   // Log information only for the last config after the loop
     if (lastConfig) {
-      console.log("Validation failed for the last config:", lastConfig?.selector, amazonConfig?.links);
+      // console.log("Validation failed for the last config:", lastConfig?.selector, amazonConfig?.links);
     } else {
-  console.log("All xpaths failed or validation failed for all xpaths.");
+  console.log("All xpaths failed or validation failed for all xpaths."); // #ToDo Need to remove
     }
   return null;
 }

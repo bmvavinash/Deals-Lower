@@ -28,7 +28,7 @@ async function facebook(photo, link, text) {
         body: raw,
       };
       let fblink = `https://graph.facebook.com/me/photos?url=${photo}&caption=${text}&access_token=${access_token}`;
-      console.log("all1app facebook data");
+      // console.log("all1app facebook data");
       console.log("Facebook Link is " + fblink);
       // let chatid = "@all1appweb"
       await fetch(
