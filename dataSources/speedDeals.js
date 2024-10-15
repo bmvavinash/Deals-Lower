@@ -10,10 +10,10 @@ const fs = require("fs").promises;
 
 async function getSpeedDeals(driver) {
   try {
-    let len = await firebaseget();
+    let data,len = await firebaseget();
     if(len==0){
         
-        len = await firebaseget();
+      data,len = await firebaseget();
         if(len==0){
             console.log("Unable to fetch the length of DB")
             exit();

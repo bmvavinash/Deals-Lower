@@ -1,0 +1,30 @@
+import TelegramBot from 'node-telegram-bot-api';
+import { TelegramBotKey } from '../config/constants.js';
+
+const bot = new TelegramBot(TelegramBotKey, { polling: true });
+
+// Set the ID of your channel or group (negative number for channels)
+const targetChannelId = -1001234567890;  // Replace with your actual channel's chat ID
+
+// Listen for new messages in any chat the bot has access to
+bot.on('message', (msg) => {
+    const chatId = msg.chat.id;
+
+    // Check if the message is from the specified channel/group
+    if (chatId === targetChannelId) {
+        console.log(`Received message from your channel/group: ${msg.text}`);
+        
+        // Process the messages (e.g., extract deals or URLs)
+        const deals = extractDealsFromText(msg.text);
+        console.log("Deals found: ", deals);
+        
+        // Send the deals to another channel (if required)
+        // sendToMyChannel(deals);  // You can use your existing code to send the deals
+    }
+});
+
+// Function to extract URLs (or deals) from the message text
+function extractDealsFromText(text) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return text.match(urlRegex) || [];  // Adjust based on the data structure
+}

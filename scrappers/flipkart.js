@@ -10,8 +10,14 @@ async function scrapeFlipkartProduct(url, text, driver) {
     product.price = await extractAttribute(driver, flipkartConfig.price);
     product.discount = await extractAttribute(driver, flipkartConfig.discount);
     product.photo = await extractAttribute(driver, flipkartConfig.photo);
-    try {product.urltext = text } catch(e){ console.log("url Text error")}
+    try { product.urltext = text } catch (e) { console.log("url Text error") }
     // product.asin = await extractAttribute(driver, flipkartConfig.asin);
+
+    const parsedUrl = new URL(url);
+    const searchParams = new URLSearchParams(parsedUrl.search);
+
+    product.productCode = searchParams.get('pid');
+
     product.productText = await extractAttribute(driver, flipkartConfig.productText);
     product.category = {}
     product.category.mainCategory = await extractAttribute(driver, flipkartConfig.category);
@@ -50,14 +56,14 @@ async function extractAttribute(driver, attributeConfig) {
                 }
                 return validationResult.value; // Use modified value
             }
-            if(config.type === 'id'){
+            if (config.type === 'id') {
                 console.log()
             }
 
             return rawValue.trim(); // Return raw value if no validator is provided
         } catch (error) {
             if (config.type === 'id') {
-                console.log("Error is ",error)
+                console.log("Error is ", error)
             }
             // console.log("Error finding element or validating:", config.selector, error);
             // Optionally log the error or handle it as needed

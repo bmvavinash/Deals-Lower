@@ -1,5 +1,6 @@
-async function firebaseget(jsonFileName = "dailydeals") {
+async function firebaseget(isToday=false) {
   let len = 0;
+  let data;
   try {
     var myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
@@ -9,7 +10,12 @@ async function firebaseget(jsonFileName = "dailydeals") {
     let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
     
     jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
-    const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json`;
+
+    if (isToday){
+      urlappend = "date"
+    }
+    const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json?shallow=true&print=pretty`;
+    // const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json`;
 
     var requestOptions = {
       method: "GET",
@@ -36,7 +42,7 @@ async function firebaseget(jsonFileName = "dailydeals") {
 const response = await fetch(apiUrl);
 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
-const data = await response.json();
+data = await response.json();
 const objectCount = Object.keys(data).length;
 console.log(`Success in Firebase Get. Response contains ${objectCount} objects.`);
 len = objectCount;
@@ -64,6 +70,6 @@ console.log(e);
 //   console.log(e);
 // }
 console.log("totalLength ",len)
-return len
+return { data: data, len: len };
 }
 exports.firebaseget = firebaseget;

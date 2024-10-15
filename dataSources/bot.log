@@ -1,0 +1,4 @@
+{"level":"info","message":"Received message: {\"message_id\":75,\"from\":{\"id\":656943672,\"is_bot\":false,\"first_name\":\"Avi\",\"username\":\"avinavinavi\",\"language_code\":\"en\"},\"chat\":{\"id\":656943672,\"first_name\":\"Avi\",\"username\":\"avinavinavi\",\"type\":\"private\"},\"date\":1728665889,\"text\":\"lo\"}","timestamp":"2024-10-11T16:58:09.828Z"}
+{"level":"info","message":"Message from 656943672 ignored; not the target group.","timestamp":"2024-10-11T16:58:09.854Z"}
+{"level":"info","message":"Received message: {\"message_id\":76,\"from\":{\"id\":656943672,\"is_bot\":false,\"first_name\":\"Avi\",\"username\":\"avinavinavi\",\"language_code\":\"en\"},\"chat\":{\"id\":656943672,\"first_name\":\"Avi\",\"username\":\"avinavinavi\",\"type\":\"private\"},\"date\":1728665960,\"text\":\"hi\"}","timestamp":"2024-10-11T16:59:20.781Z"}
+{"level":"info","message":"Message from 656943672 ignored; not the target group.","timestamp":"2024-10-11T16:59:20.782Z"}

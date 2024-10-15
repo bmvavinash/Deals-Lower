@@ -15,16 +15,19 @@ const config = require('./config/config.js');
 
 require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
+const firebasePut = require("./database/firebaseput.js");
+const { shortenProductText, getAsin } = require("./utils/commonUtils.js");
+const updateProduct = require("./database/firebaseDB/firebaseUpdate.js");
 const fs = require("fs").promises;
 
-async function getProductDetails(link, text = "",len=0,access_token,driver) {
+async function getProductDetails(link, text = "",len=0,access_token,driver, data={}) {
 
   let postflag = false
   try{
 
   const date = new Date();
   if(len==0){
-    len=await firebaseget();
+    data,len=await firebaseget();
   }
 
   // Get the year, month, and day from the date object
@@ -37,7 +40,20 @@ async function getProductDetails(link, text = "",len=0,access_token,driver) {
   await driver.get(link);
   link = await driver.getCurrentUrl();
   if (link.includes("amazon")) {
-    product = await scrapeAmazonProduct(link, text, driver);
+    let asin = getAsin(link);
+    if (data.hasOwnProperty(asin)) {
+      console.log("Product Key exists!");
+      keyExist = true
+
+      // return true; //Need to check whether posted today or not
+    } else {
+      console.log("Product Key does not exist.");
+      keyExist = false
+    }
+    // if(asin.includes(data)) {
+    //   return true; //#todo make it to string
+    // }
+    product = await scrapeAmazonProduct(link, text, driver, keyExist);
     product.storeType = "Amazon";
     product.links.avinashbmvINR = "";
   } else if (link.includes("flipkart")) {
@@ -52,18 +68,25 @@ async function getProductDetails(link, text = "",len=0,access_token,driver) {
   product.isDeal = false
   product.isOffer = false
   product.productType = "Affiliate";
+  product.shortText = shortenProductText(product.urltext);
 
   let env = constants.env
 
   // console.log("Product is ", product);
 
-  if (product?.price > 0 && product?.links?.avinashbmv != "") {
-    postflag = await firebasepost(product, access_token, env);
-    if (postflag) {
+  if (product?.price > 0 && product?.links?.avinashbmv && product?.links?.avinashbmv != "") {
+    // postflag = await firebasepost(product, access_token, env);
+    postflag = await updateProduct(product?.productCode || product?.id , product, access_token, env);
+    console.log("Postflag is ", postflag)
+    // postflag = await firebasePut(product, access_token, env);
+    if (postflag.status == 201) {
       // id+=1;
       len += 1;
       // i--;
-    } else {
+    } else if (postflag.status==200) {
+    } else if (postflag.status==301) {
+      postflag = false;
+    }else {
       access_token = await getAccessToken(env);
       console.log("Regenerating access token");
       postflag = await firebasepost(product, access_token, env);

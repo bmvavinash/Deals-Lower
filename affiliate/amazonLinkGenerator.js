@@ -5,7 +5,8 @@ async function amazonLinkGenerator( driver) {
     let l=1
     try{
 
-        await driver.findElement(By.id("amzn-ss-text-link")).click();
+        await driver.findElement(By.id("amzn-ss-get-link-button")).click();
+        // await driver.findElement(By.id("amzn-ss-text-link")).click(); // old
     }
     catch(e){console.log(e);}
   // let popupIsVisible = await driver.wait(until.elementIsVisible("a-popover-content-2"));
@@ -15,7 +16,6 @@ async function amazonLinkGenerator( driver) {
   //   await driver.findElement(By.id("amzn-ss-text-link")).click();
   // }
   try{
-
       await driver.findElement(By.id("amzn-ss-text-link")).click();
   }
   catch(e){console.log(e);}

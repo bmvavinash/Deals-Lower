@@ -22,15 +22,19 @@ async function readJsonFile(filePath) {
 async function getTelegramDealLink(driver) {
   let missedLinks = "";
   try {
-    let len = await firebaseget();
+    let len;
+    let result = await firebaseget();
+    let todayresult = await firebaseget(true);
     if(len==0){
-        
-        len = await firebaseget();
-        if(len==0){
-            console.log("Unable to fetch the length of DB")
-            exit();
-        }
+      
+      result = await firebaseget();
+      if(len==0){
+        console.log("Unable to fetch the length of DB")
+        exit();
+      }
     }
+    len = result.len;
+    let jsondata = result.data;
     let env = constants.env;
 
     let access_token = await getAccessToken(env);
@@ -53,7 +57,9 @@ async function getTelegramDealLink(driver) {
     // Format the date as YYYY-MM-DD
     const formattedDate = `${year}-${month}-${day}`;
 
-    const jsonFilePath = `C:/Users/Dell/Downloads/Telegram Desktop/ChatExport_${formattedDate}/result.json`;
+    // const jsonFilePath = `C:/Users/Dell/Downloads/Telegram Desktop/ChatExport_${formattedDate}/result.json`;
+    // const jsonFilePath = `C:/Users/avina/Downloads/Telegram Desktop/ChatExport_${formattedDate}/result.json`;
+    const jsonFilePath = `C:/Users/avina/AppData/Roaming/Telegram Desktop/tdata/tdummy/tr9 deals/ChatExport_${formattedDate}/result.json`;
 
     try {
       const inputData = await readJsonFile(jsonFilePath);
@@ -73,7 +79,7 @@ async function getTelegramDealLink(driver) {
               text += entity.text + " "; // Append other text
             }
           }
-          isProductPosted = await getProductDetails(link, text, len, access_token, driver);
+          isProductPosted = await getProductDetails(link, text, len, access_token, driver, jsondata);
           console.log("-=-=-=-=-=-=-=-=-=-=-> Is product Posted in telegram: ",isProductPosted)
           if(isProductPosted){
             len+=1
