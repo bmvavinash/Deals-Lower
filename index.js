@@ -13,9 +13,16 @@ const constants = require('./config/constants');
 const config = require('./config/config');
 const { getTelegramDealLink } = require("./dataSources/telegram");
 const { getSpeedDeals } = require("./dataSources/speedDeals");
+const Zerodha = require("./Stock/Portal/Zerodha");
+const zerodhaHoldings = require("./Stock/Portal/zerodhaHoldings");
+const whatsappLastMessage = require("./socialMedia/whatsappLastMsg");
+const whatsappLastMessageByHtml = require("./socialMedia/whatsappLastMsgByHtml");
+const tableExtract = require("./XAlpha/tableExtract");
+const { processAllInstruments } = require("./dataSources/stock");
 
 
 let type=constants.type // deploy in all places
+let source=constants.source // deploy in all places
 let postflag = false;
 
 // async function openAmazonWebsite(link) {
@@ -38,21 +45,47 @@ async function openAmazonWebsite() {
   driver = await chrome.Driver.createSession(options);
   let env=constants.env
 
-  
 
-  switch (type) {
-    case "general":
-      await getTelegramDealLink(driver);
-      break;
-    case "productlinks":
-      await runExcelFunction();
-      break;
-    case "speedDeals":
-      await getSpeedDeals();
-      break;
-    default:
-      console.log("Invalid type specified");
+  if(source == "deals"){
+
+      switch (type) {
+        case "general":
+          await getTelegramDealLink(driver);
+          break;
+        case "productlinks":
+          await runExcelFunction();
+          break;
+        case "speedDeals":
+          await getSpeedDeals();
+          break;
+        default:
+          console.log("Invalid type specified");
+      }
   }
+  else if(source=="stocks"){
+
+    await processAllInstruments(driver);
+    // await Zerodha(driver);
+    // await zerodhaHoldings(driver);
+
+    // await tableExtract(driver);
+    
+    // await whatsappLastMessage(driver);
+    // await whatsappLastMessageByHtml(driver);
+    // let { message, timestamp } = await whatsappLastMessageByHtml(driver);
+    // if (message && timestamp) {
+    //   console.log("in index")
+    //   console.log('Last message:', message);
+    //   console.log('Timestamp:', timestamp);
+    // } else {
+    //     console.log('No message or timestamp found.');
+    // } 
+
+    // let details = await whatsappLastMessageByHtml(driver);
+    // console.log("Details in index are :",details);
+
+  }
+
 
  
 
