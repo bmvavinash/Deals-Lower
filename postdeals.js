@@ -15,6 +15,7 @@ async function postDeals(driver,product) {
     
     let options = await new chrome.Options();
     let text="";
+    let othertext="";
     
     options.debuggerAddress("localhost:9222");
     
@@ -48,14 +49,19 @@ async function postDeals(driver,product) {
     // text=text+product?.productText + `\n\nhttps://dealshubglobal.com/p/${product?.id}` + " \n#"+product?.storeType + " #"+product?.category
 
     text = formatProductInfo(product);
+    othertext = formatProductInfo(product,"RamTechTelugu-21");
     // console.log("Text in Telegram is ",text)
 
     if (constantsData.postTo.telegram ) {
         if(product?.photo!=""){
-            telegram(product?.photo,telegramId,text)
+            await telegram(product?.photo,telegramId,text)
+            // await telegram(product?.photo,"@RamTechTelugu",othertext)
         }
         else if(!isPhotoRequired){
-            telegram(product?.photo,telegramId,text)
+            await telegram(product?.photo,telegramId,text)
+            // https://t.me/RamTechTelugu
+            // nivea check asin - no /dp/ - 
+            // await telegram(product?.photo,"@RamTechTelugu",othertext)
         }
     }
     if (constantsData.postTo.whatsapp) {

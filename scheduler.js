@@ -16,31 +16,41 @@ const config = require('./config/config.js');
 require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
 const firebasePut = require("./database/firebaseput.js");
-const { shortenProductText, getAsin } = require("./utils/commonUtils.js");
+const { shortenProductText, getAsin, getformattedDate } = require("./utils/commonUtils.js");
 const updateProduct = require("./database/firebaseDB/firebaseUpdate.js");
+const { productStatus } = require("./config/const.js");
 const fs = require("fs").promises;
 
-async function getProductDetails(link, text = "",len=0,access_token,driver, data={}) {
+async function getProductDetails(driver, link, text = "",len=0,access_token="", data={}, todayData={}) {
 
   let postflag = false
+  let postStatus = ""
   try{
 
   const date = new Date();
-  if(len==0){
+  if(len==0 || data=={}){
     data,len=await firebaseget();
+  }
+  if(todayData=={}){
+    data,len=await firebaseget(true);
   }
 
   // Get the year, month, and day from the date object
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are zero-indexed, add 1 to get the correct month
-  const day = String(date.getDate()).padStart(2, '0');
+  // const year = date.getFullYear();
+  // const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are zero-indexed, add 1 to get the correct month
+  // const day = String(date.getDate()).padStart(2, '0');
 
-  // Format the date as YYYY-MM-DD
-  const todayDate = `${year}-${month}-${day}`;
+  // // Format the date as YYYY-MM-DD
+  // const todayDate = `${year}-${month}-${day}`;
+  const todayDate = getformattedDate();
   await driver.get(link);
   link = await driver.getCurrentUrl();
   if (link.includes("amazon")) {
     let asin = getAsin(link);
+    if (todayData.hasOwnProperty(asin)) {
+      console.log("Updated Product today hence skipping the flow !");
+      return productStatus.PRODUCT_POSTED_TODAY;
+    }
     if (data.hasOwnProperty(asin)) {
       console.log("Product Key exists!");
       keyExist = true
@@ -82,10 +92,13 @@ async function getProductDetails(link, text = "",len=0,access_token,driver, data
     if (postflag.status == 201) {
       // id+=1;
       len += 1;
+      postStatus = productStatus.PRODUCT_CREATED;
       // i--;
     } else if (postflag.status==200) {
+      postStatus = productStatus.PRODUCT_UPDATED_SUCCESSFULLY;
     } else if (postflag.status==301) {
       postflag = false;
+      postStatus = productStatus.PRODUCT_POSTED_TODAY;
     }else {
       access_token = await getAccessToken(env);
       console.log("Regenerating access token");
@@ -113,7 +126,7 @@ async function getProductDetails(link, text = "",len=0,access_token,driver, data
 }
     catch(e){
       console.log("error in scheduler: ",e)
-      return postflag
+      return productStatus.PRODUCT_ERROR
   }
   // finally {
   // }

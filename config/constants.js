@@ -7,7 +7,7 @@ const pathToFile = "F:/Study/Affiliate/Projects/Affiliate/New Clone Affiliate/Fi
 // const pathToFile = "C:/Users/Dell/Tasks/All/Aff/Key"
 
 
-const facebookId="EAAKw6ZAutPZBoBO93V3v8gGjqY44nA32GOsrwPwZAN98bjiRjRy8BA00HDlnssPWdS41GCZCfFUwAMJJjK2Brs7C4Y4ZCT07V90nZBSJq6raQSvbwLK8JwkDL19pqILtyvuZAo5yO85yhshZAffga1C3ej8zFcDqC96FWeqZAhPo1zrZAC0doYLwVIlyvOoazdCMZBp3lvy3zAd7nMKXQ4JEjPPUiEZD"
+const facebookId="EAAKw6ZAutPZBoBO8B5XJA3qhzPStF8qk4ZCMlBQGx9ZCRHlqEHAQCZCX0vqnEXvRx16qrl54NFHIZCXG7fg5l0DdsZB8UYFvUfEs1qxdimK2vHAyMUQCbIAU8W9ZBD9czOIgeAIeDbvWZAZAeQTFaPg5ikSKlx1KBtsQZCypZC68K7mN2AxPQDXZCnGYkuDWJ3btbYpbS0tHZC5uNo1Y8KZCA34PszRweIZD"
 
 const kiteKey="UW33EKPK5PU467NUOMVLSN7RDO57TDNW"
 const kiteUsername="KIY458"
@@ -16,7 +16,8 @@ const kitePassword="Depura@24"
 const source="deals"
 // const source="stocks"
 
-const type="general"
+// const type="general"
+const type="textfilelinks"
 // const type="productlinks"
 // const type="categorylinks"
 // const type="speedDeals"
@@ -29,6 +30,16 @@ const TelegramBotKey="5759815900:AAFKWE5cmFlmIkDUlzXT_-4sqIT2NQix3Ws"
 
 const POSTING_TYPES_CONFIG = {
   general: {
+    DB: 'DB1',
+    postTo: {
+      telegram: true,
+      whatsapp: false,
+      // whatsapp: true,
+      facebook: true
+    },
+    typeValue: 'all'
+  },
+  textfilelinks: {
     DB: 'DB1',
     postTo: {
       telegram: true,

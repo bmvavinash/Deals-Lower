@@ -22,7 +22,7 @@ function validateText(value) {
 }
 
 
-function formatProductInfo(product) {
+function formatProductInfo(product,tag="") {
     let messagePrefix = "";
 
     // product?.productText + `\n\nhttps://dealshubglobal.com/p/${product?.id}`
@@ -48,7 +48,17 @@ function formatProductInfo(product) {
     }
     
     // Append link and hashtags
-    message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n` ;
+    try{
+        if(tag==""){
+            message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n` ;
+        } else {
+            message += `\n\nBuy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n` ;
+
+        }
+    }
+    catch(e) {
+
+    }
     // message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
     
     if (product.discount > 85) {
@@ -84,11 +94,87 @@ Mamaearth MEGA SALE 🔥🔥
   
     return message;
   }
+
+  // Function to read URLs from a text file and process them
+async function readUrlsFromTxtUtils(filePath, processUrl) {
+    try {
+        const fileStream = fs.createReadStream(filePath);
+        
+        // Create a readline interface to process the file line by line
+        const rl = createInterface({
+            input: fileStream,
+            crlfDelay: Infinity, // Recognize all instances of CR LF as a single line break
+        });
+
+        for await (const line of rl) {
+            // Call the function to process each URL
+            await processUrl(line.trim());
+        }
+    } catch (e) {
+        console.error("Error reading the file:", e);
+    }
+}
+
+
+  function getformattedDate(url) {
+    
+    const date = new Date();
+
+    // Get the year, month, and day from the date object
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are zero-indexed, add 1 to get the correct month
+    const day = String(date.getDate()).padStart(2, "0");
+
+    // Format the date as YYYY-MM-DD
+    let formattedDate = `${year}-${month}-${day}`;
+    return formattedDate;
+  }
+
   function getAsin(url) {
-    let start = url.indexOf("/dp/") + 4
-      console.log("new asin is ", url.substr(start, 10));
-      asin = url.substr(start, 10)
-      return asin;
+    let start;
+    let asin;
+
+    // Check for "/gp/product/"
+    
+    // Check for "/dp/"
+    start = url.indexOf("/dp/");
+    if (start !== -1) {
+        start += 4; // Length of "/dp/" is 4
+        asin = url.substr(start, 10);
+        // Ensure there's a "?" or the end of the URL after the ASIN
+        if (url.charAt(start + 10) === '?' || start + 10 === url.length) {
+            console.log("ASIN from /dp/:", asin);
+            return asin;
+        }
+    }
+    
+    start = url.indexOf("/gp/product/");
+    if (start !== -1) {
+        start += 13; // Length of "/gp/product/" is 13
+        asin = url.substr(start, 10);
+        // Ensure there's a "?" or the end of the URL after the ASIN
+        if (url.charAt(start + 10) === '?' || start + 10 === url.length) {
+            console.log("ASIN from /gp/product/:", asin);
+            return asin;
+        }
+    }
+    console.log("ASIN URL Error", url);
+    return "";
+}
+
+  function getAsinOld(url) {
+    let start = url.indexOf("/dp/") + 4;
+    if(start == 3) {
+        start = url.indexOf("/gp/") + 4;
+    }
+    if(start != 3) {
+        console.log("new asin is ", url.substr(start, 10));
+        asin = url.substr(start, 10)
+        return asin;
+    } else {
+        console.log("Asin URL Error ",url);
+        return "";
+    }
   }
   function shortenProductText(productText) {
     // List of symbols to trim at or after (including paired brackets)
@@ -158,5 +244,7 @@ module.exports = {
     validateDiscount,
     validateText,
     shortenProductText,
-    getAsin
+    getAsin,
+    getformattedDate,
+    readUrlsFromTxtUtils
 };
