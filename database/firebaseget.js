@@ -1,3 +1,5 @@
+const { getformattedDate } = require("../utils/commonUtils");
+
 async function firebaseget(isToday=false) {
   let len = 0;
   let data;
@@ -8,13 +10,18 @@ async function firebaseget(isToday=false) {
     const constants = require("../config/constants");
     const dbname = constants.postingTypesConfig[constants.type].DB;
     let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
+
+    let formattedDate="";
     
     jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
 
     if (isToday){
-      urlappend = "date"
+      formattedDate = getformattedDate();
+      urlappend = `orderBy="date"&equalTo="${formattedDate}"`
+    } else {
+      urlappend = `shallow=true`
     }
-    const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json?shallow=true&print=pretty`;
+    const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json?${urlappend}&print=pretty`;
     // const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json`;
 
     var requestOptions = {
@@ -38,7 +45,7 @@ async function firebaseget(isToday=false) {
 
 
 //check new2
-
+console.log("Api URL firebase get is ",apiUrl)
 const response = await fetch(apiUrl);
 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 

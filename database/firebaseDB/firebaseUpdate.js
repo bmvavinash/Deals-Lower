@@ -4,6 +4,7 @@ var database = require('firebase/database');
 const admin = require('firebase-admin');
 const constants = require('../../config/constants.js');
 const config = require('../../config/config.js');
+const { productStatus } = require('../../config/const.js');
 
 env=constants.env
 
@@ -46,7 +47,7 @@ const app = firebase.initializeApp(firebaseConfig);
 var ref = database.ref(db, '/deals');
 
 // Function to update a record
-async function updateProduct(productCode, updatedData, access_token, env="stage") {
+async function updateProduct(productCode, updatedData, access_token="", env="stage") {
   try {
     // Get a reference to the product node
       const productRef = db.ref('deals/' + productCode); // Directly use the ref from the admin.database() instance
@@ -68,7 +69,7 @@ async function updateProduct(productCode, updatedData, access_token, env="stage"
       mergedData.productId = existingProductData.productId;
       mergedData.productCode = existingProductData.productCode;
       if(mergedData.date == existingProductData.date){
-        return { status: 301, message: 'Product Updated on the same day' };
+        return { status: 301, message: productStatus.PRODUCT_POSTED_TODAY };
       }
 
       // If items exist in updatedData, merge the arrays
@@ -100,12 +101,12 @@ async function updateProduct(productCode, updatedData, access_token, env="stage"
         await productRef.update(updateData);
       }
       console.log('Product updated successfully!');
-      return { status: 200, message: 'Product updated successfully!' }; // Return success status
+      return { status: 200, message: productStatus.PRODUCT_UPDATED_SUCCESSFULLY }; // Return success status
     } else {
         // Create a new product
         await productRef.set(updatedData); // Use .set() directly on the reference
       console.log('New product created!');
-      return { status: 201, message: 'New product created!' }; // Return success status for creation
+      return { status: 201, message: productStatus.PRODUCT_CREATED }; // Return success status for creation
     }
   } catch (error) {
     console.error('Error updating product:', error);
