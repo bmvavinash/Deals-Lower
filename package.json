@@ -13,6 +13,7 @@
     "@google-cloud/local-auth": "^3.0.1",
     "@types/node-telegram-bot-api": "^0.64.7",
     "async": "^3.2.6",
+    "cheerio": "^1.0.0",
     "chromedriver": "^121.0.2",
     "firebase": "^10.13.2",
     "firebase-admin": "^12.5.0",

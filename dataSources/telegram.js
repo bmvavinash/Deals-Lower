@@ -6,6 +6,8 @@ const { firebaseget } = require("../database/firebaseget");
 const { getAccessToken } = require("../database/getAccessToken");
 const constants = require("../config/constants");
 const { exit } = require("process");
+const { getformattedDate } = require("../utils/commonUtils");
+const { productStatus } = require("../config/const");
 const fs = require("fs").promises;
 
 async function readJsonFile(filePath) {
@@ -25,6 +27,12 @@ async function getTelegramDealLink(driver) {
     let len;
     let result = await firebaseget();
     let todayresult = await firebaseget(true);
+    len = result.len;
+    let jsondata = result.data;
+    todaylen = todayresult.len;
+
+    let todayjsondata = todayresult.data;
+    let env = constants.env;
     if(len==0){
       
       result = await firebaseget();
@@ -33,11 +41,9 @@ async function getTelegramDealLink(driver) {
         exit();
       }
     }
-    len = result.len;
-    let jsondata = result.data;
-    let env = constants.env;
 
-    let access_token = await getAccessToken(env);
+    let access_token = "";
+    // await getAccessToken(env);
     // let driver = await new Builder().forBrowser("chrome").setChromeOptions(new chrome.Options()).build();
 
     //chrome
@@ -46,16 +52,7 @@ async function getTelegramDealLink(driver) {
     //CHROME
     driver = await chrome.Driver.createSession(options);
     // driver = await chrome.Driver.createSession();
-
-    const date = new Date();
-
-    // Get the year, month, and day from the date object
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0"); // Months are zero-indexed, add 1 to get the correct month
-    const day = String(date.getDate()).padStart(2, "0");
-
-    // Format the date as YYYY-MM-DD
-    const formattedDate = `${year}-${month}-${day}`;
+    let formattedDate = getformattedDate();
 
     // const jsonFilePath = `C:/Users/Dell/Downloads/Telegram Desktop/ChatExport_${formattedDate}/result.json`;
     // const jsonFilePath = `C:/Users/avina/Downloads/Telegram Desktop/ChatExport_${formattedDate}/result.json`;
@@ -79,11 +76,11 @@ async function getTelegramDealLink(driver) {
               text += entity.text + " "; // Append other text
             }
           }
-          isProductPosted = await getProductDetails(link, text, len, access_token, driver, jsondata);
+          isProductPosted = await getProductDetails(driver, link, text, len, access_token, jsondata, todayjsondata);
           console.log("-=-=-=-=-=-=-=-=-=-=-> Is product Posted in telegram: ",isProductPosted)
-          if(isProductPosted){
+          if(isProductPosted == productStatus.PRODUCT_CREATED){
             len+=1
-          } else {
+          } else if(isProductPosted == productStatus.PRODUCT_ERROR){
             missedLinks += link + "\n"
           }
         }
@@ -103,7 +100,9 @@ async function getTelegramDealLink(driver) {
     }
   } catch (e) {console.log("Error in Telegram",e);}
   finally{
-    console.log(" Missed Links are ",missedLinks)
+    console.log(" Missed Links are ",missedLinks);
+    console.log("\nreturning")
+    return null;
   }
 }
 

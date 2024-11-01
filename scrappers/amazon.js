@@ -1,6 +1,7 @@
 const { amazonLinkGenerator } = require("../affiliate/amazonLinkGenerator");
 const amazonConfig = require("../config/amazonConfig");
 const { By, Key, Builder, Button, until } = require("selenium-webdriver");
+const { getAsin } = require("../utils/commonUtils");
 
 async function scrapeAmazonProduct(url, text = "", driver, keyExist=false) {
   // driver.get(url);
@@ -12,12 +13,17 @@ async function scrapeAmazonProduct(url, text = "", driver, keyExist=false) {
     
     try {
       
-      let start = url.indexOf("/dp/") + 4
-      console.log("new asin is ", url.substr(start, 10));
-      asin = url.substr(start, 10)
-      
+      // let start = url.indexOf("/dp/") + 4
+      // console.log("new asin is ", url.substr(start, 10));
+      // asin = url.substr(start, 10)
+      asin = getAsin(url);
       if(asin.length != 10){
-        try { product.productCode = await extractAttribute(driver, amazonConfig?.asin) || ""; } catch (e) { console.log("asin error") }
+        try {
+           product.productCode = await extractAttribute(driver, amazonConfig?.asin) || ""; 
+          } catch (e) {
+           console.log("asin error so skipping the product") 
+           return {};
+          }
       }
       else {
         product.productCode = asin;
@@ -50,8 +56,13 @@ async function scrapeAmazonProduct(url, text = "", driver, keyExist=false) {
       try { product.description.d9 = await extractAttribute(driver, amazonConfig?.description?.d9) || ""; } catch (e) { console.log("d9 error") }
       // product?.brand = await extractAttribute(driver, amazonConfig?.brand);
       product.links = {};
-      
-      try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { console.log("link generation error") }
+      if(product?.photo != ""){
+
+        try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { console.log("link generation error") }
+      }
+      else {
+        console.log("No Photo hence skipping the link generation")
+      }
     }
     // Log product or further processing
     // console.log("Product is ", product);

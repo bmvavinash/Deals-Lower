@@ -51,7 +51,7 @@ async function getSpeedDeals(driver) {
               text += entity.text + " "; // Append other text
             }
           }
-          isProductPosted = await getProductDetails(link, text, len, access_token, driver);
+          isProductPosted = await getProductDetails(driver,link, text, len, access_token);
           console.log("-=-=-=-=-=-=-=-=-=-=-> Is product Posted in speed deals: ",isProductPosted)
           if(isProductPosted){
             len+=1

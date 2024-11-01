@@ -1,0 +1,68 @@
+const puppeteer = require('puppeteer');
+
+(async () => {
+    // Step 1: Launch the browser
+    const browser = await puppeteer.launch({ headless: true });
+    const page = await browser.newPage();
+    
+    // Set a user-agent to mimic a real browser
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
+
+    // Step 2: Go to the Amazon deals page
+    const url = 'https://www.amazon.in/deals'; // Replace with the actual deals page URL if needed
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
+
+    // Step 3: Wait for deal items to be loaded
+    await page.waitForSelector('div[data-testid="product-card"]');
+
+    // Step 4: Extract deal details
+    const deals = await page.evaluate(() => {
+        const dealItems = document.querySelectorAll('div[data-testid="product-card"]');
+        const extractedDeals = [];
+
+        dealItems.forEach(item => {
+            try {
+                // Extract product title
+                const titleElement = item.querySelector('span.a-truncate-full');
+                const title = titleElement ? titleElement.innerText.trim() : 'No title';
+
+                // Extract discount details
+                const discountElement = item.querySelector('div.style_badgeLabel__dD0Hv');
+                const discount = discountElement ? discountElement.innerText.trim() : 'No discount';
+
+                // Extract coupon details
+                const couponElement = item.querySelector('div[data-component="dui-coupon-badge"]');
+                const coupon = couponElement ? couponElement.innerText.trim() : 'No coupon';
+
+                // Extract product URL
+                const productLinkElement = item.querySelector('a[data-testid="product-card-link"]');
+                const productUrl = productLinkElement ? `${productLinkElement.getAttribute('href')}` : 'No URL';
+                // const productUrl = productLinkElement ? `https://www.amazon.in${productLinkElement.getAttribute('href')}` : 'No URL';
+
+                // Extract image URL
+                const imgElement = item.querySelector('img.ProductCardImage-module__image_SU6C7KYJpko3vQ2fK7Kf');
+                const imgUrl = imgElement ? imgElement.getAttribute('src') : 'No image';
+
+                // Add the extracted data to the array
+                extractedDeals.push({
+                    title,
+                    discount,
+                    coupon,
+                    productUrl,
+                    imgUrl
+                });
+
+            } catch (error) {
+                console.error('Error extracting deal information:', error);
+            }
+        });
+
+        return extractedDeals;
+    });
+
+    // Step 5: Print or process the extracted deals
+    console.log(deals);
+
+    // Step 6: Close the browser
+    await browser.close();
+})();
