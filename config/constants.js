@@ -16,8 +16,12 @@ const kitePassword="Depura@24"
 const source="deals"
 // const source="stocks"
 
-// const type="general"
-const type="textfilelinks"
+const generaltype="telegramFile"
+// const generaltype="telegramBot"
+// const generaltype="urlsFile"
+
+const type="general"
+// const type="textfilelinks"
 // const type="productlinks"
 // const type="categorylinks"
 // const type="speedDeals"
@@ -26,6 +30,7 @@ const env="production"
 // const env="stage"
 
 const TelegramBotKey="5759815900:AAFKWE5cmFlmIkDUlzXT_-4sqIT2NQix3Ws"
+const DealsGlobalBotKey="8177765543:AAF1lYt4e6dH6u-Cfb_Sd7oBEcl5VJadZz8"
 
 
 const POSTING_TYPES_CONFIG = {
@@ -83,6 +88,7 @@ module.exports = {
   // environment: ENVIRONMENT,
   postingTypesConfig: POSTING_TYPES_CONFIG,
   type,
+  generaltype,
   env,
   kiteKey,
   kiteUsername,
@@ -90,5 +96,6 @@ module.exports = {
   source,
   facebookId,
   pathToFile,
-  TelegramBotKey
+  TelegramBotKey,
+  DealsGlobalBotKey
 };

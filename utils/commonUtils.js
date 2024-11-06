@@ -21,6 +21,35 @@ function validateText(value) {
     return cleanedValue;
 }
 
+// utils/messageProcessor.js
+function extractLinksAndText(text) {
+    // if (typeof text?.caption !== 'string') return { skip: true, links: [], plainText: '' };
+    
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    let links = [];
+    let plainText = "";
+    if(urlRegex && urlRegex != ""){
+        try{
+
+            links = text.match(urlRegex) || [];
+        } catch(e){
+            console.log("URL Regex Error");
+        }
+    }
+    try{
+        
+        plainText = text.replace(urlRegex, '').trim();
+        // links = text.match(urlRegex) || [];
+    } catch(e){
+        console.log("URL Regex Error");
+    }
+    // Add a flag to indicate whether to skip processing if no links are found
+    const skip = links.length === 0;
+    
+    return { skip, links, plainText };
+}
+
+
 
 function formatProductInfo(product,tag="") {
     let messagePrefix = "";
@@ -50,10 +79,20 @@ function formatProductInfo(product,tag="") {
     // Append link and hashtags
     try{
         if(tag==""){
-            message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n` ;
-        } else {
+            // if(product?.productCode!="" && product?.storeType == "Amazon"){
+            if(product?.productCode!="" ){
+
+                message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n` ;
+            } else {
+                message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
+
+            }
+        } else if(product?.storeType == "Amazon" && product?.productCode != "") {
             message += `\n\nBuy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n` ;
 
+        } else {
+            //skipping others products other than Amazon 
+            return "";
         }
     }
     catch(e) {
@@ -130,6 +169,13 @@ async function readUrlsFromTxtUtils(filePath, processUrl) {
     return formattedDate;
   }
 
+  function getFlipkartProductId(url) {
+    const parsedUrl = new URL(url);
+    const searchParams = new URLSearchParams(parsedUrl.search);
+    productCode = searchParams.get("pid") || "";
+    return productCode;
+
+  }
   function getAsin(url) {
     let start;
     let asin;
@@ -245,6 +291,9 @@ module.exports = {
     validateText,
     shortenProductText,
     getAsin,
+    getFlipkartProductId,
     getformattedDate,
-    readUrlsFromTxtUtils
+    readUrlsFromTxtUtils,
+    extractLinksAndText
+    
 };

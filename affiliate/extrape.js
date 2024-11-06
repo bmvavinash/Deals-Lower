@@ -5,11 +5,11 @@ async function getExtrapeUrl(driver, url) {
 
     await driver.get("https://www.extrape.com/link-converter");
     try {
-        try {
-            link = await driver.getCurrentUrl();
-        } catch(e) {
-            console.log("Url Generation Error")
-        }
+        // try {
+        //     link = await driver.getCurrentUrl();
+        // } catch(e) {
+        //     console.log("Url Generation Error")
+        // }
         // Step 1: Click on the first element and enter URL
         try {
             const urlField = await driver.findElement(By.xpath('//*[@id="simple-tabpanel-0"]/div/span/div[2]/div[1]/div/div[2]/textarea'));
@@ -17,6 +17,18 @@ async function getExtrapeUrl(driver, url) {
             await urlField.sendKeys(url);
         } catch (error) {
             console.error("Error entering URL:", error);
+            await driver.actions()
+              .keyDown(Key.ESCAPE)
+              .keyUp(Key.ESCAPE)
+              .perform()
+
+              try {
+                const urlField = await driver.findElement(By.xpath('//*[@id="simple-tabpanel-0"]/div/span/div[2]/div[1]/div/div[2]/textarea'));
+                await urlField.click();
+                await urlField.sendKeys(url);
+            } catch (error) {
+                console.log("2nd Time Extrape Error");
+            }
         }
 
         // Step 2: Click the button to generate the link

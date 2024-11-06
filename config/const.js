@@ -1,7 +1,7 @@
 // constants.js
 const PRODUCT_STATUS = {
     PRODUCT_ALREADY_EXISTS: 'Product Already Exists',
-    PRODUCT_POSTED_TODAY: 'New product created',
+    PRODUCT_POSTED_TODAY: 'Product Posted Today',
     PRODUCT_UPDATED_SUCCESSFULLY: 'Product updated successfully',
     PRODUCT_CREATED: 'New Product Created',
     PRODUCT_ERROR: 'Invalid Product Details',

@@ -1,5 +1,5 @@
 const { Builder, By, Key, until } = require("selenium-webdriver");
-const { scrapeAmazonProduct } = require("./scrappers/amazon");
+const { scrapeAmazonProduct, scrapeProduct } = require("./scrappers/amazon");
 const { scrapeFlipkartProduct } = require("./scrappers/flipkart");
 const { getAccessToken } = require("./database/getAccessToken");
 const { telegram } = require("./socialMedia/telegramPoster");
@@ -16,14 +16,15 @@ const config = require('./config/config.js');
 require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
 const firebasePut = require("./database/firebaseput.js");
-const { shortenProductText, getAsin, getformattedDate } = require("./utils/commonUtils.js");
+const { shortenProductText, getAsin, getformattedDate, getFlipkartProductId } = require("./utils/commonUtils.js");
 const updateProduct = require("./database/firebaseDB/firebaseUpdate.js");
 const { productStatus } = require("./config/const.js");
 const fs = require("fs").promises;
 
 async function getProductDetails(driver, link, text = "",len=0,access_token="", data={}, todayData={}) {
 
-  let postflag = false
+  let postflag = false;
+  let keyExist = false;
   let postStatus = ""
   try{
 
@@ -47,6 +48,8 @@ async function getProductDetails(driver, link, text = "",len=0,access_token="", 
   link = await driver.getCurrentUrl();
   if (link.includes("amazon")) {
     let asin = getAsin(link);
+
+    
     if (todayData.hasOwnProperty(asin)) {
       console.log("Updated Product today hence skipping the flow !");
       return productStatus.PRODUCT_POSTED_TODAY;
@@ -63,11 +66,28 @@ async function getProductDetails(driver, link, text = "",len=0,access_token="", 
     // if(asin.includes(data)) {
     //   return true; //#todo make it to string
     // }
-    product = await scrapeAmazonProduct(link, text, driver, keyExist);
+    product = await scrapeProduct(link, "amazon", driver,text,  keyExist);
     product.storeType = "Amazon";
     product.links.avinashbmvINR = "";
+
   } else if (link.includes("flipkart")) {
-    product = await scrapeFlipkartProduct(link, text, driver);
+
+    let productCode = getFlipkartProductId(link);
+
+    if (todayData.hasOwnProperty(productCode)) {
+      console.log("Updated Product today hence skipping the flow !");
+      return productStatus.PRODUCT_POSTED_TODAY;
+    }
+    if (data.hasOwnProperty(productCode)) {
+      console.log("Product Key exists!");
+      keyExist = true
+
+      // return true; //Need to check whether posted today or not
+    } else {
+      console.log("Product Key does not exist.");
+      keyExist = false
+    }
+    product = await scrapeProduct(link, "flipkart", driver, text, keyExist);
     product.storeType = "Flipkart";
   }
   product.date = String(todayDate);
@@ -122,7 +142,8 @@ async function getProductDetails(driver, link, text = "",len=0,access_token="", 
     console.log("\nFirebase Post Invalid details: ",link)
 
   }
-  return postflag
+  return postStatus;
+  // return postflag
 }
     catch(e){
       console.log("error in scheduler: ",e)
