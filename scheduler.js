@@ -16,9 +16,10 @@ const config = require('./config/config.js');
 require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
 const firebasePut = require("./database/firebaseput.js");
-const { shortenProductText, getAsin, getformattedDate, getFlipkartProductId } = require("./utils/commonUtils.js");
+const { shortenProductText, getAsin, getformattedDate, getFlipkartProductId, getAjioCode, getMyntraCode } = require("./utils/commonUtils.js");
 const updateProduct = require("./database/firebaseDB/firebaseUpdate.js");
 const { productStatus } = require("./config/const.js");
+const { logger } = require("./logger/logger.js");
 const fs = require("fs").promises;
 
 async function getProductDetails(driver, link, text = "",len=0,access_token="", data={}, todayData={}) {
@@ -68,7 +69,12 @@ async function getProductDetails(driver, link, text = "",len=0,access_token="", 
     // }
     product = await scrapeProduct(link, "amazon", driver,text,  keyExist);
     product.storeType = "Amazon";
-    product.links.avinashbmvINR = "";
+    // try{
+
+    //   product.links.avinashbmvINR = "";
+    // } catch(e) {
+    //   console.log("avinashbmvINR error in Scheduler")
+    // }
 
   } else if (link.includes("flipkart")) {
 
@@ -89,6 +95,48 @@ async function getProductDetails(driver, link, text = "",len=0,access_token="", 
     }
     product = await scrapeProduct(link, "flipkart", driver, text, keyExist);
     product.storeType = "Flipkart";
+  } else if (link.includes("ajio")) {
+
+    let productCode = getAjioCode(link);
+
+    if (todayData.hasOwnProperty(productCode)) {
+      console.log("Updated Product today hence skipping the flow !");
+      return productStatus.PRODUCT_POSTED_TODAY;
+    }
+    if (data.hasOwnProperty(productCode)) {
+      console.log("Product Key exists!");
+      keyExist = true
+    }
+    else {
+      console.log("Product Key does not exist.");
+      keyExist = false
+    }
+    product = await scrapeProduct(link, "ajio", driver, text, keyExist);
+    product.storeType = "Ajio";
+      // return true; //Need to check whether posted today or not
+    } else if (link.includes("myntra")) {
+
+    let productCode = getMyntraCode(link);
+
+    if (todayData.hasOwnProperty(productCode)) {
+      console.log("Updated Product today hence skipping the flow !");
+      return productStatus.PRODUCT_POSTED_TODAY;
+    }
+    if (data.hasOwnProperty(productCode)) {
+      console.log("Product Key exists!");
+      keyExist = true
+
+      // return true; //Need to check whether posted today or not
+    } else {
+      console.log("Product Key does not exist.");
+      keyExist = false
+    }
+    product = await scrapeProduct(link, "myntra", driver, text, keyExist);
+    product.storeType = "Myntra";
+  } else {
+    // logger.info("Other than Amazon and Flipkart",)
+    console.log("Other than Amazon and Flipkart and Ajio and Myntra");
+    return productStatus.PRODUCT_ERROR;
   }
   product.date = String(todayDate);
   product.datetime = Date.now();
@@ -98,7 +146,7 @@ async function getProductDetails(driver, link, text = "",len=0,access_token="", 
   product.isDeal = false
   product.isOffer = false
   product.productType = "Affiliate";
-  product.shortText = shortenProductText(product.urltext);
+  product.shortText = shortenProductText(product?.urltext);
 
   let env = constants.env
 

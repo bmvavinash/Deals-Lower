@@ -6,19 +6,51 @@ function validatePrice(value) {
         value: price
     };
 }
-
 function validateDiscount(value) {
-    let cleanedValue = value.replace(/%|\s|&nbsp;|-/g, "").trim();
-    const discount = parseInt(cleanedValue, 10);
-    return {
-        isValid: discount > 0,
-        value: discount
-    };
+    // Remove any surrounding parentheses and "OFF" text
+    const cleanedValue = value.replace(/[()%\s]*OFF[()%\s]*/gi, "").trim();
+
+    // Use regular expression to capture digits followed by a % symbol
+    const match = cleanedValue.match(/\d+%/);
+
+    if (match) {
+        // Extract the number and convert it to an integer
+        const discount = parseInt(match[0].replace("%", ""), 10);
+
+        return {
+            isValid: discount > 0,
+            value: discount
+        };
+    } else {
+        // If no discount is found, return isValid as false
+        return {
+            isValid: false,
+            value: 0
+        };
+    }
 }
 function validateText(value) {
     // Replace "&amp;" with "&" and remove all white spaces
     let cleanedValue = value.replace(/&amp;|\s/g, "").replace(/-/g, "").trim();
     return cleanedValue;
+}
+
+function getAjioCode(url) {
+    const match = url.match(/\/p\/([^/]+)/);
+    return match ? match[1] : null;
+  }
+
+//   function getMyntraImages(images) {
+//     const imageUrls = images.map(image => {
+//         const style = image.getAttribute("style");
+//         return style.match(/url\("(.*?)"\)/)[1]; // Extracts URL from the style attribute
+//     });
+    
+//   }
+
+  function getMyntraCode(url) {
+    const match = url.match(/\/(\d+)\//);
+    return match ? match[1] : null;
 }
 
 // utils/messageProcessor.js
@@ -275,14 +307,14 @@ async function readUrlsFromTxtUtils(filePath, processUrl) {
 // console.log("Shortened Product Text:", shortenedText);
 
 
-function validateDiscount(value) {
-    let cleanedValue = value.replace(/%|\s|&nbsp;|-/g, "").trim();
-    const discount = parseInt(cleanedValue, 10);
-    return {
-        isValid: discount > 0,
-        value: discount
-    };
-}
+// function validateDiscount(value) {
+//     let cleanedValue = value.replace(/%|\s|&nbsp;|-/g, "").trim();
+//     const discount = parseInt(cleanedValue, 10);
+//     return {
+//         isValid: discount > 0,
+//         value: discount
+//     };
+// }
 
 module.exports = {
     validatePrice,
@@ -294,6 +326,8 @@ module.exports = {
     getFlipkartProductId,
     getformattedDate,
     readUrlsFromTxtUtils,
-    extractLinksAndText
+    extractLinksAndText,
+    getAjioCode,
+    getMyntraCode
     
 };

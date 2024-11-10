@@ -3,12 +3,14 @@ const flipkartConfig = require("../config/flipkartConfig");
 const { amazonLinkGenerator } = require("../affiliate/amazonLinkGenerator");
 // const { getExtrapeUrl } = require("../affiliate/extrapeUrlGenerator");
 const { By, Key, Builder, Button, until } = require("selenium-webdriver");
-const { getAsin, getFlipkartProductId } = require("../utils/commonUtils");
+const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require("../utils/commonUtils");
 const { getExtrapeUrl } = require("../affiliate/extrape");
+const ajioConfig = require("../config/ajioConfig");
+const myntraConfig = require("../config/myntraConfig");
 
 async function scrapeProduct(url, platform, driver, text = "", keyExist = false) {
   // Load the appropriate config
-  const config = platform === "amazon" ? amazonConfig : platform === "flipkart" ? flipkartConfig : null;
+  const config = platform === "amazon" ? amazonConfig : platform === "flipkart" ? flipkartConfig : platform === "ajio" ? ajioConfig : platform === "myntra" ? myntraConfig : null;
   if (!config) {
     console.log(`Config for ${platform} is missing`);
     return {};
@@ -19,7 +21,7 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false)
     // Extract price, discount, etc., using the generic function
     try { product.price = String(await extractAttribute(driver, config.price)) || ""; } catch (e) { console.log("price error", e) }
     try { product.discount = String(await extractAttribute(driver, config.discount)) || ""; } catch (e) { console.log("discount error", e) }
-    
+
     // Product code extraction based on platform
     if (platform === "amazon") {
       product.productCode = getAsin(url) || "";
@@ -29,23 +31,46 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false)
         // const parsedUrl = new URL(url);
         // const searchParams = new URLSearchParams(parsedUrl.search);
         // product.productCode = searchParams.get("pid") || "";
-          } catch (e) {
-           console.log("asin error so skipping the product") 
-          //  return {};
-          }
+      } catch (e) {
+        console.log("asin error so skipping the product")
+        //  return {};
+      }
       // }
       // else {
       //   product.productCode = asin;
       // }
       // catch(e){
-        //   console.log("Asin New Url Extract Error")
-        // }
-      }
-    if(!keyExist){
+      //   console.log("Asin New Url Extract Error")
+      // }
+    } else if (platform === "ajio") {
+      product.productCode = getAjioCode(url);
+    } else if (platform === "myntra") {
+      product.productCode = getMyntraCode(url);
+    }
+    if (platform === "myntra") {
+      try { imageElement = await extractAttribute(driver, config?.photo) || ""; } catch (e) { console.log("photo error") }
+      // const imageElement = document.querySelector(".image-grid-image");
+
+      // Extract the URL from the background-image style attribute
+      try { product.photo = imageElement.match(/url\("(.*?)"\)/)[1]; } catch (e) { console.log("Image Extract Error in Myntra ", e); }
+
+      // Output the single image URL
+      // console.log(imageUrl);
+      // const imageUrls = config.images.map(image => {
+      //   const style = image.getAttribute("style");
+      //   return style.match(/url\("(.*?)"\)/)[1]; // Extracts URL from the style attribute
+
+      // });
+      // try{ product.photo = imageUrls[0] } catch(e) { console.log("Myntra Image Error")}
+      // try{ product.images = imageUrls; } catch(e) { console.log("Myntra Multiple Image Error")} 
+    } else {
+
       try { product.photo = await extractAttribute(driver, config?.photo) || ""; } catch (e) { console.log("photo error") }
-      try { product.urltext = await extractAttribute(driver, config?.productText) || ""; } catch (e) { console.log("productText error") }
-      try { product.productText = text || "" } catch (e) { console.log("url Text error") }
-      
+    }
+    try { product.urltext = await extractAttribute(driver, config?.productText) || ""; } catch (e) { console.log("productText error") }
+    try { product.productText = text || "" } catch (e) { console.log("url Text error") }
+    if (!keyExist) {
+
       product.category = {}
       try { product.category.mainCategory = await extractAttribute(driver, config?.category?.mainCategory) || ""; } catch (e) { console.log("mainCategory error") }
       try { product.category.c1 = await extractAttribute(driver, config?.category?.c1) || ""; } catch (e) { console.log("c1 error") }
@@ -64,27 +89,38 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false)
       try { product.description.d8 = await extractAttribute(driver, config?.description?.d8) || ""; } catch (e) { console.log("d8 error") }
       try { product.description.d9 = await extractAttribute(driver, config?.description?.d9) || ""; } catch (e) { console.log("d9 error") }
       // product?.brand = await extractAttribute(driver, config?.brand);
-      product.links = {};
-      if(product?.photo != ""){
+    }
+    if (product?.photo != "") {
 
 
+      if (product && product?.links && product.links.avinashbmv != "") {
 
+      } else {
+
+        product.links = {};
+        try { product.links.avinashbmvINR = ""; } catch (e) { console.log("avinashbmvINR Error", e) }
         if (platform === "amazon") {
-          try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { console.log("Amazon link generation error") }
+          try {
+            product.links.avinashbmv = await amazonLinkGenerator(driver) || "";
+            product.links.avinashbmvINR = "";
+          } catch (e) { console.log("Amazon link generation error") }
         } else {
-          try { product.links.avinashbmv = await getExtrapeUrl(driver, url) || ""; } catch (e) { console.log("Generic link generation error") }
+          try {
+            product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
+            product.links.avinashbmvINR = "";
+          } catch (e) { console.log("Generic link generation error") }
         }
       }
+    }
 
 
 
 
 
-        // try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { console.log("link generation error") }
-      // }
-      else {
-        console.log("No Photo hence skipping the link generation")
-      }
+    // try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { console.log("link generation error") }
+    // }
+    else {
+      console.log("No Photo hence skipping the link generation")
     }
     // Log product or further processing
     // console.log("Product is ", product);

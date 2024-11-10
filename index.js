@@ -20,6 +20,10 @@ const whatsappLastMessageByHtml = require("./socialMedia/whatsappLastMsgByHtml")
 const tableExtract = require("./XAlpha/tableExtract");
 const { processAllInstruments } = require("./dataSources/stock");
 const { readUrlsFromTxt } = require("./dataSources/textFile");
+const { initializeBot, continuousProcess } = require("./dataSources/autoTelegramAll");
+
+require("events").EventEmitter.defaultMaxListeners = 20;
+
 
 
 let type=constants.type // deploy in all places
@@ -51,7 +55,19 @@ async function openAmazonWebsite() {
 
       switch (type) {
         case "general":
-          await getTelegramDealLink(driver);
+          switch (constants.generaltype) {
+            case "telegramFile":
+              await getTelegramDealLink(driver);
+              break;
+            case "urlsFile":
+              await readUrlsFromTxt(driver);
+              break;
+            case "telegramBot":
+              await continuousProcess();
+              // await continuousProcess(driver);
+              // await initializeBot(driver);
+              break;
+          }
           console.log("returning in general")
           break;
         case "productlinks":
@@ -59,6 +75,9 @@ async function openAmazonWebsite() {
           break;
         case "textfilelinks":
           await readUrlsFromTxt();
+          break;
+        case "telegrambot":
+          await initializeBot(driver);
           break;
         case "speedDeals":
           await getSpeedDeals();

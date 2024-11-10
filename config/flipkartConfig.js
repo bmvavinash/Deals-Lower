@@ -11,6 +11,7 @@ module.exports = {
       // Add more xpaths as needed
   ],
   discount: [
+      { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[2]/div[2]/div/div[5]/div[1]/div/div[3]/span', validator: validateDiscount },
       { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[2]/div[2]/div/div[2]/div[1]/div/div[3]/span', validator: validateDiscount },
       { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[2]/div[2]/div/div[3]/div[1]/div/div[3]/span', validator: validateDiscount },
       { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[2]/div[3]/div/div[2]/div[1]/div/div[3]/span', validator: validateDiscount },

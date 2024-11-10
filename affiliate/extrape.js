@@ -45,7 +45,7 @@ async function getExtrapeUrl(driver, url) {
             await driver.wait(async function() {
                 updatedLink = await linkOutputField.getAttribute('innerHTML');
                 return updatedLink && updatedLink.trim() !== '';  // Wait until it's non-empty
-            }, 10000);  // Adjust timeout as needed (e.g., 10 seconds)
+            }, 50000);  // Adjust timeout as needed (e.g., 10 seconds)
         } catch (error) {
             console.error("Error retrieving the updated link:", error);
         }
