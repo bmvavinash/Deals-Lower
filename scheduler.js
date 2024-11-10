@@ -140,9 +140,11 @@ async function getProductDetails(driver, link, text = "",len=0,access_token="", 
   }
   product.date = String(todayDate);
   product.datetime = Date.now();
-  product.id = len;
-  product.idlen = len;
-  product.idlength = len;
+  if(!keyExist) {
+    product.id = len;
+    product.idlen = len;
+    product.idlength = len;
+  }
   product.isDeal = false
   product.isOffer = false
   product.productType = "Affiliate";
