@@ -36,9 +36,10 @@ function validateText(value) {
 }
 
 function getAjioCode(url) {
-    const match = url.match(/\/p\/([^/]+)/);
+    const match = url.match(/\/p\/([^/?]+)/);
     return match ? match[1] : null;
   }
+  
 
 //   function getMyntraImages(images) {
 //     const imageUrls = images.map(image => {
@@ -52,6 +53,8 @@ function getAjioCode(url) {
     const match = url.match(/\/(\d+)\//);
     return match ? match[1] : null;
 }
+
+// console.log("Myntra Code is ",getMyntraCode("https://www.myntra.com/kurtas/kalini/kalini-ethnic-motif-printed-high-slit-kurta/24793420/buy"))
 
 // utils/messageProcessor.js
 function extractLinksAndText(text) {

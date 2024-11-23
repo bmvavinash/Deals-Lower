@@ -18,186 +18,112 @@ const chrome = require("selenium-webdriver/chrome");
 const firebasePut = require("./database/firebaseput.js");
 const { shortenProductText, getAsin, getformattedDate, getFlipkartProductId, getAjioCode, getMyntraCode } = require("./utils/commonUtils.js");
 const updateProduct = require("./database/firebaseDB/firebaseUpdate.js");
-const { productStatus } = require("./config/const.js");
+const { productStatus, storeMap } = require("./config/const.js");
 const { logger } = require("./logger/logger.js");
 const fs = require("fs").promises;
 
-async function getProductDetails(driver, link, text = "",len=0,access_token="", data={}, todayData={}) {
+async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}) {
 
   let postflag = false;
-  let keyExist = false;
-  let postStatus = ""
-  try{
+  let postStatus = "";
+  let productCode, product, keyExist = false;
+  try {
 
-  const date = new Date();
-  if(len==0 || data=={}){
-    data,len=await firebaseget();
-  }
-  if(todayData=={}){
-    data,len=await firebaseget(true);
-  }
-
-  // Get the year, month, and day from the date object
-  // const year = date.getFullYear();
-  // const month = String(date.getMonth() + 1).padStart(2, '0'); // Months are zero-indexed, add 1 to get the correct month
-  // const day = String(date.getDate()).padStart(2, '0');
-
-  // // Format the date as YYYY-MM-DD
-  // const todayDate = `${year}-${month}-${day}`;
-  const todayDate = getformattedDate();
-  await driver.get(link);
-  link = await driver.getCurrentUrl();
-  if (link.includes("amazon")) {
-    let asin = getAsin(link);
-
-    
-    if (todayData.hasOwnProperty(asin)) {
-      console.log("Updated Product today hence skipping the flow !");
-      return productStatus.PRODUCT_POSTED_TODAY;
+    const date = new Date();
+    if (len == 0 || data == {}) {
+      data, len = await firebaseget();
     }
-    if (data.hasOwnProperty(asin)) {
-      console.log("Product Key exists!");
-      keyExist = true
-
-      // return true; //Need to check whether posted today or not
-    } else {
-      console.log("Product Key does not exist.");
-      keyExist = false
+    if (todayData == {}) {
+      data, len = await firebaseget(true);
     }
-    // if(asin.includes(data)) {
-    //   return true; //#todo make it to string
-    // }
-    product = await scrapeProduct(link, "amazon", driver,text,  keyExist);
-    product.storeType = "Amazon";
-    // try{
+    const todayDate = getformattedDate();
+    // await driver.get(link);
+    // link = await driver.getCurrentUrl();
+    const storeKey = Object.keys(storeMap).find(key => link.includes(key));
+    if (!storeKey) {
+      console.log("Store not supported");
+      return productStatus.PRODUCT_ERROR;
+    }
 
-    //   product.links.avinashbmvINR = "";
-    // } catch(e) {
-    //   console.log("avinashbmvINR error in Scheduler")
-    // }
+    // Retrieve store-specific code and type from storeMap
+    const { getCode, storeType } = storeMap[storeKey];
+    productCode = getCode(link);
 
-  } else if (link.includes("flipkart")) {
-
-    let productCode = getFlipkartProductId(link);
-
+    // Check if product was updated today or exists in all deals
     if (todayData.hasOwnProperty(productCode)) {
       console.log("Updated Product today hence skipping the flow !");
       return productStatus.PRODUCT_POSTED_TODAY;
     }
     if (data.hasOwnProperty(productCode)) {
       console.log("Product Key exists!");
-      keyExist = true
-
-      // return true; //Need to check whether posted today or not
+      keyExist = true;
     } else {
       console.log("Product Key does not exist.");
-      keyExist = false
     }
-    product = await scrapeProduct(link, "flipkart", driver, text, keyExist);
-    product.storeType = "Flipkart";
-  } else if (link.includes("ajio")) {
 
-    let productCode = getAjioCode(link);
-
-    if (todayData.hasOwnProperty(productCode)) {
-      console.log("Updated Product today hence skipping the flow !");
-      return productStatus.PRODUCT_POSTED_TODAY;
+    // Scrape product details and set store type
+    product = await scrapeProduct(link, storeKey, driver, text, keyExist);
+    product.storeType = storeType;
+    product.date = String(todayDate);
+    product.datetime = Date.now();
+    if (!keyExist) {
+      product.id = len;
+      product.idlen = len;
+      product.idlength = len;
     }
-    if (data.hasOwnProperty(productCode)) {
-      console.log("Product Key exists!");
-      keyExist = true
-    }
-    else {
-      console.log("Product Key does not exist.");
-      keyExist = false
-    }
-    product = await scrapeProduct(link, "ajio", driver, text, keyExist);
-    product.storeType = "Ajio";
-      // return true; //Need to check whether posted today or not
-    } else if (link.includes("myntra")) {
+    product.isDeal = false
+    product.isOffer = false
+    product.productType = "Affiliate";
+    product.shortText = shortenProductText(product?.urltext);
 
-    let productCode = getMyntraCode(link);
+    let env = constants.env
 
-    if (todayData.hasOwnProperty(productCode)) {
-      console.log("Updated Product today hence skipping the flow !");
-      return productStatus.PRODUCT_POSTED_TODAY;
-    }
-    if (data.hasOwnProperty(productCode)) {
-      console.log("Product Key exists!");
-      keyExist = true
+    // console.log("Product is ", product);
 
-      // return true; //Need to check whether posted today or not
-    } else {
-      console.log("Product Key does not exist.");
-      keyExist = false
-    }
-    product = await scrapeProduct(link, "myntra", driver, text, keyExist);
-    product.storeType = "Myntra";
-  } else {
-    // logger.info("Other than Amazon and Flipkart",)
-    console.log("Other than Amazon and Flipkart and Ajio and Myntra");
-    return productStatus.PRODUCT_ERROR;
-  }
-  product.date = String(todayDate);
-  product.datetime = Date.now();
-  if(!keyExist) {
-    product.id = len;
-    product.idlen = len;
-    product.idlength = len;
-  }
-  product.isDeal = false
-  product.isOffer = false
-  product.productType = "Affiliate";
-  product.shortText = shortenProductText(product?.urltext);
-
-  let env = constants.env
-
-  // console.log("Product is ", product);
-
-  if (product?.price > 0 && product?.links?.avinashbmv && product?.links?.avinashbmv != "") {
-    // postflag = await firebasepost(product, access_token, env);
-    postflag = await updateProduct(product?.productCode || product?.id , product, access_token, env);
-    console.log("Postflag is ", postflag)
-    // postflag = await firebasePut(product, access_token, env);
-    if (postflag.status == 201) {
-      // id+=1;
-      len += 1;
-      postStatus = productStatus.PRODUCT_CREATED;
-      // i--;
-    } else if (postflag.status==200) {
-      postStatus = productStatus.PRODUCT_UPDATED_SUCCESSFULLY;
-    } else if (postflag.status==301) {
-      postflag = false;
-      postStatus = productStatus.PRODUCT_POSTED_TODAY;
-    }else {
-      access_token = await getAccessToken(env);
-      console.log("Regenerating access token");
-      postflag = await firebasepost(product, access_token, env);
-      if (postflag) {
+    if (product?.price > 0 && product?.links?.avinashbmv && product?.links?.avinashbmv != "") {
+      // postflag = await firebasepost(product, access_token, env);
+      postflag = await updateProduct(product?.productCode || product?.id, product, access_token, env);
+      console.log("Postflag is ", postflag)
+      // postflag = await firebasePut(product, access_token, env);
+      if (postflag.status == 201) {
         // id+=1;
         len += 1;
+        postStatus = productStatus.PRODUCT_CREATED;
+        // i--;
+      } else if (postflag.status == 200) {
+        postStatus = productStatus.PRODUCT_UPDATED_SUCCESSFULLY;
+      } else if (postflag.status == 301) {
+        postflag = false;
+        postStatus = productStatus.PRODUCT_POSTED_TODAY;
       } else {
-        // console.log("Need to skip channel deals");
+        access_token = await getAccessToken(env);
+        console.log("Regenerating access token");
+        postflag = await firebasepost(product, access_token, env);
+        if (postflag) {
+          // id+=1;
+          len += 1;
+        } else {
+          // console.log("Need to skip channel deals");
+        }
       }
-    }
-    if(postflag){
+      if (postflag) {
         postDeals(driver, product);
+      }
+      else {
+        // console.log("Post Flag is false ",product?.links?.avinashbmv)
+        console.log("\nPost Flag is false ", link)
+      }
     }
     else {
-        // console.log("Post Flag is false ",product?.links?.avinashbmv)
-        console.log("\nPost Flag is false ",link)
-      }
-    }
-    else{
-    console.log("\nFirebase Post Invalid details: ",link)
+      console.log("\nFirebase Post Invalid details: ", link)
 
+    }
+    return postStatus;
+    // return postflag
   }
-  return postStatus;
-  // return postflag
-}
-    catch(e){
-      console.log("error in scheduler: ",e)
-      return productStatus.PRODUCT_ERROR
+  catch (e) {
+    console.log("error in scheduler: ", e)
+    return productStatus.PRODUCT_ERROR
   }
   // finally {
   // }

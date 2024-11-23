@@ -17,6 +17,13 @@ async function getExtrapeUrl(driver, url) {
             await urlField.sendKeys(url);
         } catch (error) {
             console.error("Error entering URL:", error);
+            const closeButton = await driver.findElement(By.xpath('/html/body/div[5]/div[3]/div[1]/div[2]/svg/path'));
+            await closeButton.click();
+            try{
+
+            }catch(e) {
+                console.error("Error removing using x in Extrape");
+            }
             await driver.actions()
               .keyDown(Key.ESCAPE)
               .keyUp(Key.ESCAPE)

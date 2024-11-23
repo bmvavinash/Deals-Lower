@@ -14,11 +14,13 @@ const messagesQueue = []; // Global array to store messages with links and text
 // async function initializeBot(driver) {
 async function initializeBot() {
     // bot = new TelegramBot(constants.DealsGlobalBotKey, { polling: true });
-    bot = new TelegramBot(constants.TelegramBotKey, { polling: true });
-    let links = [];
-    let text = "";
+    try{
 
-    bot.on('channel_post', async (post) => {
+        bot = new TelegramBot(constants.TelegramBotKey, { polling: true });
+        let links = [];
+        let text = "";
+        
+        bot.on('channel_post', async (post) => {
         await processBotMessage(post?.caption || post?.text);
         // await processBotMessage(driver,post.caption);
         // await processAndQueue(post);
@@ -33,12 +35,16 @@ async function initializeBot() {
         // links,text = await processAndCheck(editedPost);
         // links,text = await processAndCheck(driver, editedPost);
     });
-
+    
     console.log('Bot initialized and listening for messages.');
+} catch(e) {
+    console.log("Polling or initialize Bot Error: ",e)
+}
     // return {links,text};
 }
 
 async function getNewBotMessages() {
+    messagesQueue.length = 0;
     return new Promise((resolve) => {
         setTimeout(() => {
             resolve([...messagesQueue]); 

@@ -7,8 +7,16 @@ async function amazonLinkGenerator( driver) {
 
         await driver.findElement(By.id("amzn-ss-get-link-button")).click();
         // await driver.findElement(By.id("amzn-ss-text-link")).click(); // old
+      }
+      catch(e) {
+        console.log(e);
+        try {
+          await driver.findElement(By.xpath('//*[@id="aod-close"]/span/span/i')).click();
+        } catch(e) {
+          console.log("Error in Cart Popup close",e);
+        }
+      
     }
-    catch(e){console.log(e);}
   // let popupIsVisible = await driver.wait(until.elementIsVisible("a-popover-content-2"));
   // console.log("popupIsVisible is "+popupIsVisible);
   // if(!popupIsVisible){

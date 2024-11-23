@@ -47,7 +47,7 @@ async function readUrlsFromTxt(driver) {
         let text="";
         let formattedDate = getformattedDate();
         const jsonFilePath = `C:/Users/avina/AppData/Roaming/Telegram Desktop/tdata/tdummy/tr9 deals/ChatExport_${formattedDate}/result.json`;
-        const filePath = 'F:/Study/Affiliate/selenium/Deals Optimised/DealsOptimised/resources/URLS/url.txt';
+        const filePath = 'F:/Study/Affiliate/selenium/Deals Optimised/DealsOptimised/scrappers/url.txt';
 
         try {
             // Function to read URLs from a text file and process them
