@@ -43,6 +43,7 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
 
 // Handles product processing flow, including getCode check and fallback function
 async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData) {
+  let products = [];
   try {
 
     await driver.get(link);
@@ -66,7 +67,7 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
         const config = await loadConfig(`./PageConfig/${platform}PageConfig.js`);
 
         // Call the scrapePage function with the loaded configuration
-        const products = await scrapePage(link, driver, config, pageType);
+        products = await scrapePage(link, driver, config, pageType);
 
         console.log("Extracted Products:", products);
       } catch (error) {
@@ -76,7 +77,8 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
       // const fallbackData = await scrapePage(); // Assumes this function returns array of objects
 
       for (const data of products) {
-        await processProduct(driver, data.link, data.text || text, len, accessToken, jsonData, todayJsonData);
+        await driver.get(data?.productUrl);
+        await processProduct(driver, data?.productUrl, data.name, len, accessToken, jsonData, todayJsonData);
       }
     }
   } catch (e) {

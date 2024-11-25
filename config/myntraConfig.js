@@ -2,24 +2,25 @@ const { validatePrice, validateDiscount, validateText } = require("../utils/comm
 
 module.exports = {
     productText: [
-        { type: "id", selector: "pdp-title", validate: validateText },
-        { type: "className", selector: "pdp-name", validate: validateText },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/h1', validate: validateText },
+        { type: "id", selector: "pdp-title", validator: validateText },
+        { type: "className", selector: "pdp-name", validator: validateText },
+        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/h1', validator: validateText },
     ],
     price: [
-        { type: "id", selector: "pdp-price", validate: validatePrice },
-        { type: "className", selector: "pdp-price", validate: validatePrice },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/p/span/strong', validate: validatePrice },
+        { type: "id", selector: "pdp-price", validator: validatePrice },
+        { type: "className", selector: "pdp-price", validator: validatePrice },
+        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/p/span/strong', validator: validatePrice },
+        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/div/p[1]/span/strong', validator: validatePrice },
     ],
     mrp: [
-        { type: "id", selector: "pdp-mrp", validate: validatePrice },
-        { type: "className", selector: "pdp-mrp-verbiage-amt", validate: validatePrice },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/p/div/div[2]/span', validate: validatePrice },
+        { type: "id", selector: "pdp-mrp", validator: validatePrice },
+        { type: "className", selector: "pdp-mrp-verbiage-amt", validator: validatePrice },
+        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/p/div/div[2]/span', validator: validatePrice },
     ],
     discount: [
-        { type: "id", selector: "pdp-discount", validate: validateDiscount },
-        { type: "className", selector: "pdp-discount", validate: validateDiscount },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/p/span', validate: validateDiscount },
+        { type: "id", selector: "pdp-discount", validator: validateDiscount },
+        { type: "className", selector: "pdp-discount", validator: validateDiscount },
+        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/p/span', validator: validateDiscount },
     ],
     ratings: [
         { type: "id", selector: "index-overallRating" },

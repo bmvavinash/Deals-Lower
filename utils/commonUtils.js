@@ -1,34 +1,41 @@
+// function validatePrice(value) {
+//     let cleanedValue = value.replace(/₹|,|\s|&nbsp;|-/g, "").trim();
+//     const price = parseInt(cleanedValue, 10);
+//     return {
+//         isValid: !isNaN(price) && price > 0,
+//         value: price
+//     };
+// }
+
 function validatePrice(value) {
-    let cleanedValue = value.replace(/₹|,|\s|&nbsp;|-/g, "").trim();
+    // Remove any HTML tags using a regex
+    const strippedValue = value.replace(/<[^>]*>/g, "").trim();
+
+    // Extract only numeric characters
+    const cleanedValue = strippedValue.replace(/[^\d]/g, "").trim();
     const price = parseInt(cleanedValue, 10);
+
     return {
-        isValid: !isNaN(price) && price > 0,
-        value: price
+        isValid: !isNaN(price) && price > 0, // Check if valid numeric price
+        value: isNaN(price) ? value : price, // Return numeric value if valid, else raw value
+        cleanedValue: cleanedValue || strippedValue // Partially cleaned or raw stripped value
     };
 }
+
 function validateDiscount(value) {
-    // Remove any surrounding parentheses and "OFF" text
+    // Remove unnecessary text and symbols
     const cleanedValue = value.replace(/[()%\s]*OFF[()%\s]*/gi, "").trim();
+    const match = cleanedValue.match(/\d+/); // Capture only digits
 
-    // Use regular expression to capture digits followed by a % symbol
-    const match = cleanedValue.match(/\d+%/);
+    const discount = match ? parseInt(match[0], 10) : NaN;
 
-    if (match) {
-        // Extract the number and convert it to an integer
-        const discount = parseInt(match[0].replace("%", ""), 10);
-
-        return {
-            isValid: discount > 0,
-            value: discount
-        };
-    } else {
-        // If no discount is found, return isValid as false
-        return {
-            isValid: false,
-            value: 0
-        };
-    }
+    return {
+        isValid: !isNaN(discount) && discount > 0,
+        value: isNaN(discount) ? value : discount, // Return raw value if invalid
+        cleanedValue: match ? match[0] : cleanedValue // Partially cleaned or raw value
+    };
 }
+
 function validateText(value) {
     // Replace "&amp;" with "&" and remove all white spaces
     let cleanedValue = value.replace(/&amp;|\s/g, "").replace(/-/g, "").trim();
