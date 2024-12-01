@@ -13,6 +13,9 @@ const kiteKey="UW33EKPK5PU467NUOMVLSN7RDO57TDNW"
 const kiteUsername="KIY458"
 const kitePassword="Depura@24"
 
+// const updateTodayDeals=true
+const updateTodayDeals=false
+
 const source="deals"
 // const source="stocks"
 
@@ -97,5 +100,6 @@ module.exports = {
   facebookId,
   pathToFile,
   TelegramBotKey,
-  DealsGlobalBotKey
+  DealsGlobalBotKey,
+  updateTodayDeals
 };

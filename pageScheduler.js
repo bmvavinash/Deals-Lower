@@ -1,7 +1,7 @@
 const puppeteer = require('puppeteer');
 const { getModuleLogger } = require('./logger/logger');
 const { storeMap } = require('./config/const');
-const { extractText } = require('./helper/helperFunction');
+// const { extractText } = require('./helper/helperFunction');
 const { By } = require('selenium-webdriver');
 const fs = require('fs').promises;
 const logger = getModuleLogger('pageScheduler');
@@ -18,102 +18,135 @@ async function loadConfig(configPath) {
 
 async function scrapePage(url, driver, config, pageType) {
     const products = [];
+    let newPageConfig;
     try {
-        // Dynamically determine the platform configuration
-        const storeKey = Object.keys(storeMap).find((key) => url.includes(key.toLowerCase()));
-        if (!storeKey) {
-            throw new Error("Platform not supported or URL is invalid.");
-        }
+        const storeKey = Object.keys(storeMap).find(key => url.includes(key.toLowerCase()));
+        if (!storeKey) throw new Error("Platform not supported or URL is invalid.");
 
+        // Extract platform configuration
         const { getCode, storeType } = storeMap[storeKey];
         const platformConfig = { getCode, storeType };
 
         console.log("Platform Config:", platformConfig);
         // Dynamically import the PageConfig based on platform
         const pageConfigModule = `./PageConfig/${storeKey.toLowerCase()}PageConfig.js`;
-        platformConfig.pageConfig = require(pageConfigModule); // Use dynamic import for ES modules
-
-
-        // Use platformConfig as required
+        platformConfig.pageConfig = require(pageConfigModule);
 
         const { pageConfig } = platformConfig;
+        if (!pageConfig) throw new Error(`PageConfig not found for store: ${storeKey}`);
 
-        console.log("Platform Config:", platformConfig);
-        console.log("Config Object:", pageConfig);  
-        // const pageType = url.includes('search') ? 'searchPage' : 'productPage';
-        const pageType = 'searchPage';
-        const newpageConfig = pageConfig?.[pageType] ?? {};
-        if (!newpageConfig) {
-            throw new Error(`PageConfig for '${pageType}' is undefined`);
-        }
+        // Assign the configuration for the specific page type
+        newPageConfig = pageConfig?.[pageType];
+        if (!newPageConfig) throw new Error(`PageConfig for '${pageType}' is undefined`);
 
         console.log("Page Config:", platformConfig?.pageConfig);
         console.log("Page Config for Search Page:", platformConfig?.pageConfig?.searchPage);
         console.log("Config:", platformConfig?.pageConfig?.config);
 
-        if (!newpageConfig) {
-            logger.error("No valid page type configuration found", { functionName: 'scrapePage', url, pageType });
-            return null;
+        // Flipkart-specific or general scraping logic
+        const isFlipkart = storeKey.toLowerCase() === 'flipkart';
+        if (isFlipkart) {
+            return await scrapeFlipkart(driver, newPageConfig);  // Isolated function for Flipkart
+        } else {
+            return await scrapeGeneral(driver, newPageConfig);  // General case for other platforms
         }
+    } catch (error) {
+        logger.error("Critical error in scrapePage", { functionName: 'scrapePage', url, error });
+        return null;
+        // return null;
+    }
+}
 
-        const baseElements = await driver.findElements(By.css(newpageConfig.baseSelector));
+async function scrapeFlipkart(driver, pageConfig) {
+    const products = [];
+    const { startRow, maxRows, maxCols } = pageConfig.rowColConfig;
+    const { selectors } = pageConfig;
 
-        for (const element of baseElements) {
-            const productData = {};
-        let isValidProduct = true; // Track validity of the product
-
-            for (const [key, selectorConfig] of Object.entries(newpageConfig.selectors)) {
-                const { type, selector, validate } = selectorConfig;
-
-            try {
-                // Extract raw value
-                let rawValue;
-                if (key === "productUrl" && type === "css") {
-                    // Special case for URLs
-                    const linkElement = await element.findElement(By[type](selector));
-                    rawValue = await linkElement.getAttribute("href");
-
-                    // Normalize URL
-                    const baseUrl = "https://www.myntra.com/";
-                    productData[key] = rawValue.startsWith("http")
-                        ? rawValue
-                        : new URL(rawValue, baseUrl).href;
-                } else {
-                    // General extraction
-                    rawValue = await extractText(element, type, selector);
-                }
-
-                // Validate raw value if a validator exists
-                if (validate) {
-                    const validationResult = validate(rawValue);
-                    if (!validationResult.isValid) {
-                        // If validation fails, mark the product as invalid and log
-                        console.warn(`Validation failed for ${key}:`, rawValue);
-                        isValidProduct = false;
-                        productData[key] = validationResult.cleanedValue || rawValue; // Keep raw or partially cleaned value
-                    } else {
-                        productData[key] = validationResult.value; // Use validated value
-                    }
-                } else {
-                    productData[key] = rawValue; // No validation
-                }
-            } catch (error) {
-                // Handle extraction errors
-                console.error(`Error extracting ${key}:`, error.message);
-                productData[key] = "N/A"; // Default value for errors
-                isValidProduct = false; // Mark product invalid
-            }
-        }
-
-        // Only include valid products in the final array
-        if (isValidProduct) {
-            products.push(productData);
+    for (let row = startRow; row <= startRow + maxRows - 1; row++) {
+        for (let col = 1; col <= maxCols; col++) {
+            const productData = await extractFlipkartProduct(driver, selectors, row, col);
+            if (productData) products.push(productData);
         }
     }
     return products;
+}
+
+async function extractFlipkartProduct(driver, selectors, row, col) {
+    const productData = {};
+    for (const [key, selectorConfig] of Object.entries(selectors)) {
+        const { type, selector } = selectorConfig;
+        try {
+            if (key === "productUrl" && type === "xpath") {
+                // Special handling for product URLs
+                const linkElement = await driver.findElement(By.xpath(selector(row, col)));
+                const rawValue = await linkElement.getAttribute("href");
+                const baseUrl = "https://www.flipkart.com/";
+                productData[key] = rawValue.startsWith("http")
+                    ? rawValue
+                    : new URL(rawValue, baseUrl).href;
+            } else {
+                // General data extraction
+            const rawValue = await extractDataUsingXPath(driver, selector(row, col), type);
+                productData[key] = rawValue || "N/A";
+            }
+        } catch (error) {
+            productData[key] = 'N/A';
+        }
+    }
+    return productData;
+}
+
+async function scrapeGeneral(driver, pageConfig) {
+    const products = [];
+    const baseElements = await driver.findElements(By.css(pageConfig.baseSelector));
+
+    for (const element of baseElements) {
+        const productData = await extractGeneralProduct(element, pageConfig.selectors);
+        if (productData) products.push(productData);
+    }
+    return products;
+}
+
+async function extractGeneralProduct(element, selectors) {
+    const productData = {};
+    for (const [key, selectorConfig] of Object.entries(selectors)) {
+        const { type, selector } = selectorConfig;
+        try {
+            if (key === "productUrl" && type === "css") {
+                // Special handling for product URLs
+                const linkElement = await element.findElement(By.css(selector));
+                const rawValue = await linkElement.getAttribute("href");
+                const baseUrl = `https://www.${storeKey.toLowerCase()}.com/`; // Update with appropriate base URL
+                productData[key] = rawValue.startsWith("http")
+                    ? rawValue
+                    : new URL(rawValue, baseUrl).href;
+            } else {
+                // General data extraction
+            const rawValue = await extractText(element, type, selector);
+                productData[key] = rawValue || "N/A";
+            }
+        } catch (error) {
+            productData[key] = 'N/A';
+        }
+    }
+    return productData;
+}
+
+async function extractDataUsingXPath(driver, xpath, type) {
+    if (type === 'xpath') {
+        return await driver.findElement(By.xpath(xpath)).getText();
+    }
+    return null;
+}
+
+async function extractText(element, type, selector) {
+    try {
+        if (type === "css") {
+            return await element.findElement(By.css(selector)).getText();
+        }
+        return null;
     } catch (error) {
-        logger.error("Critical error in scrapePage", { functionName: 'scrapePage', error, url });
-        // return null;
+        return null;
     }
 }
 

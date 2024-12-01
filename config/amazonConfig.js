@@ -3,6 +3,12 @@ const { validatePrice, validateDiscount, validateText } = require("../utils/comm
 module.exports = {
   price: [
     {
+      type: "css",
+      selector: ".a-price.priceToPay",
+      validator: validatePrice,
+      attribute: "value",
+    },
+    {
       type: "id",
       selector: "priceValue",
       validator: validatePrice,
@@ -56,6 +62,12 @@ module.exports = {
   ],
   discount: [
     {
+      type: "css",
+      selector:
+        '.savingPriceOverride.savingsPercentage',
+      validator: validateDiscount,
+    },
+    {
       type: "xpath",
       selector:
         '//*[@id="corePriceDisplay_desktop_feature_div"]/div[1]/span[1]',
@@ -91,6 +103,19 @@ module.exports = {
       type: "xpath",
       selector:
         '//*[@id="productDetails_detailBullets_sections1"]/tbody/tr[1]/td',
+    },
+    // Add more xpaths as needed
+  ],
+  timer: [
+    {
+      type: "id",
+      selector:
+        'deals_countdown_timer_from_minutes_without_seconds_screen_reader_label', // Only Minutes ending
+    },
+    {
+      type: "id",
+      selector:
+        'detailpage-dealBadge-countdown-timer', // Minutes and Seconds 
     },
     // Add more xpaths as needed
   ],

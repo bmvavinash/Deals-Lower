@@ -4,9 +4,19 @@ const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require(".
 const PRODUCT_STATUS = {
     PRODUCT_ALREADY_EXISTS: 'Product Already Exists',
     PRODUCT_POSTED_TODAY: 'Product Posted Today',
+    PRODUCT_UPDATED_TODAY: 'Today"s Product updated successfully ',
     PRODUCT_UPDATED_SUCCESSFULLY: 'Product updated successfully',
     PRODUCT_CREATED: 'New Product Created',
     PRODUCT_ERROR: 'Invalid Product Details',
+};
+
+const SEARCH_STATUS = {
+    SEARCH_ALREADY_EXISTS: 'Search Already Exists',
+    SEARCH_POSTED_TODAY: 'Search Posted Today',
+    SEARCH_UPDATED_TODAY: 'Today"s Search updated successfully ',
+    SEARCH_UPDATED_SUCCESSFULLY: 'Search updated successfully',
+    SEARCH_CREATED: 'New Search Created',
+    SEARCH_ERROR: 'Invalid Search Details',
 };
 
 const storeMap = {
@@ -20,6 +30,7 @@ const storeMap = {
 const ASIN_LENGTH = 10;
 module.exports = {
     productStatus: PRODUCT_STATUS,
+    searchStatus: SEARCH_STATUS,
     ASIN_LENGTH,
     storeMap
 };

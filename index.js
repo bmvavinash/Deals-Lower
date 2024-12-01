@@ -11,7 +11,7 @@ const { firebasepost } = require("./database/firebasepost");
 
 const constants = require('./config/constants');
 const config = require('./config/config');
-const { getTelegramDealLink } = require("./dataSources/telegram");
+const { getTelegramDealLink, continuouslyProcessBotMessages } = require("./dataSources/telegram");
 const { getSpeedDeals } = require("./dataSources/speedDeals");
 const Zerodha = require("./Stock/Portal/Zerodha");
 const zerodhaHoldings = require("./Stock/Portal/zerodhaHoldings");
@@ -21,13 +21,14 @@ const tableExtract = require("./XAlpha/tableExtract");
 const { processAllInstruments } = require("./dataSources/stock");
 const { readUrlsFromTxt } = require("./dataSources/textFile");
 const { initializeBot, continuousProcess } = require("./dataSources/autoTelegramAll");
+const extractFacebookToken = require("./socialMedia/extractFacebookToken");
 
 require("events").EventEmitter.defaultMaxListeners = 20;
 
 
 
-let type=constants.type // deploy in all places
-let source=constants.source // deploy in all places
+let type = constants.type // deploy in all places
+let source = constants.source // deploy in all places
 let postflag = false;
 
 // async function openAmazonWebsite(link) {
@@ -39,8 +40,14 @@ async function openAmazonWebsite() {
 
   let options = await new chrome.Options();
 
-  let product={}
-  
+  let product = {}
+
+
+  // Add headless mode
+  // options.addArguments("--headless"); // Enable headless mode
+  // options.addArguments("--disable-gpu"); // Recommended for Windows
+  // // options.addArguments("--no-sandbox"); // Recommended for Linux
+  // options.addArguments("--disable-dev-shm-usage"); // Prevent resource issues in some systems
 
 
 
@@ -48,52 +55,52 @@ async function openAmazonWebsite() {
 
   //CHROME
   driver = await chrome.Driver.createSession(options);
-  let env=constants.env
+  let env = constants.env
 
 
-  if(source == "deals"){
+  if (source == "deals") {
 
-      switch (type) {
-        case "general":
-          switch (constants.generaltype) {
-            case "telegramFile":
-              await getTelegramDealLink(driver);
-              break;
-            case "urlsFile":
-              await readUrlsFromTxt(driver);
-              break;
-            case "telegramBot":
-              await continuousProcess();
-              // await continuousProcess(driver);
-              // await initializeBot(driver);
-              break;
-          }
-          console.log("returning in general")
-          break;
-        case "productlinks":
-          await runExcelFunction();
-          break;
-        case "textfilelinks":
-          await readUrlsFromTxt();
-          break;
-        case "telegrambot":
-          await initializeBot(driver);
-          break;
-        case "speedDeals":
-          await getSpeedDeals();
-          break;
-        default:
-          console.log("Invalid type specified");
-      }
+    switch (type) {
+      case "general":
+        switch (constants.generaltype) {
+          case "telegramFile":
+            await getTelegramDealLink(driver);
+            break;
+          case "urlsFile":
+            await readUrlsFromTxt(driver);
+            break;
+          case "telegramBot":
+            await continuouslyProcessBotMessages();
+            // await continuousProcess(driver);
+            // await initializeBot(driver);
+            break;
+        }
+        console.log("returning in general")
+        break;
+      case "productlinks":
+        await runExcelFunction();
+        break;
+      case "textfilelinks":
+        await readUrlsFromTxt();
+        break;
+      case "telegrambot":
+        await initializeBot(driver);
+        break;
+      case "speedDeals":
+        await getSpeedDeals();
+        break;
+      default:
+        console.log("Invalid type specified");
+    }
   }
-  else if(source=="stocks"){
+  else if (source == "stocks") {
 
     await processAllInstruments(driver);
     // await Zerodha(driver);
     // await zerodhaHoldings(driver);
 
     // await tableExtract(driver);
-    
+
     // await whatsappLastMessage(driver);
     // await whatsappLastMessageByHtml(driver);
     // let { message, timestamp } = await whatsappLastMessageByHtml(driver);
@@ -111,15 +118,15 @@ async function openAmazonWebsite() {
   }
 
 
- 
+
 
   // if(product.discount > 75){
   //   if(env=="prod"){
   //     telegram(photo, "@dealshubglobal2", t1);
-      
+
   //   } else if(env=="stage") {
   //     telegram(photo, "", t1);
-      
+
   //   }
   //   whatsapp("DSyvXzBJuax5uJ6MFylXJk",text);
   //   fbdata = facebook(photo, link, itemText);
@@ -127,10 +134,10 @@ async function openAmazonWebsite() {
   // else{
   //   if(env=="prod"){
   //     telegram(photo, "@dealshubglobal", t1);
-      
+
   //   } else if(env=="stage") {
   //     telegram(photo, "@all1apptest", t1);
-      
+
   //   }
   //   whatsapp("Kzl4DB4yCXzJaaCP0Lrf1G",text);
   // }
@@ -147,7 +154,7 @@ async function openAmazonWebsite() {
 
 
 
-  openAmazonWebsite();
+openAmazonWebsite();
 // await getTelegramDealLink();
 // getTelegramDealLink();
 

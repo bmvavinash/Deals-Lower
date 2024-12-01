@@ -21,7 +21,8 @@ async function initializeBot() {
         let text = "";
         
         bot.on('channel_post', async (post) => {
-        await processBotMessage(post?.caption || post?.text);
+        await processBotMessage(post);
+        // await processBotMessage(post?.caption || post?.text);
         // await processBotMessage(driver,post.caption);
         // await processAndQueue(post);
         // links,text = await processAndCheck(post);
@@ -63,8 +64,9 @@ async function processBotMessage(post) {
 // async function processAndQueue(post) {
 // async function processAndCheck(driver, post) {
 // async function processAndCheck(post) {
-    const { skip, links, plainText } = extractLinksAndText(post);
+    const { skip, links, plainText } = extractLinksAndText(post?.caption || post?.text);
     // const { skip, links, plainText } = extractLinksAndText(post.caption);
+    const username = post?.chat?.username;
     
     if (skip) {
         console.log("No links found. Skipping further processing.");
@@ -76,7 +78,7 @@ async function processBotMessage(post) {
 
     // Store each message as an object in the queue
     links.forEach(link => {
-        messagesQueue.push({ link, plainText });
+        messagesQueue.push({ link, plainText, username });
     });
 }
 

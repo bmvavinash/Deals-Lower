@@ -8,7 +8,7 @@ const { getExtrapeUrl } = require("../affiliate/extrape");
 const ajioConfig = require("../config/ajioConfig");
 const myntraConfig = require("../config/myntraConfig");
 
-async function scrapeProduct(url, platform, driver, text = "", keyExist = false) {
+async function scrapeProduct(url, platform, driver, text = "", keyExist = false, username) {
   // Load the appropriate config
   const config = platform === "amazon" ? amazonConfig : platform === "flipkart" ? flipkartConfig : platform === "ajio" ? ajioConfig : platform === "myntra" ? myntraConfig : null;
   if (!config) {
@@ -21,8 +21,11 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false)
     // Extract price, discount, etc., using the generic function
     try { product.price = String(await extractAttribute(driver, config.price)) || ""; } catch (e) { console.log("price error", e) }
     try { product.discount = String(await extractAttribute(driver, config.discount)) || ""; } catch (e) { console.log("discount error", e) }
+    try { product.timer = String(await extractAttribute(driver, config?.timer)) || ""; } catch (e) { console.log("timer error", e) }
 
     // Product code extraction based on platform
+    // #Todo : Convert using StoreMap
+    // #Todo : Import values dynamically directly from config (don't mention the names like price or discount but extract all key values from the config)
     if (platform === "amazon") {
       product.productCode = getAsin(url) || "";
     } else if (platform === "flipkart") {
@@ -99,18 +102,27 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false)
 
         product.links = {};
         try { product.links.avinashbmvINR = ""; } catch (e) { console.log("avinashbmvINR Error", e) }
-        if (platform === "amazon") {
-          try {
-            product.links.avinashbmv = await amazonLinkGenerator(driver) || "";
-            product.links.avinashbmvINR = "";
-          } catch (e) { console.log("Amazon link generation error") }
-        } else {
-          try {
-            product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
-            product.links.avinashbmvINR = "";
-          } catch (e) { console.log("Generic link generation error") }
+        try {
+          // if(username.includes("dealsglobalhub")){
+
+            if (platform === "amazon") {
+              try {
+                product.links.avinashbmv = await amazonLinkGenerator(driver) || "";
+                product.links.avinashbmvINR = "";
+              } catch (e) { console.log("Amazon link generation error") }
+            } else {
+              try {
+                product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
+                product.links.avinashbmvINR = "";
+              } catch (e) { console.log("Generic link generation error") }
+            }
+          // } else {
+
+          // }
+          } catch(e) {
+            console.log("Error in link generation ",e);
+          }
         }
-      }
     }
 
 
@@ -142,6 +154,8 @@ async function extractAttribute(driver, attributeConfig) {
           element = await driver.findElement(By.id(config.selector));
         } else if (config.type === "className") {
           element = await driver.findElement(By.className(config.selector));
+        } else if (config.type === "css") {
+          element = await driver.findElement(By.css(config.selector));
         }
         // let element = await driver.findElement(By[type](selector)); // check later #todo
         const attributeToExtract = config.attribute || "innerHTML";
@@ -174,15 +188,15 @@ async function extractAttribute(driver, attributeConfig) {
     }
   }
   catch (e) {
-    console.log("Error in attribute config ", e)
+    // console.log("Error in attribute config ", e)
   }
 
   // Log information only for the last config after the loop
-  if (lastConfig) {
+  // if (lastConfig) {
     // console.log("Validation failed for the last config:", lastConfig?.selector, config?.links);
-  } else {
-    console.log("All xpaths failed or validation failed for all xpaths."); // #ToDo Need to remove
-  }
+  // } else {
+    // console.log("All xpaths failed or validation failed for all xpaths."); // #ToDo Need to remove
+  // }
   return null;
 }
 

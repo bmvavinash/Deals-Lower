@@ -1,4 +1,5 @@
-async function facebook(photo, link, text) {
+async function facebook(product, access_token, text) {
+  let res;
   try {
     if (text.includes("&nbsp;")) {
       text = text.replaceAll("&nbsp;", "");
@@ -10,13 +11,13 @@ async function facebook(photo, link, text) {
     var myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
 
-    access_token =
-      "EAAKw6ZAutPZBoBOZBGh82ktkgeGMqoEsM0NzF7UhF3Td3GJpxs1PqBGZBsDq9eXdXJtd9bf1IZAp0xpRwdlmFJy6sLFYN830bbFqgdjcp3f7joaBAVl3Fhl8WF82XxVgaJZAfRGESqlyYtlWUweMczdgQAiDLUSdIomUsJVI12z0lKvKmQhnXMWNpwe0biVi3lhyJ1fjrl5lEZBTEqniBi09hIZD";
+    // access_token =
+    //   "EAAKw6ZAutPZBoBOZBGh82ktkgeGMqoEsM0NzF7UhF3Td3GJpxs1PqBGZBsDq9eXdXJtd9bf1IZAp0xpRwdlmFJy6sLFYN830bbFqgdjcp3f7joaBAVl3Fhl8WF82XxVgaJZAfRGESqlyYtlWUweMczdgQAiDLUSdIomUsJVI12z0lKvKmQhnXMWNpwe0biVi3lhyJ1fjrl5lEZBTEqniBi09hIZD";
     try {
       var raw = JSON.stringify({
-        photo: photo,
+        photo: product?.photo,
         text: text,
-        link: link,
+        // link: link,
       });
 
       //working url for image and caption
@@ -48,6 +49,7 @@ async function facebook(photo, link, text) {
         .then((response) => response.text())
         .then((result) => {
           console.log("success for Facebook", result);
+          res = result
           //   console.log('hai'+JSON.stringify(result).includes("false"));
           console.log("re api 2nd");
           output = JSON.stringify(result).includes("false");
@@ -62,6 +64,7 @@ async function facebook(photo, link, text) {
           .then((response) => response.text())
           .then((result) => {
             console.log("success", result);
+            res = result
             //   console.log('hai'+JSON.stringify(result).includes("false"));
             output = JSON.stringify(result).includes("false");
           })
@@ -71,7 +74,8 @@ async function facebook(photo, link, text) {
     } catch (e) {
       console.log(e);
     }
-    return `https://graph.facebook.com/me/photos?url=${photo}&caption=${text}&access_token=${access_token}`;
+    return res;
+    // return `https://graph.facebook.com/me/photos?url=${photo}&caption=${text}&access_token=${access_token}`;
     // return `https://graph.facebook.com/me/feeds/photos?url=${photo}&caption=${text}&${access_token}`;
   } catch (e) {console.log(e);}
 }

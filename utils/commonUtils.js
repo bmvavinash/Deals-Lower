@@ -8,19 +8,31 @@
 // }
 
 function validatePrice(value) {
-    // Remove any HTML tags using a regex
+    // Remove any HTML tags
     const strippedValue = value.replace(/<[^>]*>/g, "").trim();
 
-    // Extract only numeric characters
-    const cleanedValue = strippedValue.replace(/[^\d]/g, "").trim();
-    const price = parseInt(cleanedValue, 10);
+    // Remove common currency symbols like Rs., ₹, $, etc.
+    const cleanedValue = strippedValue.replace(/^(Rs\.|₹|[$])[\s]*/g, "").trim();
+
+    // Remove non-numeric characters except for digits, commas, and period (decimal point)
+    const numericValueString = cleanedValue.replace(/[^0-9,.]/g, "").trim();
+
+    // Ensure that we only get the part before the first decimal
+    const valueBeforeDecimal = numericValueString.split('.')[0].trim();
+
+    // Remove commas before parsing
+    const valueWithoutCommas = valueBeforeDecimal.replace(/,/g, "");
+
+    // Parse the cleaned value as an integer
+    const numericValue = parseInt(valueWithoutCommas, 10);
 
     return {
-        isValid: !isNaN(price) && price > 0, // Check if valid numeric price
-        value: isNaN(price) ? value : price, // Return numeric value if valid, else raw value
-        cleanedValue: cleanedValue || strippedValue // Partially cleaned or raw stripped value
+        isValid: !isNaN(numericValue) && numericValue > 0, // Check if valid numeric price
+        value: isNaN(numericValue) ? value : numericValue, // Return numeric value if valid, else raw value
+        cleanedValue: numericValueString || strippedValue // Partially cleaned or raw stripped value
     };
 }
+
 
 function validateDiscount(value) {
     // Remove unnecessary text and symbols

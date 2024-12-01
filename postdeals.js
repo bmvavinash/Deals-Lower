@@ -11,16 +11,16 @@ const { facebook } = require("./socialMedia/facebookPoster.js");
 async function postDeals(driver,product) {
     require("chromedriver");
     
-    var chrome = require("selenium-webdriver/chrome");
+    // var chrome = require("selenium-webdriver/chrome");
     
-    let options = await new chrome.Options();
+    // let options = await new chrome.Options();
     let text="";
     let othertext="";
     
-    options.debuggerAddress("localhost:9222");
+    // options.debuggerAddress("localhost:9222");
     
     //CHROME
-    driver = await chrome.Driver.createSession(options);
+    // driver = await chrome.Driver.createSession(options);
     let isPhotoRequired=true
     let telegramId=""
     let whatsappId=""
@@ -68,7 +68,16 @@ async function postDeals(driver,product) {
         whatsapp(product?.photo,whatsappId,text)
     }
     if (constantsData.postTo.facebook && product?.discount>=75) {
-        facebook(product?.photo,facebookId,text)
+         
+        response = await facebook(product,facebookId,text);
+        if (response?.error?.message?.includes('Session has expired')) {
+            console.log('Session expired. Refreshing token...');
+
+            // Refresh the token
+            const newToken = await extractFacebookToken(driver);
+            console.log('New Token:', newToken);
+        }
+       response = await facebook(product,facebookId,text)
     }
 }
 

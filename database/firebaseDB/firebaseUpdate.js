@@ -69,7 +69,11 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
       mergedData.productId = existingProductData.productId;
       mergedData.productCode = existingProductData.productCode;
       if(mergedData.date == existingProductData.date){
-        return { status: 301, message: productStatus.PRODUCT_POSTED_TODAY };
+        if(!constants.updateTodayDeals) {
+          return { status: 301, message: productStatus.PRODUCT_POSTED_TODAY };
+
+        }
+        // return { status: 301, message: productStatus.PRODUCT_POSTED_TODAY };
       }
 
       // If items exist in updatedData, merge the arrays

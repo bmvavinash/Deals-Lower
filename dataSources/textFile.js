@@ -10,6 +10,7 @@ const { getformattedDate } = require("../utils/commonUtils");
 const { productStatus } = require("../config/const");
 const fs = require('fs');
 const { createInterface } = require("readline");
+const { handleProductProcessing } = require("./telegram");
 
 // const fs = require("fs").promises;
 
@@ -40,10 +41,10 @@ async function readUrlsFromTxt(driver) {
         // let driver = await new Builder().forBrowser("chrome").setChromeOptions(new chrome.Options()).build();
 
         //chrome
-        let options = await new chrome.Options();
-        options.debuggerAddress("localhost:9222");
-        //CHROME
-        driver = await chrome.Driver.createSession(options);
+        // let options = await new chrome.Options();
+        // options.debuggerAddress("localhost:9222");
+        // //CHROME
+        // driver = await chrome.Driver.createSession(options);
         let text="";
         let formattedDate = getformattedDate();
         const jsonFilePath = `C:/Users/avina/AppData/Roaming/Telegram Desktop/tdata/tdummy/tr9 deals/ChatExport_${formattedDate}/result.json`;
@@ -65,7 +66,10 @@ async function readUrlsFromTxt(driver) {
                     // Call the function to process each URL
                     // await getProductDetails(driver, line.trim());
                     let link = line.trim();
-                    isProductPosted = await getProductDetails(driver, link, text, len, access_token, jsondata, todayjsondata);
+                    isProductPosted = await handleProductProcessing(driver, link, text, len, access_token, jsondata, todayjsondata);
+                    // isProductPosted = await getProductDetails(driver, link, text, len, access_token, jsondata, todayjsondata);
+
+                    // #ToDo: Handling missing links can be avoided
                     console.log("-=-=-=-=-=-=-=-=-=-=-> Is product Posted in telegram: ", isProductPosted)
                     if (isProductPosted == productStatus.PRODUCT_CREATED) {
                         len += 1

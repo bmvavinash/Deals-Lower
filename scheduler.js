@@ -22,7 +22,7 @@ const { productStatus, storeMap } = require("./config/const.js");
 const { logger } = require("./logger/logger.js");
 const fs = require("fs").promises;
 
-async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}) {
+async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username) {
 
   let postflag = false;
   let postStatus = "";
@@ -51,8 +51,10 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
 
     // Check if product was updated today or exists in all deals
     if (todayData.hasOwnProperty(productCode)) {
-      console.log("Updated Product today hence skipping the flow !");
-      return productStatus.PRODUCT_POSTED_TODAY;
+      if(!constants.updateTodayDeals) {
+        logger.info("Updated Product today hence skipping the flow !");
+        return productStatus.PRODUCT_POSTED_TODAY;
+      }
     }
     if (data.hasOwnProperty(productCode)) {
       console.log("Product Key exists!");
@@ -62,17 +64,19 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     }
 
     // Scrape product details and set store type
-    product = await scrapeProduct(link, storeKey, driver, text, keyExist);
+    product = await scrapeProduct(link, storeKey, driver, text, keyExist, username);
     product.storeType = storeType;
     product.date = String(todayDate);
-    product.datetime = Date.now();
+    product.updatedatetime = Date.now();
     if (!keyExist) {
       product.id = len;
       product.idlen = len;
       product.idlength = len;
+      product.datetime = Date.now();
     }
     product.isDeal = false
     product.isOffer = false
+    product.isDisplay = postProduct;
     product.productType = "Affiliate";
     product.shortText = shortenProductText(product?.urltext);
 
@@ -93,8 +97,12 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       } else if (postflag.status == 200) {
         postStatus = productStatus.PRODUCT_UPDATED_SUCCESSFULLY;
       } else if (postflag.status == 301) {
-        postflag = false;
-        postStatus = productStatus.PRODUCT_POSTED_TODAY;
+        if(!constants.updateTodayDeals) {
+          postflag = false;
+          postStatus = productStatus.PRODUCT_POSTED_TODAY;
+        } else {
+          postStatus = productStatus.PRODUCT_UPDATED_TODAY;
+        }
       } else {
         access_token = await getAccessToken(env);
         console.log("Regenerating access token");
@@ -106,7 +114,8 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
           // console.log("Need to skip channel deals");
         }
       }
-      if (postflag) {
+      // if (postflag && postProduct && !constants.updateTodayDeals) {
+      if (postflag && postProduct) {
         postDeals(driver, product);
       }
       else {

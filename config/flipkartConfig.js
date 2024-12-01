@@ -2,6 +2,7 @@ const { validatePrice, validateDiscount } = require("../utils/commonUtils");
 
 module.exports = {
   price: [
+    { type: 'css', selector: '.hl05eU .Nx9bqj.CxhGGd', validator: validatePrice },
     { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[2]/div[2]/div/div[2]/div[1]/div/div[1]', validator: validatePrice },
     { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[2]/div[2]/div/div[3]/div[1]/div/div[1]', validator: validatePrice },
     { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[2]/div[3]/div/div[2]/div[1]/div/div[1]', validator: validatePrice },

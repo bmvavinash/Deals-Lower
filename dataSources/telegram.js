@@ -7,18 +7,27 @@ const chrome = require("selenium-webdriver/chrome");
 const { getProductDetails } = require("../scheduler");
 const { firebaseget } = require("../database/firebaseget");
 const constants = require("../config/constants");
-const { productStatus, storeMap } = require("../config/const");
+const { productStatus, storeMap, searchStatus } = require("../config/const");
 const { initializeBot, processMessagesQueue, getNewBotMessages } = require("./autoTelegramAll");
 const { getModuleLogger } = require("../logger/logger");
 const { scrapePage, loadConfig } = require("../pageScheduler");
 const { getformattedDate, extractLinksAndText } = require("../utils/commonUtils");
-const fs = require("fs").promises;
+// const fs = require("fs").promises;
+
+const fs = require('fs');
+const path = require('path');
 
 const logger = getModuleLogger('telegram');
 
 let len = null;
 let jsonData = null;
 let todayJsonData = null;
+
+// File path for saving "Hold" products
+const holdProductsFilePath = path.join(__dirname, 'scrappers', 'holdProducts.json');
+
+// Global variable to hold unprocessed products
+let holdProducts = [];
 
 // Reads JSON file and parses the content
 async function readJsonFile(filePath) {
@@ -32,8 +41,8 @@ async function readJsonFile(filePath) {
 }
 
 // Processes a single product and logs missed links if necessary
-async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData) {
-  let isProductPosted = await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData);
+async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username) {
+  let isProductPosted = await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username);
   if (isProductPosted === productStatus.PRODUCT_CREATED) {
     len += 1;
   } else if (isProductPosted === productStatus.PRODUCT_ERROR) {
@@ -42,7 +51,7 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
 }
 
 // Handles product processing flow, including getCode check and fallback function
-async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData) {
+async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username) {
   let products = [];
   try {
 
@@ -54,10 +63,10 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
     // const productCode = await storeMap.getCode(link);
 
     if (productCode) {
-      logger.info("Product code found, proceeding with normal flow", { functionName: 'handleProductProcessing' });
-      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData);
+      // logger.info("Product code found, proceeding with normal flow", { functionName: 'handleProductProcessing' });
+      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, username);
     } else {
-      logger.info("No product code found, calling fallback function", { functionName: 'handleProductProcessing' });
+      // logger.info("No product code found, calling fallback function", { functionName: 'handleProductProcessing' });
 
 
       try {
@@ -76,13 +85,43 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
 
       // const fallbackData = await scrapePage(); // Assumes this function returns array of objects
 
-      for (const data of products) {
-        await driver.get(data?.productUrl);
-        await processProduct(driver, data?.productUrl, data.name, len, accessToken, jsonData, todayJsonData);
+      // for (const data of products) {
+      try {
+        for (let i = 0; i < products?.length; i++) {
+          const product = products[i];
+          if (i < 3) {
+            // Process first 3 products with `productpost = true`
+            await driver.get(product?.productUrl);
+            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, true, username);
+          } else if (i < 10) {
+            // Process next 7 products with `productpost = false`
+            await driver.get(product?.productUrl);
+            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, false, username);
+          } else {
+            // Remaining products - Add to holdProducts
+            // Add all remaining products (from index 10 onwards) to holdProducts at once
+            holdProducts.push(...products.slice(10));
+            console.log('Added remaining products to hold');
+            break;  // Exit the loop since all remaining products are processed
+          }
+        }
+      } catch (error) {
+        console.error('Error in processProducts:', error.message);
+        // } finally {
+        //   // Save the holdProducts to file
+        //   try {
+        //     fs.writeFileSync(holdProductsFilePath, JSON.stringify(holdProducts, null, 2));
+        //     console.log('Hold products saved to file.');
+        //   } catch (error) {
+        //     console.error('Error saving holdProducts to file:', error.message);
+        //   }
       }
+      return searchStatus.SEARCH_CREATED
     }
   } catch (e) {
-    console.log("Handle Product Processing Error ",e);
+    console.log("Handle Product Processing Error ", e);
+    return searchStatus.SEARCH_ERROR
+
   }
 
 }
@@ -118,6 +157,15 @@ async function processJsonAndBotMessages(driver, jsonMessages, len, accessToken,
   } catch (error) {
     logger.error("Error in processJsonAndBotMessages", { functionName: 'processJsonAndBotMessages', error });
   }
+  // finally {
+  //   //   // Save the holdProducts to file
+  //     try {
+  //       fs.writeFileSync(holdProductsFilePath, JSON.stringify(holdProducts, null, 2));
+  //       console.log('Hold products saved to file.');
+  //     } catch (error) {
+  //       console.error('Error saving holdProducts to file:', error.message);
+  //     }
+  //   }
 }
 
 // Extracts text and links from a message
@@ -136,6 +184,56 @@ function extractTextAndLinks(message) {
   return { text: text.trim(), links };
 }
 
+async function loadHoldProducts() {
+  try {
+    if (fs.existsSync(holdProductsFilePath)) {
+      const data = fs.readFileSync(holdProductsFilePath, 'utf-8');
+      holdProducts = JSON.parse(data);
+      console.log('Loaded held products from file.');
+    } else {
+      console.log('No existing hold products file found.');
+    }
+  } catch (error) {
+    console.error('Error reading hold products file:', error.message);
+  }
+}
+
+// Save held products to JSON file
+function saveHoldProducts() {
+  try {
+    fs.writeFileSync(holdProductsFilePath, JSON.stringify(holdProducts, null, 2), 'utf-8');
+    console.log('Saved hold products to file.');
+  } catch (error) {
+    console.error('Error saving hold products file:', error.message);
+  }
+}
+
+async function processHoldProducts(driver, len, accessToken, jsonData, todayJsonData) {
+  if (holdProducts.length === 0) {
+    await loadHoldProducts(); // Load products from file if the array is empty
+  }
+
+  if (holdProducts.length > 0) {
+    const product = holdProducts.shift(); // Remove the first product
+    try {
+      await driver.get(product?.productUrl);
+      await processProduct(driver, product?.productUrl, product?.name || product?.urltext, len, accessToken, jsonData, todayJsonData, false);
+      console.log(`Processed held product: ${product.name}`);
+    } catch (error) {
+      console.error('Error processing held product:', product.name, error.message);
+      holdProducts.push(product); // Re-add product if processing fails
+    }
+  }
+
+  // Save updated holdProducts to file
+  // try {
+  //   fs.writeFileSync(holdProductsFilePath, JSON.stringify(holdProducts, null, 2));
+  //   console.log('Updated hold products saved to file.');
+  // } catch (error) {
+  //   console.error('Error saving updated holdProducts to file:', error.message);
+  // }
+}
+
 // Processes messages from the bot's queue
 async function processBotMessages(driver, len, accessToken, jsonData, todayJsonData) {
   // Fetch new bot messages
@@ -145,37 +243,55 @@ async function processBotMessages(driver, len, accessToken, jsonData, todayJsonD
     // messagesToProcess = await processMessagesQueue();
 
     messagesToProcess = await getNewBotMessages();
-    
+
     if (messagesToProcess.length === 0) {
+
       logger.info("No new bot messages to process", { functionName: 'processBotMessages' });
+      await processHoldProducts(driver, len, accessToken, jsonData, todayJsonData)
       return;
     }
-    
+
     // Process each message from the queue
-    
+
     for (const message of messagesToProcess) {
-      const { link, plainText } = message;
-      
+      const { link, plainText, username } = message;
+
       // Check if 'link' is an array
       if (Array.isArray(link)) {
         for (const indilink of link) {
-          await handleProductProcessing(driver, indilink, plainText, len, accessToken, jsonData, todayJsonData);
+          value = await handleProductProcessing(driver, indilink, plainText, len, accessToken, jsonData, todayJsonData, username);
+          if (value == searchStatus.SEARCH_ERROR) {
+            //missed search links logic
+            missedSearchLinks += link + "\n";
+          } else if (value == productStatus.PRODUCT_ERROR) {
+            //missed product links logic
+            missedLinks += link + "\n";
+
+          }
           messagesToProcess.shift();
         }
       } else if (typeof link === 'string') {
         // Handle case where 'link' is a single string
-        await handleProductProcessing(driver, link, plainText, len, accessToken, jsonData, todayJsonData);
+        value = await handleProductProcessing(driver, link, plainText, len, accessToken, jsonData, todayJsonData, username);
+        if (value == searchStatus.SEARCH_ERROR) {
+          //missed search links logic
+          missedSearchLinks += link + "\n";
+
+        } else if (value == productStatus.PRODUCT_ERROR) {
+          //missed product links logic
+          missedLinks += link + "\n";
+        }
         messagesToProcess.shift();
       } else {
         // Log an error if the link is not valid
         logger.error("Invalid link format in message", { functionName: 'processMessages', link });
       }
-      
-      
+
+
     }
     messagesToProcess = [];
-  } catch(e) {
-    console.log("ProcessBotMessage error ",e);
+  } catch (e) {
+    console.log("ProcessBotMessage error ", e);
   }
 }
 
@@ -198,7 +314,11 @@ async function getTelegramDealLink(driver) {
   } catch (error) {
     logger.error("Error in getTelegramDealLink", { functionName: 'getTelegramDealLink', error });
   } finally {
+    saveHoldProducts();
     logger.info("Completed Telegram deal link processing", { functionName: 'getTelegramDealLink' });
+    console.log("missedLinks are ", missedLinks);
+    console.log("\n");
+    console.log("missedSearchLinks are ", missedSearchLinks);
   }
 }
 
@@ -244,4 +364,4 @@ async function fallbackFunction() {
   return []; // Returns array of objects with link, text, and optional attributes like coupon, deal names
 }
 
-module.exports = { getTelegramDealLink };
+module.exports = { getTelegramDealLink, handleProductProcessing, continuouslyProcessBotMessages };

@@ -25,10 +25,10 @@ async function getSpeedDeals(driver) {
     // let driver = await new Builder().forBrowser("chrome").setChromeOptions(new chrome.Options()).build();
 
     //chrome
-    let options = await new chrome.Options();
-    options.debuggerAddress("localhost:9222");
-    //CHROME
-    driver = await chrome.Driver.createSession(options);
+    // let options = await new chrome.Options();
+    // options.debuggerAddress("localhost:9222");
+    // //CHROME
+    // driver = await chrome.Driver.createSession(options);
     
     const date = new Date();
 
