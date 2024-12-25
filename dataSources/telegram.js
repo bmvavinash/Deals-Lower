@@ -64,7 +64,7 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
 
     if (productCode) {
       // logger.info("Product code found, proceeding with normal flow", { functionName: 'handleProductProcessing' });
-      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, username);
+      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData,true, username);
     } else {
       // logger.info("No product code found, calling fallback function", { functionName: 'handleProductProcessing' });
 
@@ -236,6 +236,7 @@ async function processHoldProducts(driver, len, accessToken, jsonData, todayJson
 
 // Processes messages from the bot's queue
 async function processBotMessages(driver, len, accessToken, jsonData, todayJsonData) {
+  let missedSearchLinks;
   // Fetch new bot messages
   try {
 

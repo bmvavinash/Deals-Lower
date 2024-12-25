@@ -45,10 +45,15 @@ async function initializeBot() {
 }
 
 async function getNewBotMessages() {
+
+    const messagesToProcess = messagesQueue;
+    messagesQueue.length = 0; // Clear the queue after copying
+
+
     messagesQueue.length = 0;
     return new Promise((resolve) => {
         setTimeout(() => {
-            resolve([...messagesQueue]); 
+            resolve([...messagesToProcess]); 
         // setTimeout(async () => {
             // Fetch any new messages the bot has captured
             // const newMessages = await processBotMessage();

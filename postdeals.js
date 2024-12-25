@@ -49,12 +49,14 @@ async function postDeals(driver,product) {
     // text=text+product?.productText + `\n\nhttps://dealshubglobal.com/p/${product?.id}` + " \n#"+product?.storeType + " #"+product?.category
 
     text = formatProductInfo(product);
-    othertext = formatProductInfo(product,"RamTechTelugu-21");
+    othertext = formatProductInfo(product,"dealshubworld-21");
+    // othertext = formatProductInfo(product,"RamTechTelugu-21");
     // console.log("Text in Telegram is ",text)
 
     if (constantsData.postTo.telegram ) {
         if(product?.photo!=""){
             await telegram(product?.photo,telegramId,text)
+            await telegram(product?.photo,"@DealsHubWorld",othertext)
             // await telegram(product?.photo,"@RamTechTelugu",othertext)
         }
         else if(!isPhotoRequired){

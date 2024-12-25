@@ -18,6 +18,7 @@ module.exports = {
   price: [
     { type: 'id', selector: 'specialPrice', validator: validatePrice },
     { type: 'className', selector: 'prod-sp', validator: validatePrice },
+    { type: 'className', selector: '.price-info.ellipsis', validator: validatePrice },
     { type: 'xpath', selector: '//*[@class="prod-sp"]', validator: validatePrice },
   ],
   mrp: [
@@ -28,6 +29,7 @@ module.exports = {
   discount: [
     { type: 'id', selector: 'discountPercent', validator: validateDiscount },
     { type: 'className', selector: 'prod-discnt', validator: validateDiscount },
+    { type: 'className', selector: '.price-info .discount', validator: validateDiscount },
     { type: 'xpath', selector: '//*[@class="prod-discnt"]', validator: validateDiscount },
   ],
   coupon: [
@@ -36,6 +38,7 @@ module.exports = {
     { type: 'xpath', selector: '//*[@class="pdp-promo-block"]//*[@class="promo-desc"]', attribute: 'aria-label' },
   ],
   photo: [
+    { type: 'className', selector: 'rilrtl-lazy-img', attribute: 'src' },
     { type: 'id', selector: 'selectedImage', attribute: 'src' },
     { type: 'className', selector: 'swatch-image-selected', attribute: 'src' },
     { type: 'xpath', selector: '//*[@class="swatch-image-selected"]', attribute: 'src' },

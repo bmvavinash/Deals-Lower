@@ -46,9 +46,9 @@ async function scrapePage(url, driver, config, pageType) {
         // Flipkart-specific or general scraping logic
         const isFlipkart = storeKey.toLowerCase() === 'flipkart';
         if (isFlipkart) {
-            return await scrapeFlipkart(driver, newPageConfig);  // Isolated function for Flipkart
+            return await scrapeFlipkart(driver, newPageConfig, storeKey);  // Isolated function for Flipkart
         } else {
-            return await scrapeGeneral(driver, newPageConfig);  // General case for other platforms
+            return await scrapeGeneral(driver, newPageConfig, storeKey);  // General case for other platforms
         }
     } catch (error) {
         logger.error("Critical error in scrapePage", { functionName: 'scrapePage', url, error });
@@ -57,21 +57,21 @@ async function scrapePage(url, driver, config, pageType) {
     }
 }
 
-async function scrapeFlipkart(driver, pageConfig) {
+async function scrapeFlipkart(driver, pageConfig, storeKey) {
     const products = [];
     const { startRow, maxRows, maxCols } = pageConfig.rowColConfig;
     const { selectors } = pageConfig;
 
     for (let row = startRow; row <= startRow + maxRows - 1; row++) {
         for (let col = 1; col <= maxCols; col++) {
-            const productData = await extractFlipkartProduct(driver, selectors, row, col);
+            const productData = await extractFlipkartProduct(driver, selectors, row, col, storeKey);
             if (productData) products.push(productData);
         }
     }
     return products;
 }
 
-async function extractFlipkartProduct(driver, selectors, row, col) {
+async function extractFlipkartProduct(driver, selectors, row, col, storeKey) {
     const productData = {};
     for (const [key, selectorConfig] of Object.entries(selectors)) {
         const { type, selector } = selectorConfig;
@@ -96,18 +96,18 @@ async function extractFlipkartProduct(driver, selectors, row, col) {
     return productData;
 }
 
-async function scrapeGeneral(driver, pageConfig) {
+async function scrapeGeneral(driver, pageConfig, storeKey) {
     const products = [];
     const baseElements = await driver.findElements(By.css(pageConfig.baseSelector));
 
     for (const element of baseElements) {
-        const productData = await extractGeneralProduct(element, pageConfig.selectors);
+        const productData = await extractGeneralProduct(element, pageConfig.selectors, storeKey);
         if (productData) products.push(productData);
     }
     return products;
 }
 
-async function extractGeneralProduct(element, selectors) {
+async function extractGeneralProduct(element, selectors, storeKey) {
     const productData = {};
     for (const [key, selectorConfig] of Object.entries(selectors)) {
         const { type, selector } = selectorConfig;
