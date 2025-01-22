@@ -19,10 +19,13 @@ const firebasePut = require("./database/firebaseput.js");
 const { shortenProductText, getAsin, getformattedDate, getFlipkartProductId, getAjioCode, getMyntraCode } = require("./utils/commonUtils.js");
 const updateProduct = require("./database/firebaseDB/firebaseUpdate.js");
 const { productStatus, storeMap } = require("./config/const.js");
-const { logger } = require("./logger/logger.js");
+const { getModuleLogger } = require("./logger/logger.js");
 const fs = require("fs").promises;
 
-async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username) {
+
+const logger = getModuleLogger('scheduler');
+
+async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="") {
 
   let postflag = false;
   let postStatus = "";
@@ -41,7 +44,7 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     // link = await driver.getCurrentUrl();
     const storeKey = Object.keys(storeMap).find(key => link.includes(key));
     if (!storeKey) {
-      console.log("Store not supported");
+      logger.info("Store not supported", { functionName: 'getProductDetails' });
       return productStatus.PRODUCT_ERROR;
     }
 
@@ -52,19 +55,19 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     // Check if product was updated today or exists in all deals
     if (todayData.hasOwnProperty(productCode)) {
       if(!constants.updateTodayDeals) {
-        logger.info("Updated Product today hence skipping the flow !");
+        logger.info("Updated Product today hence skipping the flow !" , { functionName: 'getProductDetails' });
         return productStatus.PRODUCT_POSTED_TODAY;
       }
     }
     if (data.hasOwnProperty(productCode)) {
-      console.log("Product Key exists!");
+      logger.info("Product Key exists!" , { functionName: 'getProductDetails' });
       keyExist = true;
     } else {
-      console.log("Product Key does not exist.");
+      logger.info("Product Key does not exist." , { functionName: 'getProductDetails' });
     }
 
     // Scrape product details and set store type
-    product = await scrapeProduct(link, storeKey, driver, text, keyExist, username);
+    product = await scrapeProduct(link, storeKey, driver, text, keyExist, username, generateLink, shortUrl);
     product.storeType = storeType;
     product.date = String(todayDate);
     product.updatedatetime = Date.now();
@@ -84,7 +87,39 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
 
     // console.log("Product is ", product);
 
-    if (product?.price > 0 && product?.links?.avinashbmv && product?.links?.avinashbmv != "") {
+  //   if (
+  //     product?.price > 0 && 
+  //     (
+  //         (product.storeType !== "Amazon" && 
+  //             (product?.links?.avinashbmv || product?.links?.avinashbmvINR)) || 
+  //         (product.storeType === "Amazon" && 
+  //             (product?.links?.avinashbmv && product?.productCode))
+  //     )
+  // ) {
+
+  if (
+    product?.price > 0 &&
+    (
+        (
+            product.storeType !== "Amazon" &&
+            (
+                (
+                    username === "dealsglobalhub" &&
+                    (product?.links?.avinashbmv || product?.links?.avinashbmvINR)
+                ) ||
+                (
+                    username !== "dealsglobalhub" &&
+                    (link || shortUrl)
+                )
+            )
+        ) ||
+        (
+            product.storeType === "Amazon" &&
+            (product?.links?.avinashbmv && product?.productCode)
+        )
+    )
+) {
+    // if (product?.price > 0 && (product.storeType != "Amazon" (product?.links?.avinashbmv != "" || product?.links?.avinashbmvINR != "")) ) {
       // postflag = await firebasepost(product, access_token, env);
       postflag = await updateProduct(product?.productCode || product?.id, product, access_token, env);
       console.log("Postflag is ", postflag)
@@ -116,22 +151,22 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       }
       // if (postflag && postProduct && !constants.updateTodayDeals) {
       if (postflag && postProduct) {
-        postDeals(driver, product);
+        postDeals(driver, product, link, shortUrl, username);
       }
       else {
         // console.log("Post Flag is false ",product?.links?.avinashbmv)
-        console.log("\nPost Flag is false ", link)
+        logger.info(`\nPost Flag is ${postflag} or postProduct is ${postProduct} is  false for ${link} `, { functionName: 'getProductDetails' })
       }
     }
     else {
-      console.log("\nFirebase Post Invalid details: ", link)
+      logger.warn(`\nFirebase Post Invalid details: ${link}`, { functionName: 'getProductDetails' })
 
     }
     return postStatus;
     // return postflag
   }
   catch (e) {
-    console.log("error in scheduler: ", e)
+    logger.info("error in scheduler: ", e)
     return productStatus.PRODUCT_ERROR
   }
   // finally {

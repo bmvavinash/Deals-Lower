@@ -7,8 +7,12 @@ const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require(".
 const { getExtrapeUrl } = require("../affiliate/extrape");
 const ajioConfig = require("../config/ajioConfig");
 const myntraConfig = require("../config/myntraConfig");
+const { getModuleLogger } = require("../logger/logger");
 
-async function scrapeProduct(url, platform, driver, text = "", keyExist = false, username) {
+
+const logger = getModuleLogger('amazon');
+
+async function scrapeProduct(url, platform, driver, text = "", keyExist = false, username, generateLink=false, shortUrl="") {
   // Load the appropriate config
   const config = platform === "amazon" ? amazonConfig : platform === "flipkart" ? flipkartConfig : platform === "ajio" ? ajioConfig : platform === "myntra" ? myntraConfig : null;
   if (!config) {
@@ -96,14 +100,14 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
     if (product?.photo != "") {
 
 
-      if (product && product?.links && product.links.avinashbmv != "") {
+      if (product && product?.links && product?.links?.avinashbmv != "") {
 
       } else {
 
         product.links = {};
         try { product.links.avinashbmvINR = ""; } catch (e) { console.log("avinashbmvINR Error", e) }
         try {
-          // if(username.includes("dealsglobalhub")){
+          if(username?.includes("dealsglobalhub")){
 
             if (platform === "amazon") {
               try {
@@ -112,13 +116,20 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
               } catch (e) { console.log("Amazon link generation error") }
             } else {
               try {
-                product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
-                product.links.avinashbmvINR = "";
+                product.links.avinashbmvINR = "inrdeals.com/avi646476329/"+url;
+                if(generateLink) {
+                  product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
+                } else { 
+                  product.links.avinashbmv = shortUrl || await getExtrapeUrl(driver, url);
+                }
               } catch (e) { console.log("Generic link generation error") }
             }
-          // } else {
-
-          // }
+          } else {
+            product.links.avinashbmvINR = "inrdeals.com/avi646476329/"+url;
+            product.links[username] = shortUrl || "";
+            product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
+            // logger.info("Skipping the link generation as the user is not dealsglobalhub" , { functionName: 'scrapeProduct' });
+          }
           } catch(e) {
             console.log("Error in link generation ",e);
           }

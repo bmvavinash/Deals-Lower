@@ -4,8 +4,12 @@ const { getProductDetails } = require('../scheduler');
 const { extractLinksAndText } = require('../utils/commonUtils');
 const { text } = require('input');
 const { productStatus } = require('../config/const');
+const { getModuleLogger } = require('../logger/logger');
 // const { getTelegramDealLink } = require('./telegram');
 // const { getTelegramDealLink } = require('../scheduler'); // Add other required functions
+
+
+const logger = getModuleLogger('autoTelegramAll');
 
 let bot;
 const messagesQueue = []; // Global array to store messages with links and text
@@ -78,8 +82,11 @@ async function processBotMessage(post) {
         return;  // Exit if no links are found
     }
 
-    console.log('Links:', links);
-    console.log('Text:', plainText);
+    logger.info(`Links:, ${links}Text:, ${plainText} Username:, ${username}`, { functionName: 'processBotMessage' });
+    // console.log("Links found:", links);
+    // console.log("Text found:", plainText);
+    console.log("Username found:", username);
+    
 
     // Store each message as an object in the queue
     links.forEach(link => {

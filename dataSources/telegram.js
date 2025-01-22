@@ -31,18 +31,18 @@ let holdProducts = [];
 
 // Reads JSON file and parses the content
 async function readJsonFile(filePath) {
-  try {
-    const data = await fs.readFile(filePath, "utf8");
-    return JSON.parse(data);
+    try {
+        const data = await fs.promises.readFile(filePath, 'utf8');
+        return JSON.parse(data);
   } catch (e) {
     logger.error("Error reading JSON file", { functionName: 'readJsonFile', error: e });
-    return null;
-  }
+        return null;
+    }
 }
 
 // Processes a single product and logs missed links if necessary
-async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username) {
-  let isProductPosted = await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username);
+async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username, generateLink,shortUrl="") {
+  let isProductPosted = await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink,shortUrl);
   if (isProductPosted === productStatus.PRODUCT_CREATED) {
     len += 1;
   } else if (isProductPosted === productStatus.PRODUCT_ERROR) {
@@ -55,17 +55,24 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
   let products = [];
   try {
 
+    shortUrl = link;
     await driver.get(link);
     link = await driver.getCurrentUrl();
     const storeKey = Object.keys(storeMap).find(key => link.includes(key));
     const { getCode, storeType } = storeMap[storeKey];
     productCode = getCode(link);
+    let generateLink=false;
     // const productCode = await storeMap.getCode(link);
 
     if (productCode) {
       // logger.info("Product code found, proceeding with normal flow", { functionName: 'handleProductProcessing' });
-      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData,true, username);
+      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData,true, username, generateLink,shortUrl);
+    } else if(!username.includes("dealsglobalhub")) {
+      // #TODO: Add logic to handle non-product pages - convert username to dealsglobalhub for non-product pages
+      logger.info("Other than dealsglobalhub for non product pages ", { functionName: 'handleProductProcessing' });
+      return searchStatus.SEARCH_NOT_APPLICABLE
     } else {
+      generateLink = true;
       // logger.info("No product code found, calling fallback function", { functionName: 'handleProductProcessing' });
 
 
@@ -89,14 +96,14 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
       try {
         for (let i = 0; i < products?.length; i++) {
           const product = products[i];
-          if (i < 3) {
+          if (i < 1) {
             // Process first 3 products with `productpost = true`
             await driver.get(product?.productUrl);
-            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, true, username);
-          } else if (i < 10) {
+            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, true, username, generateLink);
+          } else if (i < 5) {
             // Process next 7 products with `productpost = false`
             await driver.get(product?.productUrl);
-            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, false, username);
+            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, false, username, generateLink);
           } else {
             // Remaining products - Add to holdProducts
             // Add all remaining products (from index 10 onwards) to holdProducts at once
@@ -256,6 +263,11 @@ async function processBotMessages(driver, len, accessToken, jsonData, todayJsonD
 
     for (const message of messagesToProcess) {
       const { link, plainText, username } = message;
+
+      if(plainText == "") {
+        console.log("Just url - Skipping(from extrape extra) ");
+        continue;
+      }
 
       // Check if 'link' is an array
       if (Array.isArray(link)) {

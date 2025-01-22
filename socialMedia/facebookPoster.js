@@ -28,12 +28,12 @@ async function facebook(product, access_token, text) {
         headers: myHeaders,
         body: raw,
       };
-      let fblink = `https://graph.facebook.com/me/photos?url=${photo}&caption=${text}&access_token=${access_token}`;
+      let fblink = `https://graph.facebook.com/me/photos?url=${product?.photo}&caption=${text}&access_token=${access_token}`;
       // console.log("all1app facebook data");
       console.log("Facebook Link is " + fblink);
       // let chatid = "@all1appweb"
       await fetch(
-        `https://graph.facebook.com/me/photos?url=${photo}&caption=${text}&access_token=${access_token}`,
+        `https://graph.facebook.com/me/photos?url=${product?.photo}&caption=${text}&access_token=${access_token}`,
 
         requestOptions
         // `https://graph.facebook.com/me/feeds/photos?url=${photo}&caption=${text}&${access_token}`,
@@ -58,7 +58,7 @@ async function facebook(product, access_token, text) {
 
       if (output) {
         await fetch(
-          `https://graph.facebook.com/me/photos?url=${photo}&caption=${text}&access_token=${access_token}`,
+          `https://graph.facebook.com/me/photos?url=${product?.photo}&caption=${text}&access_token=${access_token}`,
           requestOptions
         )
           .then((response) => response.text())

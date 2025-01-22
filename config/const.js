@@ -16,6 +16,7 @@ const SEARCH_STATUS = {
     SEARCH_UPDATED_TODAY: 'Today"s Search updated successfully ',
     SEARCH_UPDATED_SUCCESSFULLY: 'Search updated successfully',
     SEARCH_CREATED: 'New Search Created',
+    SEARCH_NOT_APPLICABLE: 'Other User Search Details',
     SEARCH_ERROR: 'Invalid Search Details',
 };
 

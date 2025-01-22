@@ -7,6 +7,8 @@
 //     };
 // }
 
+const { users } = require("../config/users");
+
 function validatePrice(value) {
     // Remove any HTML tags
     const strippedValue = value.replace(/<[^>]*>/g, "").trim();
@@ -103,16 +105,24 @@ function extractLinksAndText(text) {
     return { skip, links, plainText };
 }
 
+function getUserDetails(username, key = null) {
+    if (users[username]) {
+        // Return specific key if provided, otherwise return the whole object
+        return key ? users[username][key] : users[username];
+    } else {
+        console.warn(`User with username "${username}" not found.`);
+        return null;
+    }
+}
 
-
-function formatProductInfo(product,tag="") {
+function formatProductInfo(product,tag="",username="dealsglobalhub",link="", shortUrl="") {
     let messagePrefix = "";
 
     // product?.productText + `\n\nhttps://dealshubglobal.com/p/${product?.id}`
   
     // Determine the message prefix based on the discount range
     if (product.discount > 85) {
-      messagePrefix = "🔥🔥 LOOT! \n";
+      messagePrefix = "🔥🔥 Low Price Alert! \n";
     } else if (product.discount > 75) {
       messagePrefix = "Offer! \n";
     } if (product.discount > 50) {
@@ -132,7 +142,8 @@ function formatProductInfo(product,tag="") {
     
     // Append link and hashtags
     try{
-        if(tag==""){
+        // if(tag==""){
+        if(username.includes("dealsglobalhub")){
             // if(product?.productCode!="" && product?.storeType == "Amazon"){
             if(product?.productCode!="" ){
 
@@ -142,11 +153,14 @@ function formatProductInfo(product,tag="") {
 
             }
         } else if(product?.storeType == "Amazon" && product?.productCode != "") {
-            message += `\n\nBuy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n` ;
-
+            if(tag!=""){
+                message += `\n\nBuy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n`;
+            } else {
+                return "";
+            }
         } else {
             //skipping others products other than Amazon 
-            return "";
+            message += `\n\nBuy Here : ${shortUrl}\n\n` ;
         }
     }
     catch(e) {
@@ -350,6 +364,7 @@ module.exports = {
     readUrlsFromTxtUtils,
     extractLinksAndText,
     getAjioCode,
-    getMyntraCode
+    getMyntraCode,
+    getUserDetails
     
 };
