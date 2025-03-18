@@ -11,7 +11,7 @@ constants.js
 /logs
 /.pnp
 .pnp.js
-
+/.socialMedia/check.txt
 # testing
 /coverage
 

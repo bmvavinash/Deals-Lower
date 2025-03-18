@@ -1,4 +1,9 @@
-async function telegram(photo="",chat_id="@dealshubglobal",text="details",token="5759815900:AAFKWE5cmFlmIkDUlzXT_-4sqIT2NQix3Ws") {
+const { TelegramBotKey } = require("../config/constants");
+
+async function telegram(photo="",chat_id="@dealshubglobal",text="details",token="") {
+  if(token == ""){
+    token = TelegramBotKey;
+  }
 try{
     var myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
@@ -26,12 +31,12 @@ var requestOptions = {
     if(photo == ""){
       console.log('Telegram without photo')
       await fetch(
-        //   "https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/chat_id=@all1app/sendMessage?chat_id=@all1app",
+        //   "https://api.telegram.org/bot${token}/chat_id=@all1app/sendMessage?chat_id=@all1app",
         `https://api.telegram.org/bot${token}/sendMessage?chat_id=${chatid}&text=${text}`,
-// `https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=${chatid}&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=${chatid}`,
-//   "https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app",
-//   `https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=@all1app&photo?=${photo}/sendMessage?chat_id=@all1app`,
-//   `https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app`,
+// `https://api.telegram.org/bot${token}/sendPhoto?chat_id=${chatid}&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=${chatid}`,
+//   "https://api.telegram.org/bot${token}/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app",
+//   `https://api.telegram.org/bot${token}/sendPhoto?chat_id=@all1app&photo?=${photo}/sendMessage?chat_id=@all1app`,
+//   `https://api.telegram.org/bot${token}/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app`,
 requestOptions
 )
 .then((response) => response.text())
@@ -46,12 +51,12 @@ output = JSON.stringify(result).includes("false");
 else{
   console.log('Telegram with photo')
   await fetch(
-    //   "https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/chat_id=@all1app/sendMessage?chat_id=@all1app",
-    `https://api.telegram.org/bot5759815900:AAFKWE5cmFlmIkDUlzXT_-4sqIT2NQix3Ws/sendPhoto?chat_id=${chatid}&photo?=${photo}/sendMessage?chat_id=${chatid}`,
-    // `https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=${chatid}&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=${chatid}`,
-    //   "https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app",
-    //   `https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=@all1app&photo?=${photo}/sendMessage?chat_id=@all1app`,
-    //   `https://api.telegram.org/bot5759815900:AAH-Xd2wQhU4JBhNOF26bfu-plI8oGaU9qQ/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app`,
+    //   "https://api.telegram.org/bot${token}/chat_id=@all1app/sendMessage?chat_id=@all1app",
+    `https://api.telegram.org/bot${token}/sendPhoto?chat_id=${chatid}&photo?=${photo}/sendMessage?chat_id=${chatid}`,
+    // `https://api.telegram.org/bot${token}/sendPhoto?chat_id=${chatid}&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=${chatid}`,
+    //   "https://api.telegram.org/bot${token}/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app",
+    //   `https://api.telegram.org/bot${token}/sendPhoto?chat_id=@all1app&photo?=${photo}/sendMessage?chat_id=@all1app`,
+    //   `https://api.telegram.org/bot${token}/sendPhoto?chat_id=@all1app&photo?=https://m.media-amazon.com/images/I/71Ohf7QA+9L._SL1500_.jpg/sendMessage?chat_id=@all1app`,
     requestOptions
     )
     .then((response) => response.text())

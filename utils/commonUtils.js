@@ -6,6 +6,8 @@
 //         value: price
 //     };
 // }
+const constants = require('../config/constants.js');
+const config = require('../config/config.js');
 
 const { users } = require("../config/users");
 
@@ -203,6 +205,46 @@ Mamaearth MEGA SALE 🔥🔥
   }
 
   // Function to read URLs from a text file and process them
+async function extrapeLogin(driver) {
+    try {
+        await driver.get("https://www.extrape.com/login");
+        try {
+            const emailField = await driver.findElement(By.id('outlined'));
+            await emailField.click();
+            await emailField.sendKeys(constants.extraPeUsername);
+        } catch (error) {
+            console.error("Error entering email:", error);
+        }
+        try { //login for email
+            const loginButton = await driver.findElement(By.xpath('//*[@id="root"]/div/div/div/div[2]/div[2]/div[4]/button'));
+            await loginButton.click();
+        } catch (error) {
+            console.error("Error clicking the login button:", error);
+        }
+        try { // button for password
+            const loginButton = await driver.findElement(By.xpath('//*[@id="root"]/div/div/div/div[2]/div[2]/div[4]/div[3]/button'));
+            await loginButton.click();
+        } catch (error) {
+            console.error("Error clicking the login button:", error);
+        }
+        try {
+            const passwordField = await driver.findElement(By.id("outlined"));
+            await passwordField.click();
+            await passwordField.sendKeys(constants.extraPePassword);
+        } catch (error) {
+            console.error("Error entering password:", error);
+        }
+        try {
+            const loginButton = await driver.findElement(By.xpath('//*[@id="root"]/div/div/div/div[2]/div[2]/div[5]/button'));
+            await loginButton.click();
+        } catch (error) {
+            console.error("Error clicking the login button:", error);
+        }
+    } catch (outerError) {
+        console.error("Error logging into Extrape:", outerError);
+    }
+        
+}
 async function readUrlsFromTxtUtils(filePath, processUrl) {
     try {
         const fileStream = fs.createReadStream(filePath);
@@ -244,6 +286,8 @@ async function readUrlsFromTxtUtils(filePath, processUrl) {
     return productCode;
 
   }
+
+
   function getAsin(url) {
     let start;
     let asin;
@@ -256,9 +300,12 @@ async function readUrlsFromTxtUtils(filePath, processUrl) {
         start += 4; // Length of "/dp/" is 4
         asin = url.substr(start, 10);
         // Ensure there's a "?" or the end of the URL after the ASIN
-        if (url.charAt(start + 10) === '?' || start + 10 === url.length) {
+        if (url.charAt(start + 10) === '?' || start + 10 === url.length || url.charAt(start + 10) === '/' ) { // asin.length == 10 => check it
             console.log("ASIN from /dp/:", asin);
             return asin;
+        } else if ( asin.length == 10) {
+            console.log("ASIN URL Error but product key exists => Bug to be fixed => Immediate Check", url);
+            return "";
         }
     }
     
@@ -362,6 +409,7 @@ module.exports = {
     getFlipkartProductId,
     getformattedDate,
     readUrlsFromTxtUtils,
+    extrapeLogin,
     extractLinksAndText,
     getAjioCode,
     getMyntraCode,

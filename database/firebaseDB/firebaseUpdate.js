@@ -5,10 +5,11 @@ const admin = require('firebase-admin');
 const constants = require('../../config/constants.js');
 const config = require('../../config/config.js');
 const { productStatus } = require('../../config/const.js');
+const { getModuleLogger } = require("../../logger/logger.js");
 
 env=constants.env
 
-
+const logger = getModuleLogger('firebaseUpdate');
 
 const dbname= constants.postingTypesConfig[constants.type].DB
 let DB_Name=config.DATABASE_CONFIG[`${dbname}_NAME`];
@@ -27,7 +28,7 @@ const db = admin.database();
 
 const firebaseConfig = {
 
-    apiKey: "AIzaSyCpZ8uiuSbimONqtRufvR8WBiUBFt7-_UI",
+    apiKey: constants.FirebaseApiKey,
     authDomain: `${DB_Name}.firebaseapp.com`,
     databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`,
     projectId: `${DB_Name}`,
@@ -70,6 +71,7 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
       mergedData.productCode = existingProductData.productCode;
       if(mergedData.date == existingProductData.date){
         if(!constants.updateTodayDeals) {
+          logger.info("DB Found : Updated Product today hence not posting !" , { functionName: 'updateProduct' });
           return { status: 301, message: productStatus.PRODUCT_POSTED_TODAY };
 
         }

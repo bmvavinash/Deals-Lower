@@ -74,7 +74,7 @@ async function scrapeFlipkart(driver, pageConfig, storeKey) {
 async function extractFlipkartProduct(driver, selectors, row, col, storeKey) {
     const productData = {};
     for (const [key, selectorConfig] of Object.entries(selectors)) {
-        const { type, selector } = selectorConfig;
+        const { type, selector, validate } = selectorConfig;
         try {
             if (key === "productUrl" && type === "xpath") {
                 // Special handling for product URLs

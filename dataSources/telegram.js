@@ -51,7 +51,7 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
 }
 
 // Handles product processing flow, including getCode check and fallback function
-async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username) {
+async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username="") {
   let products = [];
   try {
 
@@ -61,12 +61,13 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
     const storeKey = Object.keys(storeMap).find(key => link.includes(key));
     const { getCode, storeType } = storeMap[storeKey];
     productCode = getCode(link);
-    let generateLink=false;
+    // let generateLink=false;
+    // let generateLink=true; // for manual products link pasted in deals global #TODO: Rework this logic - In Telegram Data
     // const productCode = await storeMap.getCode(link);
 
     if (productCode) {
       // logger.info("Product code found, proceeding with normal flow", { functionName: 'handleProductProcessing' });
-      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData,true, username, generateLink,shortUrl);
+      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData,true, username, constants.generateLink,shortUrl);
     } else if(!username.includes("dealsglobalhub")) {
       // #TODO: Add logic to handle non-product pages - convert username to dealsglobalhub for non-product pages
       logger.info("Other than dealsglobalhub for non product pages ", { functionName: 'handleProductProcessing' });

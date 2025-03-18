@@ -25,6 +25,11 @@ const fs = require("fs").promises;
 
 const logger = getModuleLogger('scheduler');
 
+// let lastFetchTime = Date.now();
+// const FETCH_INTERVAL = 5 * 60 * 1000; // 5 minutes in milliseconds
+// let productCounter = 0;
+// const PRODUCT_LIMIT = 30;
+
 async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="") {
 
   let postflag = false;
@@ -36,8 +41,15 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     if (len == 0 || data == {}) {
       data, len = await firebaseget();
     }
+
+    const currentTime = Date.now();
     if (todayData == {}) {
-      data, len = await firebaseget(true);
+    // if (todayData == {} || (currentTime - lastFetchTime > FETCH_INTERVAL) || productCounter >= PRODUCT_LIMIT) {
+    // if (todayData == {} || productCounter >= PRODUCT_LIMIT) {
+      logger.info("Fetching today's data on product counter", { functionName: 'getProductDetails' });
+      todayData, len = await firebaseget(true);
+      // lastFetchTime = currentTime;
+      // productCounter = 0;
     }
     const todayDate = getformattedDate();
     // await driver.get(link);
@@ -162,6 +174,8 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       logger.warn(`\nFirebase Post Invalid details: ${link}`, { functionName: 'getProductDetails' })
 
     }
+
+    // productCounter++;
     return postStatus;
     // return postflag
   }

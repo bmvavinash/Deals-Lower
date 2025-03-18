@@ -1,4 +1,5 @@
 const { By, until } = require('selenium-webdriver');
+const { extrapeLogin } = require('../utils/commonUtils');
 
 async function getExtrapeUrl(driver, url) {
     let updatedLink = '';
@@ -17,13 +18,25 @@ async function getExtrapeUrl(driver, url) {
             await urlField.sendKeys(url);
         } catch (error) {
             console.error("Error entering URL:", error);
-            const closeButton = await driver.findElement(By.xpath('/html/body/div[5]/div[3]/div[1]/div[2]/svg/path'));
-            await closeButton.click();
             try{
-
-            }catch(e) {
-                console.error("Error removing using x in Extrape");
+                await extrapeLogin(driver);
             }
+            catch(e){
+                console.log("Error in Extrape Login1");
+            }
+
+            // try{
+            //     const closeButton = await driver.findElement(By.xpath('/html/body/div[5]/div[3]/div[1]/div[2]/svg/path'));
+            //     await closeButton.click();
+            // }    
+            // catch(e){
+            //     console.log("Error in Extrape Login2");
+            // }
+            // try{
+
+            // }catch(e) {
+            //     console.error("Error removing using x in Extrape");
+            // }
             await driver.actions()
               .keyDown(Key.ESCAPE)
               .keyUp(Key.ESCAPE)

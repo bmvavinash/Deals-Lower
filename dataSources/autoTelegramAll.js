@@ -18,33 +18,51 @@ const messagesQueue = []; // Global array to store messages with links and text
 // async function initializeBot(driver) {
 async function initializeBot() {
     // bot = new TelegramBot(constants.DealsGlobalBotKey, { polling: true });
-    try{
+    try {
 
-        bot = new TelegramBot(constants.TelegramBotKey, { polling: true });
+        const bot = new TelegramBot(constants.TelegramBotKey, { polling: true });
+        console.log('Bot initialized and listening for messages.');
         let links = [];
         let text = "";
-        
+
         bot.on('channel_post', async (post) => {
-        await processBotMessage(post);
-        // await processBotMessage(post?.caption || post?.text);
-        // await processBotMessage(driver,post.caption);
-        // await processAndQueue(post);
-        // links,text = await processAndCheck(post);
-        // links,text = await processAndCheck(driver, post);
-    });
-    
-    bot.on('edited_channel_post', async (editedPost) => {
-        await processBotMessage(editedPost.caption);
-        // await processBotMessage(driver,editedPost.caption);
-        // await processAndQueue(editedPost);
-        // links,text = await processAndCheck(editedPost);
-        // links,text = await processAndCheck(driver, editedPost);
-    });
-    
-    console.log('Bot initialized and listening for messages.');
-} catch(e) {
-    console.log("Polling or initialize Bot Error: ",e)
-}
+            console.log(`Received message from Channel: ${post.chat.title}`);
+            await processBotMessage(post);
+            // await processBotMessage(post?.caption || post?.text);
+            // await processBotMessage(driver,post.caption);
+            // await processAndQueue(post);
+            // links,text = await processAndCheck(post);
+            // links,text = await processAndCheck(driver, post);
+        });
+
+        bot.on('edited_channel_post', async (editedPost) => {
+            console.log(`Edited message from Channel: ${editedPost.chat.title}`);
+            await processBotMessage(editedPost.caption);
+            // await processBotMessage(driver,editedPost.caption);
+            // await processAndQueue(editedPost);
+            // links,text = await processAndCheck(editedPost);
+            // links,text = await processAndCheck(driver, editedPost);
+        });
+
+        // Listen for **Group Messages**
+        bot.on('message', async (msg) => {
+            if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
+                console.log(`Received message from Group: ${msg.chat.title}`);
+                await processBotMessage(msg);
+            }
+        });
+
+        // Listen for **Edited Messages** in Groups
+        bot.on('edited_message', async (editedMsg) => {
+            if (editedMsg.chat.type === 'group' || editedMsg.chat.type === 'supergroup') {
+                console.log(`Edited message from Group: ${editedMsg.chat.title}`);
+                await processBotMessage(editedMsg);
+            }
+        });
+
+    } catch (e) {
+        console.log("Polling or initialize Bot Error: ", e)
+    }
     // return {links,text};
 }
 
@@ -57,8 +75,8 @@ async function getNewBotMessages() {
     messagesQueue.length = 0;
     return new Promise((resolve) => {
         setTimeout(() => {
-            resolve([...messagesToProcess]); 
-        // setTimeout(async () => {
+            resolve([...messagesToProcess]);
+            // setTimeout(async () => {
             // Fetch any new messages the bot has captured
             // const newMessages = await processBotMessage();
             // resolve(newMessages);
@@ -69,14 +87,14 @@ async function getNewBotMessages() {
 
 // Function to process posts and trigger getProductDetails if links are present
 async function processBotMessage(post) {
-// async function processBotMessage(driver={}, post) {
-// async function processAndQueue(post) {
-// async function processAndCheck(driver, post) {
-// async function processAndCheck(post) {
+    // async function processBotMessage(driver={}, post) {
+    // async function processAndQueue(post) {
+    // async function processAndCheck(driver, post) {
+    // async function processAndCheck(post) {
     const { skip, links, plainText } = extractLinksAndText(post?.caption || post?.text);
     // const { skip, links, plainText } = extractLinksAndText(post.caption);
     const username = post?.chat?.username;
-    
+
     if (skip) {
         console.log("No links found. Skipping further processing.");
         return;  // Exit if no links are found
@@ -86,7 +104,7 @@ async function processBotMessage(post) {
     // console.log("Links found:", links);
     // console.log("Text found:", plainText);
     console.log("Username found:", username);
-    
+
 
     // Store each message as an object in the queue
     links.forEach(link => {
@@ -96,12 +114,12 @@ async function processBotMessage(post) {
 
 
 
-    // return { links, plainText };
-    // return { driver, links, plainText };
+// return { links, plainText };
+// return { driver, links, plainText };
 
-    // Pass extracted details to getProductDetails
+// Pass extracted details to getProductDetails
 async function processMessagesQueue() {
-// async function processMessagesQueue(driver) {
+    // async function processMessagesQueue(driver) {
 
     // Copy the current messagesQueue and then clear it
     const messagesToProcess = [...messagesQueue];
@@ -113,23 +131,23 @@ async function processMessagesQueue() {
     //     const message = messagesQueue.shift(); // Get the first item in the queue
     //     const { link, plainText } = message;
 
-// const isProductPosted = await getProductDetails(driver, link, plainText);
-// if (isProductPosted === productStatus.PRODUCT_CREATED) {
-//     len += 1;
-//     } else if (isProductPosted === productStatus.PRODUCT_ERROR) {
-//     missedLinks += link + "\n";
-//     }
-// }
+    // const isProductPosted = await getProductDetails(driver, link, plainText);
+    // if (isProductPosted === productStatus.PRODUCT_CREATED) {
+    //     len += 1;
+    //     } else if (isProductPosted === productStatus.PRODUCT_ERROR) {
+    //     missedLinks += link + "\n";
+    //     }
+    // }
 
-// console.log("Total products created:", len);
-// if (missedLinks) {
-//     console.log("Missed links:", missedLinks);
+    // console.log("Total products created:", len);
+    // if (missedLinks) {
+    //     console.log("Missed links:", missedLinks);
 }
 // }
 
 // Controller function to manage continuous processing
 async function continuousProcess(driver) {
-// async function continuousProcess(driver) {
+    // async function continuousProcess(driver) {
     // Start the bot for listening to Telegram posts
     // await initializeBot(driver);
     await initializeBot();

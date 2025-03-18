@@ -18,6 +18,7 @@ async function firebaseget(isToday=false) {
     if (isToday){
       formattedDate = getformattedDate();
       urlappend = `orderBy="date"&equalTo="${formattedDate}"`
+      // urlappend = `orderBy="date"&equalTo="${formattedDate}"&shallow=true`
     } else {
       urlappend = `shallow=true`
     }
