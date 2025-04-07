@@ -94,6 +94,10 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     product.isDisplay = postProduct;
     product.productType = "Affiliate";
     product.shortText = shortenProductText(product?.urltext);
+    if(product?.category?.mainCategory === "") {
+      product.category.mainCategory = product?.category?.c1;
+    }
+
 
     let env = constants.env
 

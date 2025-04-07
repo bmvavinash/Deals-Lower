@@ -8,6 +8,7 @@ const { getExtrapeUrl } = require("../affiliate/extrape");
 const ajioConfig = require("../config/ajioConfig");
 const myntraConfig = require("../config/myntraConfig");
 const { getModuleLogger } = require("../logger/logger");
+const { decode } = require('html-entities');
 
 
 const logger = getModuleLogger('amazon');
@@ -74,7 +75,16 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
 
       try { product.photo = await extractAttribute(driver, config?.photo) || ""; } catch (e) { console.log("photo error") }
     }
-    try { product.urltext = await extractAttribute(driver, config?.productText) || ""; } catch (e) { console.log("productText error") }
+    // try { product.urltext = await extractAttribute(driver, config?.productText) || ""; } catch (e) { console.log("productText error") }
+    try {
+      let rawText = await extractAttribute(driver, config?.productText) || "";
+      // Decode HTML entities like &nbsp;
+      rawText = decode(rawText);
+      // Replace multiple spaces (including non-breaking) with a single regular space
+      product.urltext = rawText.replace(/\s+/g, ' ').trim();
+    } catch (e) {
+      console.log("productText error");
+    }
     try { product.productText = text || "" } catch (e) { console.log("url Text error") }
     if (!keyExist) {
 
