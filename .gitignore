@@ -3,8 +3,8 @@
 # dependencies
 
 # Ignore config.js and constants.js files
-config.js
-constants.js
+/.config/config.js
+/.config/constants.js
 
 /resources
 /node_modules
@@ -12,6 +12,7 @@ constants.js
 /.pnp
 .pnp.js
 /.socialMedia/check.txt
+/config/config.js
 # testing
 /coverage
 

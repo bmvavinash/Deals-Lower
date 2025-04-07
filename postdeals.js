@@ -81,22 +81,50 @@ async function postDeals(driver, product, link, shortUrl, username) {
             }
         }
         if (constantsData.postTo.whatsapp && username.includes("dealsglobalhub")) {
-            whatsapp(product?.photo, whatsappId, text)
+            whatsapp(product?.photo, whatsappId, text);
         }
+        // if (constantsData.postTo.facebook && product?.discount >= 75 && username.includes("dealsglobalhub")) {
+        //     console.log("Facebook ID is ", facebookId);
+        //     response = await facebook(product, facebookId, text);
+        //     if (response?.error?.message?.includes('Session has expired') || response?.error?.message?.includes('An active access token')) {
+        //         console.log('Session expired. Refreshing token...');
+
+        //         // Refresh the token
+        //         const newToken = await extractFacebookToken(driver);
+        //         console.log('New Token:', newToken);
+        //         facebookId = newToken;
+        //         constants.facebookId = newToken;
+        //     }
+        //     response = await facebook(product, facebookId, text)
+        // }
+
         if (constantsData.postTo.facebook && product?.discount >= 75 && username.includes("dealsglobalhub")) {
-
-            response = await facebook(product, facebookId, text);
-            if (response?.error?.message?.includes('Session has expired') || response?.error?.message?.includes('An active access token')) {
+            console.log("Facebook ID is ", facebookId);
+            let response = await facebook(product, facebookId, text);
+        
+            // Check if response is a string and try to parse it
+            if (typeof response === 'string' && response.includes('expired')) {
+                try {
+                    response = JSON.parse(response);
+                } catch (e) {
+                    console.error('Failed to parse response:', e);
+                }
+            }
+        
+            if (response?.error?.message?.includes('Session has expired') || 
+                response?.error?.message?.includes('An active access token')) {
                 console.log('Session expired. Refreshing token...');
-
+        
                 // Refresh the token
                 const newToken = await extractFacebookToken(driver);
                 console.log('New Token:', newToken);
                 facebookId = newToken;
                 constants.facebookId = newToken;
+                response = await facebook(product, facebookId, text);
             }
-            response = await facebook(product, facebookId, text)
+            
         }
+        
     } catch (e) {
         console.log(e);
     }

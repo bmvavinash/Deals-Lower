@@ -128,19 +128,25 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
     } else if (product.discount > 75) {
       messagePrefix = "Offer! \n";
     } if (product.discount > 50) {
-      messagePrefix += `${product?.discount}% off on `;
+      messagePrefix += `${product?.discount}% off \n`;
     }
 
-    product.urltext = shortenProductText(product.urltext);
+    let title;
+    if( product?.urltext != ""){
+        title = product?.urltext;
+    } else if (product?.productText != ""){
+        title = product?.productText;
+    }
+    title = shortenProductText(title);
     
     // Construct the message
-    let message = `${messagePrefix}${product.urltext} \n\n➡️ Deal price: ₹${product.price}`; //
+    let message = `${messagePrefix}${title} \n\n➡️ Deal price: ₹${product.price} \n➡️ Discount: ${product.discount}%`; //
     // let message = `${messagePrefix}${product.productText} \n\n➡️ Deal price: ₹${product.price}`; //Telegram Text
     
     // Append additional text if the discount is 50% or less
-    if (product.discount <= 50) {
-      message += `\ndiscount is ${product.discount}%`;
-    }
+    // if (product.discount <= 50) {
+    //   message += `\n➡️ Discount: ${product.discount}%`;
+    // }
     
     // Append link and hashtags
     try{
@@ -154,7 +160,7 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
                 message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
 
             }
-        } else if(product?.storeType == "Amazon" && product?.productCode != "") {
+        } else if(product?.storeType == "Amazon" && product?.productCode != "" && tag != ""){ 
             if(tag!=""){
                 message += `\n\nBuy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n`;
             } else {

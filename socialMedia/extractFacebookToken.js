@@ -1,50 +1,48 @@
-const { Builder, By, until } = require('selenium-webdriver');
+const { Builder, By, until, Key } = require('selenium-webdriver');
 
-/**
- * Extract Facebook Access Token from Developer Tools
- * @param {WebDriver} driver - The WebDriver instance used for automation.
- * @returns {Promise<string>} - The extracted access token.
- */
 async function extractFacebookToken(driver) {
     const url = 'https://developers.facebook.com/tools/explorer/';
-    const userTokenButtonSelector = 'div[data-hover="tooltip"][data-tooltip-display="overflow"]';
-    const dealsHubOptionSelector = 'span[data-tooltip-content="Deals Hub Global"]';
+    const userTokenButtonSelector = 'button._271k._1qjd._ai7j._ai7k._ai7m';
+    const continueButtonText = 'Continue as Bmv Avinash'; // Adjust if your name appears differently
     const tokenInputSelector = 'input._4b7k._4b7k_big._53rs';
 
     try {
-        // Navigate to the target URL
         await driver.get(url);
         console.log(`Navigated to ${url}`);
 
-        // Wait for and click the "User Token" button (using the updated selector)
-        const userTokenButton = await driver.wait(
-            until.elementLocated(By.xpath('//*[@id="facebook"]/body/div[1]/div[5]/div[2]/div/div[2]/span/div/div[2]/div/div[5]/div[5]/div/div/div/div/div/div[7]/div[2]/button/div/div/div/i')),
-            // until.elementLocated(By.css(userTokenButtonSelector)),
-            5000
+        // Ensure "User Token" button is interactable
+        let userTokenButton = await driver.wait(
+            until.elementLocated(By.css(userTokenButtonSelector)),
+            7000
         );
-        await userTokenButton.click();
-        console.log('User Token button clicked.');
+        await driver.wait(until.elementIsVisible(userTokenButton), 7000);
+        await driver.executeScript('arguments[0].click();', userTokenButton); // JS click
+        console.log('User Token button clicked (via JS).');
 
-        // Wait for and select the "Deals Hub Global" option
-        await driver.wait(until.elementLocated(By.css(dealsHubOptionSelector)), 3000);
-        const dealsHubOption = await driver.findElement(By.css(dealsHubOptionSelector));
-        await dealsHubOption.click();
-        console.log('Deals Hub Global option selected.');
+        await driver.sleep(1500); // Allow modal to load
 
-        // Wait for and extract the Access Token
-        await driver.wait(until.elementLocated(By.css(tokenInputSelector)), 3000);
-        const tokenInput = await driver.findElement(By.css(tokenInputSelector));
+        // Look for "Continue as ..." button inside the modal
+        const continueBtn = await driver.wait(
+            until.elementLocated(By.xpath(`//span[contains(text(), '${continueButtonText}')]`)),
+            7000
+        );
+        await driver.executeScript('arguments[0].click();', continueBtn);
+        console.log(`Clicked "${continueButtonText}" in modal.`);
+
+        // Wait for token to load in input field
+        const tokenInput = await driver.wait(
+            until.elementLocated(By.css(tokenInputSelector)),
+            7000
+        );
+        await driver.wait(until.elementIsVisible(tokenInput), 7000);
         const accessToken = await tokenInput.getAttribute('value');
         console.log('Access Token extracted:', accessToken);
 
-        // Return the token
         return accessToken;
-
     } catch (error) {
         console.error('Error in extractFacebookToken:', error);
-        throw error; // Re-throw the error for the caller to handle
+        throw error;
     }
 }
 
-// Export the function for use in other modules
-module.exports = extractFacebookToken ;
+module.exports = extractFacebookToken;
