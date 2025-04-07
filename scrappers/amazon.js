@@ -3,7 +3,7 @@ const flipkartConfig = require("../config/flipkartConfig");
 const { amazonLinkGenerator } = require("../affiliate/amazonLinkGenerator");
 // const { getExtrapeUrl } = require("../affiliate/extrapeUrlGenerator");
 const { By, Key, Builder, Button, until } = require("selenium-webdriver");
-const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require("../utils/commonUtils");
+const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode, decodeHtmlEntities } = require("../utils/commonUtils");
 const { getExtrapeUrl } = require("../affiliate/extrape");
 const ajioConfig = require("../config/ajioConfig");
 const myntraConfig = require("../config/myntraConfig");
@@ -13,7 +13,7 @@ const { decode } = require('html-entities');
 
 const logger = getModuleLogger('amazon');
 
-async function scrapeProduct(url, platform, driver, text = "", keyExist = false, username, generateLink=false, shortUrl="") {
+async function scrapeProduct(url, platform, driver, text = "", keyExist = false, username, generateLink = false, shortUrl = "") {
   // Load the appropriate config
   const config = platform === "amazon" ? amazonConfig : platform === "flipkart" ? flipkartConfig : platform === "ajio" ? ajioConfig : platform === "myntra" ? myntraConfig : null;
   if (!config) {
@@ -76,35 +76,39 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
       try { product.photo = await extractAttribute(driver, config?.photo) || ""; } catch (e) { console.log("photo error") }
     }
     // try { product.urltext = await extractAttribute(driver, config?.productText) || ""; } catch (e) { console.log("productText error") }
-    try {
-      let rawText = await extractAttribute(driver, config?.productText) || "";
-      // Decode HTML entities like &nbsp;
-      rawText = decode(rawText);
-      // Replace multiple spaces (including non-breaking) with a single regular space
-      product.urltext = rawText.replace(/\s+/g, ' ').trim();
-    } catch (e) {
-      console.log("productText error");
-    }
-    try { product.productText = text || "" } catch (e) { console.log("url Text error") }
+    // try {
+    //   let rawText = await extractAttribute(driver, config?.productText) || "";
+    //   // Decode HTML entities like &nbsp;
+    //   rawText = decode(rawText);
+    //   // Replace multiple spaces (including non-breaking) with a single regular space
+    //   product.urltext = rawText.replace(/\s+/g, ' ').trim();
+    // } catch (e) {
+    //   console.log("productText error");
+    // }
+    // try { product.productText = text || "" } catch (e) { console.log("url Text error") }
+
+    product.urltext = await safeExtract(driver, config?.productText);
+    product.productText = text || "";
     if (!keyExist) {
 
       product.category = {}
-      try { product.category.mainCategory = await extractAttribute(driver, config?.category?.mainCategory) || ""; } catch (e) { console.log("mainCategory error") }
-      try { product.category.c1 = await extractAttribute(driver, config?.category?.c1) || ""; } catch (e) { console.log("c1 error") }
-      try { product.category.c2 = await extractAttribute(driver, config?.category?.c2) || ""; } catch (e) { console.log("c2 error") }
-      try { product.category.c3 = await extractAttribute(driver, config?.category?.c3) || ""; } catch (e) { console.log("c3 error") }
-      try { product.category.c4 = await extractAttribute(driver, config?.category?.c4) || ""; } catch (e) { console.log("c4 error") }
-      try { product.category.c5 = await extractAttribute(driver, config?.category?.c5) || ""; } catch (e) { console.log("c5 error") }
-      try { product.description = {} } catch (e) { console.log("=  error") }
-      try { product.description.d1 = await extractAttribute(driver, config?.description?.d1) || ""; } catch (e) { console.log("d1 error") }
-      try { product.description.d2 = await extractAttribute(driver, config?.description?.d2) || ""; } catch (e) { console.log("d2 error") }
-      try { product.description.d3 = await extractAttribute(driver, config?.description?.d3) || ""; } catch (e) { console.log("d3 error") }
-      try { product.description.d4 = await extractAttribute(driver, config?.description?.d4) || ""; } catch (e) { console.log("d4 error") }
-      try { product.description.d5 = await extractAttribute(driver, config?.description?.d5) || ""; } catch (e) { console.log("d5 error") }
-      try { product.description.d6 = await extractAttribute(driver, config?.description?.d6) || ""; } catch (e) { console.log("d6 error") }
-      try { product.description.d7 = await extractAttribute(driver, config?.description?.d7) || ""; } catch (e) { console.log("d7 error") }
-      try { product.description.d8 = await extractAttribute(driver, config?.description?.d8) || ""; } catch (e) { console.log("d8 error") }
-      try { product.description.d9 = await extractAttribute(driver, config?.description?.d9) || ""; } catch (e) { console.log("d9 error") }
+      product.category.mainCategory = await safeExtract(driver, config?.category?.mainCategory, true);
+      product.category.c1 = await safeExtract(driver, config?.category?.c1, true);
+      product.category.c2 = await safeExtract(driver, config?.category?.c2, true);
+      product.category.c3 = await safeExtract(driver, config?.category?.c3, true);
+      product.category.c4 = await safeExtract(driver, config?.category?.c4, true);
+      product.category.c5 = await safeExtract(driver, config?.category?.c5, true);
+
+      product.description = {};
+      product.description.d1 = await safeExtract(driver, config?.description?.d1);
+      product.description.d2 = await safeExtract(driver, config?.description?.d2);
+      product.description.d3 = await safeExtract(driver, config?.description?.d3);
+      product.description.d4 = await safeExtract(driver, config?.description?.d4);
+      product.description.d5 = await safeExtract(driver, config?.description?.d5);
+      product.description.d6 = await safeExtract(driver, config?.description?.d6);
+      product.description.d7 = await safeExtract(driver, config?.description?.d7);
+      product.description.d8 = await safeExtract(driver, config?.description?.d8);
+      product.description.d9 = await safeExtract(driver, config?.description?.d9);
       // product?.brand = await extractAttribute(driver, config?.brand);
     }
     if (product?.photo != "") {
@@ -117,7 +121,7 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
         product.links = {};
         try { product.links.avinashbmvINR = ""; } catch (e) { console.log("avinashbmvINR Error", e) }
         try {
-          if(username?.includes("dealsglobalhub")){
+          if (username?.includes("dealsglobalhub")) {
 
             if (platform === "amazon") {
               try {
@@ -126,24 +130,24 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
               } catch (e) { console.log("Amazon link generation error") }
             } else {
               try {
-                product.links.avinashbmvINR = "inrdeals.com/avi646476329/"+url;
-                if(generateLink) {
+                product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
+                if (generateLink) {
                   product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
-                } else { 
+                } else {
                   product.links.avinashbmv = shortUrl || await getExtrapeUrl(driver, url);
                 }
               } catch (e) { console.log("Generic link generation error") }
             }
           } else {
-            product.links.avinashbmvINR = "inrdeals.com/avi646476329/"+url;
+            product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
             product.links[username] = shortUrl || "";
             product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
             // logger.info("Skipping the link generation as the user is not dealsglobalhub" , { functionName: 'scrapeProduct' });
           }
-          } catch(e) {
-            console.log("Error in link generation ",e);
-          }
+        } catch (e) {
+          console.log("Error in link generation ", e);
         }
+      }
     }
 
 
@@ -214,15 +218,36 @@ async function extractAttribute(driver, attributeConfig) {
 
   // Log information only for the last config after the loop
   // if (lastConfig) {
-    // console.log("Validation failed for the last config:", lastConfig?.selector, config?.links);
+  // console.log("Validation failed for the last config:", lastConfig?.selector, config?.links);
   // } else {
-    // console.log("All xpaths failed or validation failed for all xpaths."); // #ToDo Need to remove
+  // console.log("All xpaths failed or validation failed for all xpaths."); // #ToDo Need to remove
   // }
   return null;
 }
 
+async function safeExtract(driver, configPath) {
+  try {
+    const val = await extractAttribute(driver, configPath);
+    const decoded = decodeHtmlEntities(val || "");
+
+    let cleaned = decoded.replace(/\s+/g, ' ').trim(); // normalize spaces
+
+    if (removeAllSpaces) {
+      cleaned = cleaned.replace(/\s+/g, ''); // remove all spaces
+    }
+
+    return cleaned;
+  } catch (e) {
+    console.log(`${configPath} error`);
+    return "";
+  }
+}
+
+
 module.exports = {
   scrapeProduct,
+  extractAttribute,
+  safeExtract
 };
 
 // Other functions...

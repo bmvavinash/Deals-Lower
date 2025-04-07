@@ -126,27 +126,28 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
     if (product.discount > 85) {
       messagePrefix = "🔥🔥 Low Price Alert! \n";
     } else if (product.discount > 75) {
-      messagePrefix = "Offer! \n";
-    } if (product.discount > 50) {
-      messagePrefix += `${product?.discount}% off \n`;
+    messagePrefix = "💥 Offer! \n";
+  }
+  if (product.discount > 50) {
+    messagePrefix += `${product?.discount}% off 🎉\n`;
     }
 
     let title;
-    if( product?.urltext != ""){
+  if (product?.urltext != "") {
         title = product?.urltext;
-    } else if (product?.productText != ""){
+  } else if (product?.productText != "") {
         title = product?.productText;
     }
     title = shortenProductText(title);
     
     // Construct the message
-    let message = `${messagePrefix}${title} \n\n✅ Deal price: ₹${product.price} \n➡️ Discount: ${product.discount}%`; //
+    let message = `${messagePrefix}${title} \n\n✅ Deal price: ₹${product.price}`; //
     // let message = `${messagePrefix}${product.productText} \n\n➡️ Deal price: ₹${product.price}`; //Telegram Text
     
     // Append additional text if the discount is 50% or less
-    // if (product.discount <= 50) {
-    //   message += `\n➡️ Discount: ${product.discount}%`;
-    // }
+    if (product.discount && product.discount != null) {
+      message += `\n➡️ Discount: ${product.discount}%`;
+    }
     
     // Append link and hashtags
     try{
@@ -160,8 +161,8 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
                 message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
 
             }
-        } else if(product?.storeType == "Amazon" && product?.productCode != "" && tag != ""){ 
-            if(tag!=""){
+    } else if (product?.storeType == "Amazon" && product?.productCode != "" && tag != "") {
+      if (tag != "") {
                 message += `\n\n🛒 Buy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n`;
             } else {
                 return "";
@@ -177,15 +178,44 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
     // message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
     
     if (product.discount > 85) {
-      message +="⚡️⚡️**Price Dropped** \n"
+    message += "⚡️⚡️ **Price Dropped** 📉\n";
     }
-    message+=`#${product.storeType}`
-    if (product?.category?.mainCategory!=""){
-      `#${product?.category?.mainCategory}`
-    } 
-    // else {
-    //     `#${product?.category?.c1}`
-    // }
+
+  // Append storeType as hashtag
+  message += `#${product.storeType} `;
+
+
+
+
+
+  let finalCategory = product?.category?.mainCategory || product?.category?.c1;
+
+if (finalCategory && finalCategory.trim() !== "") {
+  finalCategory = decodeHtmlEntities(finalCategory).replace(/\s+/g, ' ').trim(); // sanitize
+
+  message += `#${finalCategory} `;
+
+  const emoji = getEmojiForCategory(finalCategory);
+  if (emoji) {
+    message += `${emoji}`;
+  }
+}
+
+
+
+
+
+
+
+  // Append category hashtags properly
+//   if (product?.category?.mainCategory != "") {
+//     message += `#${product?.category?.mainCategory} `;
+//   } else if (product?.category?.c1 != "") {
+//     message += `#${product?.category?.c1} `;
+
+//     // Add catchy emoji based on category
+//   message += getEmojiForCategory(product?.category?.mainCategory || product?.category?.c1);
+//   }
 
     // 💥 Bank Offer : ₹1,000 Instant Discount With ICICI, ONECARD Credit Card Txn
     // 💥🎁 😱 🔥🚀
@@ -202,7 +232,7 @@ Mamaearth MEGA SALE 🔥🔥
 
 ✅ Use code: MEGAOFFER
 
-👉 Link: https://extp.in/yMQpJm
+👉 Link: 
 
 🚨Freebies on order above Rs.699 👉 Get Perfume Aqua - 50ml + Hydra-Matte Crayon Lipstick - 2.4g  [Worth Rs.129😎
 
@@ -214,6 +244,85 @@ Mamaearth MEGA SALE 🔥🔥
   
     return message;
   }
+
+
+  function decodeHtmlEntities(text = "") {
+    if (!text || typeof text !== "string") return text;
+  
+    const entities = {
+      '&amp;': '&',
+      '&nbsp;': ' ',
+      '&lt;': '<',
+      '&gt;': '>',
+      '&quot;': '"',
+      '&#39;': "'",
+      '&#x27;': "'",
+      '&#x2F;': '/',
+      '&#96;': '`',
+      '&#x3D;': '=',
+    };
+  
+    return text.replace(/&[a-zA-Z0-9#]+;/g, match => entities[match] || match);
+  }
+  
+  function getEmojiForCategory(category = "") {
+    if (!category || typeof category !== "string") return "";
+  
+    const categoryMap = {
+      "fashion": "👗🧥",
+      "beauty": "💄🧴",
+      "electronic": "💻📱",
+      "home": "🏠🛋️",
+      "kitchen": "🍳🥣",
+      "mobile": "📱",
+      "grocery": "🛒🥦",
+      "toy": "🧸🎯",
+      "book": "📚",
+      "footwear": "👟👠",
+      "appliance": "🔌🌀",
+      "health": "💊🩺",
+    };
+  
+    const lowerCategory = category.toLowerCase();
+  
+    for (const keyword in categoryMap) {
+      if (lowerCategory.includes(keyword)) {
+        return categoryMap[keyword];
+      }
+    }
+  
+    return "🛍️"; // default fallback
+  }
+  
+  
+
+
+  
+// Utility: Shorten text if needed (you already have this)
+// function shortenProductText(text) {
+//     const limit = 120;
+//     return text.length > limit ? text.slice(0, limit) + "..." : text;
+//   }
+  
+  // Utility: Get emoji based on category
+//   function getEmojiForCategory(category = "") {
+//     const categoryMap = {
+//       "Fashion": "👗🧥",
+//       "Beauty": "💄🧴",
+//       "Electronics": "💻📱",
+//       "Home": "🏠🛋️",
+//       "Kitchen": "🍳🥣",
+//       "Mobile": "📱",
+//       "Grocery": "🛒🥦",
+//       "Toys": "🧸🎯",
+//       "Books": "📚",
+//       "Footwear": "👟👠",
+//       "Appliances": "🔌🌀",
+//       "Health": "💊🩺",
+//     };
+  
+//     return categoryMap[category] ? categoryMap[category] : "🛍️"; // default fallback
+//   }
 
   // Function to read URLs from a text file and process them
 async function extrapeLogin(driver) {
@@ -424,6 +533,8 @@ module.exports = {
     extractLinksAndText,
     getAjioCode,
     getMyntraCode,
-    getUserDetails
+    getUserDetails,
+    decodeHtmlEntities ,
+    getEmojiForCategory
     
 };
