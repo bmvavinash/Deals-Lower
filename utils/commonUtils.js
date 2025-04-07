@@ -134,7 +134,7 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
     product.urltext = shortenProductText(product.urltext);
     
     // Construct the message
-    let message = `${messagePrefix}${product.urltext} \n\n➡️ Deal price: ₹${product.price}`; //
+    let message = `${messagePrefix}${product.urltext} \n\n✅ Deal price: ₹${product.price}`; //
     // let message = `${messagePrefix}${product.productText} \n\n➡️ Deal price: ₹${product.price}`; //Telegram Text
     
     // Append additional text if the discount is 50% or less
@@ -149,20 +149,20 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
             // if(product?.productCode!="" && product?.storeType == "Amazon"){
             if(product?.productCode!="" ){
 
-                message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n` ;
+                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n` ;
             } else {
-                message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
+                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
 
             }
         } else if(product?.storeType == "Amazon" && product?.productCode != "") {
             if(tag!=""){
-                message += `\n\nBuy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n`;
+                message += `\n\n🛒 Buy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n`;
             } else {
                 return "";
             }
         } else {
             //skipping others products other than Amazon 
-            message += `\n\nBuy Here : ${shortUrl}\n\n` ;
+            message += `\n\n🛒 Buy Here : ${shortUrl}\n\n` ;
         }
     }
     catch(e) {
@@ -177,8 +177,13 @@ function formatProductInfo(product,tag="",username="dealsglobalhub",link="", sho
     if (product?.category?.mainCategory!=""){
       `#${product?.category?.mainCategory}`
     } 
+    // else {
+    //     `#${product?.category?.c1}`
+    // }
+
     // 💥 Bank Offer : ₹1,000 Instant Discount With ICICI, ONECARD Credit Card Txn
-    // 💥💥
+    // 💥🎁 😱 🔥🚀
+    // ✅💸 📨 
     // 🛒
 
 //     ✔️Offer Price:₹363
