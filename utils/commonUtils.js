@@ -10,6 +10,12 @@ const constants = require('../config/constants.js');
 const config = require('../config/config.js');
 
 const { users } = require("../config/users");
+// const { logger } = require('../logger/logger.js');
+
+const { getModuleLogger } = require("../logger/logger");
+
+
+const logger = getModuleLogger('commonUtils');
 
 function validatePrice(value) {
     // Remove any HTML tags
@@ -61,18 +67,18 @@ function validateText(value) {
 function getAjioCode(url) {
     const match = url.match(/\/p\/([^/?]+)/);
     return match ? match[1] : null;
-  }
-  
+}
+
 
 //   function getMyntraImages(images) {
 //     const imageUrls = images.map(image => {
 //         const style = image.getAttribute("style");
 //         return style.match(/url\("(.*?)"\)/)[1]; // Extracts URL from the style attribute
 //     });
-    
+
 //   }
 
-  function getMyntraCode(url) {
+function getMyntraCode(url) {
     const match = url.match(/\/(\d+)\//);
     return match ? match[1] : null;
 }
@@ -82,28 +88,28 @@ function getAjioCode(url) {
 // utils/messageProcessor.js
 function extractLinksAndText(text) {
     // if (typeof text?.caption !== 'string') return { skip: true, links: [], plainText: '' };
-    
+
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     let links = [];
     let plainText = "";
-    if(urlRegex && urlRegex != ""){
-        try{
+    if (urlRegex && urlRegex != "") {
+        try {
 
             links = text.match(urlRegex) || [];
-        } catch(e){
+        } catch (e) {
             console.log("URL Regex Error");
         }
     }
-    try{
-        
+    try {
+
         plainText = text.replace(urlRegex, '').trim();
         // links = text.match(urlRegex) || [];
-    } catch(e){
+    } catch (e) {
         console.log("URL Regex Error");
     }
     // Add a flag to indicate whether to skip processing if no links are found
     const skip = links.length === 0;
-    
+
     return { skip, links, plainText };
 }
 
@@ -117,194 +123,264 @@ function getUserDetails(username, key = null) {
     }
 }
 
-function formatProductInfo(product,tag="",username="dealsglobalhub",link="", shortUrl="") {
+function formatProductInfo(product, tag = "", username = "dealsglobalhub", link = "", shortUrl = "") {
     let messagePrefix = "";
 
     // product?.productText + `\n\nhttps://dealshubglobal.com/p/${product?.id}`
-  
+
     // Determine the message prefix based on the discount range
     if (product.discount > 85) {
-      messagePrefix = "🔥🔥 Low Price Alert! \n";
+        messagePrefix = "🔥🔥 Low Price Alert! \n";
     } else if (product.discount > 75) {
-    messagePrefix = "💥 Offer! \n";
-  }
-  if (product.discount > 50) {
-    messagePrefix += `${product?.discount}% off 🎉\n`;
+        messagePrefix = "💥 Offer! \n";
+    }
+    if (product.discount > 50) {
+        messagePrefix += `${product?.discount}% off 🎉\n`;
     }
 
     let title;
-  if (product?.urltext != "") {
+    if (product?.urltext != "") {
         title = product?.urltext;
-  } else if (product?.productText != "") {
+    } else if (product?.productText != "") {
         title = product?.productText;
     }
     title = shortenProductText(title);
-    
+
     // Construct the message
     let message = `${messagePrefix}${title} \n\n✅ Deal price: ₹${product.price}`; //
     // let message = `${messagePrefix}${product.productText} \n\n➡️ Deal price: ₹${product.price}`; //Telegram Text
-    
-    // Append additional text if the discount is 50% or less
-    if (product.discount && product.discount != null) {
-      message += `\n➡️ Discount: ${product.discount}%`;
-    }
-    
-    // Append link and hashtags
-    try{
-        // if(tag==""){
-        if(username.includes("dealsglobalhub")){
-            // if(product?.productCode!="" && product?.storeType == "Amazon"){
-            if(product?.productCode!="" ){
 
-                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n` ;
+    // Append additional text if the discount is 50% or less
+    if (product.discount && product.discount != null && product.discount != 'null') {
+        message += `\n➡️ Discount: ${product.discount}%`;
+    }
+
+    // Append link and hashtags
+    try {
+        // if(tag==""){
+        if (username.includes("dealsglobalhub")) {
+            // if(product?.productCode!="" && product?.storeType == "Amazon"){
+            if (product?.productCode != "") {
+
+                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n`;
             } else {
-                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
+                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.id}\n\n`;
 
             }
-    } else if (product?.storeType == "Amazon" && product?.productCode != "" && tag != "") {
-      if (tag != "") {
+        } else if (product?.storeType == "Amazon" && product?.productCode != "" && tag != "") {
+            if (tag != "") {
                 message += `\n\n🛒 Buy Here : https://www.amazon.in/dp/${product?.productCode}?tag=${tag}\n\n`;
             } else {
                 return "";
             }
         } else {
             //skipping others products other than Amazon 
-            message += `\n\n🛒 Buy Here : ${shortUrl}\n\n` ;
+            message += `\n\n🛒 Buy Here : ${shortUrl}\n\n`;
         }
     }
-    catch(e) {
+    catch (e) {
 
     }
     // message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
-    
+
     if (product.discount > 85) {
-    message += "⚡️⚡️ **Price Dropped** 📉\n";
+        message += "⚡️⚡️ **Price Dropped** 📉\n";
     }
 
-  // Append storeType as hashtag
-  message += `#${product.storeType} `;
+    // Append storeType as hashtag
+    message += `#${product.storeType} `;
 
 
 
 
 
-  let finalCategory = product?.category?.mainCategory || product?.category?.c1;
+    let finalCategory = product?.category?.mainCategory || product?.category?.c1;
 
-if (finalCategory && finalCategory.trim() !== "") {
-  finalCategory = decodeHtmlEntities(finalCategory).replace(/\s+/g, ' ').trim(); // sanitize
+    if (finalCategory && finalCategory.trim() !== "") {
 
-  message += `#${finalCategory} `;
+        // Normalize the category
+  const normalizedCategory = normalizeCategory(finalCategory);
+  // Map to a generic category (e.g. "home" regardless of "home_kitchen" or "home_accessories")
+  const genericCategory = getGenericCategory(normalizedCategory);
 
-  const emoji = getEmojiForCategory(finalCategory);
+  // Append hashtag only if generic category is non-empty
+  message += `#${genericCategory} `;
+
+  // Append corresponding emoji
+  const emoji = getEmojiForCategory(genericCategory);
   if (emoji) {
-    message += `${emoji}`;
+    message += emoji;
   }
 }
 
 
+    //     finalCategory = decodeHtmlEntities(finalCategory).replace(/\s+/g, ' ').trim(); // sanitize
+
+    //     message += `#${finalCategory} `;
+
+    //     const emoji = getEmojiForCategory(finalCategory);
+    //     if (emoji) {
+    //         message += `${emoji}`;
+    //     }
+    // }
 
 
 
 
 
-  // Append category hashtags properly
-//   if (product?.category?.mainCategory != "") {
-//     message += `#${product?.category?.mainCategory} `;
-//   } else if (product?.category?.c1 != "") {
-//     message += `#${product?.category?.c1} `;
 
-//     // Add catchy emoji based on category
-//   message += getEmojiForCategory(product?.category?.mainCategory || product?.category?.c1);
-//   }
+
+    // Append category hashtags properly
+    //   if (product?.category?.mainCategory != "") {
+    //     message += `#${product?.category?.mainCategory} `;
+    //   } else if (product?.category?.c1 != "") {
+    //     message += `#${product?.category?.c1} `;
+
+    //     // Add catchy emoji based on category
+    //   message += getEmojiForCategory(product?.category?.mainCategory || product?.category?.c1);
+    //   }
 
     // 💥 Bank Offer : ₹1,000 Instant Discount With ICICI, ONECARD Credit Card Txn
     // 💥🎁 😱 🔥🚀
     // ✅💸 📨 
     // 🛒
 
-//     ✔️Offer Price:₹363
-// 🛍
+    //     ✔️Offer Price:₹363
+    // 🛍
 
-/*
-Mamaearth MEGA SALE 🔥🔥
+    /*
+    Mamaearth MEGA SALE 🔥🔥
+    
+    ➡️ Offer: Buy for Rs.699 & Get 2 product FREE worth Rs.1298
+    
+    ✅ Use code: MEGAOFFER
+    
+    👉 Link: 
+    
+    🚨Freebies on order above Rs.699 👉 Get Perfume Aqua - 50ml + Hydra-Matte Crayon Lipstick - 2.4g  [Worth Rs.129😎
+    
+    🔴 Note: Get Additional 5% Prepaid Discount
+    */
 
-➡️ Offer: Buy for Rs.699 & Get 2 product FREE worth Rs.1298
 
-✅ Use code: MEGAOFFER
+    // ❌Regular Price:₹721
 
-👉 Link: 
-
-🚨Freebies on order above Rs.699 👉 Get Perfume Aqua - 50ml + Hydra-Matte Crayon Lipstick - 2.4g  [Worth Rs.129😎
-
-🔴 Note: Get Additional 5% Prepaid Discount
-*/
-
-
-// ❌Regular Price:₹721
-  
     return message;
-  }
+}
 
-
-  function decodeHtmlEntities(text = "") {
-    if (!text || typeof text !== "string") return text;
-  
-    const entities = {
-      '&amp;': '&',
-      '&nbsp;': ' ',
-      '&lt;': '<',
-      '&gt;': '>',
-      '&quot;': '"',
-      '&#39;': "'",
-      '&#x27;': "'",
-      '&#x2F;': '/',
-      '&#96;': '`',
-      '&#x3D;': '=',
-    };
-  
-    return text.replace(/&[a-zA-Z0-9#]+;/g, match => entities[match] || match);
-  }
-  
-  function getEmojiForCategory(category = "") {
+function normalizeCategory(category = "") {
     if (!category || typeof category !== "string") return "";
-  
-    const categoryMap = {
-      "fashion": "👗🧥",
-      "beauty": "💄🧴",
-      "electronic": "💻📱",
-      "home": "🏠🛋️",
-      "kitchen": "🍳🥣",
-      "mobile": "📱",
-      "grocery": "🛒🥦",
-      "toy": "🧸🎯",
-      "book": "📚",
-      "footwear": "👟👠",
-      "appliance": "🔌🌀",
-      "health": "💊🩺",
-    };
-  
-    const lowerCategory = category.toLowerCase();
-  
-    for (const keyword in categoryMap) {
-      if (lowerCategory.includes(keyword)) {
-        return categoryMap[keyword];
-      }
+    let norm = decodeHtmlEntities(category);
+    // Replace '&' with '_' to avoid differences like "Home&Kitchen" vs "Home&Accessories"
+    norm = norm.replace(/&/g, "_");
+    // Normalize spaces
+    norm = norm.replace(/\s+/g, ' ').trim();
+    return norm.toLowerCase();
+}
+
+
+// Utility: Map normalized category to a generic category
+function getGenericCategory(category = "") {
+    if (!category) return "";
+
+    // Here you can extend the conditions as per your requirements.
+    const lower = category.toLowerCase();
+
+    if (lower.includes("home")) {
+        return "home";
+    } else if (lower.includes("fashion")) {
+        return "fashion";
+    } else if (lower.includes("beauty")) {
+        return "beauty";
+    } else if (lower.includes("electronic")) {
+        return "electronics";
+    } else if (lower.includes("mobile")) {
+        return "mobile";
+    } else if (lower.includes("grocery")) {
+        return "grocery";
+    } else if (lower.includes("toy")) {
+        return "toys";
+    } else if (lower.includes("book")) {
+        return "books";
+    } else if (lower.includes("footwear")) {
+        return "footwear";
+    } else if (lower.includes("appliance")) {
+        return "appliance";
+    } else if (lower.includes("health")) {
+        return "health";
     }
-  
-    return "🛍️"; // default fallback
-  }
-  
-  
+
+    // Default: return the normalized category if no generic match is found
+    logger.info("Category not found in generic mapping, returning original category:", category);
+    return category;
+}
 
 
-  
+
+function decodeHtmlEntities(text = "") {
+    if (!text || typeof text !== "string") return text;
+
+    const entities = {
+        '&amp;': '&',
+        '&nbsp;': ' ',
+        '&lt;': '<',
+        '&gt;': '>',
+        '&quot;': '"',
+        '&#39;': "'",
+        '&#x27;': "'",
+        '&#x2F;': '/',
+        '&#96;': '`',
+        '&#x3D;': '=',
+    };
+
+    return text.replace(/&[a-zA-Z0-9#]+;/g, match => entities[match] || match);
+}
+
+function getEmojiForCategory(category = "") {
+    if (!category || typeof category !== "string") return "";
+
+    const categoryMap = {
+        "fashion": "👗🧥",
+        "beauty": "💄🧴",
+        "electronics": "💻📱",
+        "home": "🏠🛋️",
+        "kitchen": "🍳🥣",
+        "mobile": "📱",
+        "grocery": "🛒🥦",
+        "toys": "🧸🎯",
+        "books": "📚",
+        "footwear": "👟👠",
+        "appliance": "🔌🌀",
+        "health": "💊🩺",
+    };
+
+    
+  // Look up in the map using the generic category
+  return categoryMap[category] || "🛍️"; // default fallback if none is found
+}
+
+//     const lowerCategory = category.toLowerCase();
+
+//     for (const keyword in categoryMap) {
+//         if (lowerCategory.includes(keyword)) {
+//             return categoryMap[keyword];
+//         }
+//     }
+
+//     return "🛍️"; // default fallback
+// }
+
+
+
+
+
 // Utility: Shorten text if needed (you already have this)
 // function shortenProductText(text) {
 //     const limit = 120;
 //     return text.length > limit ? text.slice(0, limit) + "..." : text;
 //   }
-  
-  // Utility: Get emoji based on category
+
+// Utility: Get emoji based on category
 //   function getEmojiForCategory(category = "") {
 //     const categoryMap = {
 //       "Fashion": "👗🧥",
@@ -320,11 +396,11 @@ Mamaearth MEGA SALE 🔥🔥
 //       "Appliances": "🔌🌀",
 //       "Health": "💊🩺",
 //     };
-  
+
 //     return categoryMap[category] ? categoryMap[category] : "🛍️"; // default fallback
 //   }
 
-  // Function to read URLs from a text file and process them
+// Function to read URLs from a text file and process them
 async function extrapeLogin(driver) {
     try {
         await driver.get("https://www.extrape.com/login");
@@ -363,12 +439,12 @@ async function extrapeLogin(driver) {
     } catch (outerError) {
         console.error("Error logging into Extrape:", outerError);
     }
-        
+
 }
 async function readUrlsFromTxtUtils(filePath, processUrl) {
     try {
         const fileStream = fs.createReadStream(filePath);
-        
+
         // Create a readline interface to process the file line by line
         const rl = createInterface({
             input: fileStream,
@@ -385,8 +461,8 @@ async function readUrlsFromTxtUtils(filePath, processUrl) {
 }
 
 
-  function getformattedDate(url) {
-    
+function getformattedDate(url) {
+
     const date = new Date();
 
     // Get the year, month, and day from the date object
@@ -397,38 +473,38 @@ async function readUrlsFromTxtUtils(filePath, processUrl) {
     // Format the date as YYYY-MM-DD
     let formattedDate = `${year}-${month}-${day}`;
     return formattedDate;
-  }
+}
 
-  function getFlipkartProductId(url) {
+function getFlipkartProductId(url) {
     const parsedUrl = new URL(url);
     const searchParams = new URLSearchParams(parsedUrl.search);
     productCode = searchParams.get("pid") || "";
     return productCode;
 
-  }
+}
 
 
-  function getAsin(url) {
+function getAsin(url) {
     let start;
     let asin;
 
     // Check for "/gp/product/"
-    
+
     // Check for "/dp/"
     start = url.indexOf("/dp/");
     if (start !== -1) {
         start += 4; // Length of "/dp/" is 4
         asin = url.substr(start, 10);
         // Ensure there's a "?" or the end of the URL after the ASIN
-        if (url.charAt(start + 10) === '?' || start + 10 === url.length || url.charAt(start + 10) === '/' ) { // asin.length == 10 => check it
+        if (url.charAt(start + 10) === '?' || start + 10 === url.length || url.charAt(start + 10) === '/') { // asin.length == 10 => check it
             console.log("ASIN from /dp/:", asin);
             return asin;
-        } else if ( asin.length == 10) {
+        } else if (asin.length == 10) {
             console.log("ASIN URL Error but product key exists => Bug to be fixed => Immediate Check", url);
             return "";
         }
     }
-    
+
     start = url.indexOf("/gp/product/");
     if (start !== -1) {
         start += 13; // Length of "/gp/product/" is 13
@@ -443,30 +519,30 @@ async function readUrlsFromTxtUtils(filePath, processUrl) {
     return "";
 }
 
-  function getAsinOld(url) {
+function getAsinOld(url) {
     let start = url.indexOf("/dp/") + 4;
-    if(start == 3) {
+    if (start == 3) {
         start = url.indexOf("/gp/") + 4;
     }
-    if(start != 3) {
+    if (start != 3) {
         console.log("new asin is ", url.substr(start, 10));
         asin = url.substr(start, 10)
         return asin;
     } else {
-        console.log("Asin URL Error ",url);
+        console.log("Asin URL Error ", url);
         return "";
     }
-  }
-  function shortenProductText(productText) {
+}
+function shortenProductText(productText) {
     // List of symbols to trim at or after (including paired brackets)
     const symbols = [',', '|', '.', ']', ')'];
-    
+
     // Special handling for paired brackets: (), []
     const pairedSymbols = { '(': ')', '[': ']' };
 
     // Initialize minIndex as the length of the text
     let minIndex = productText.length;
-    
+
     // Loop through each symbol and find the first occurrence
     symbols.forEach(symbol => {
         let index = productText.indexOf(symbol);
@@ -534,7 +610,7 @@ module.exports = {
     getAjioCode,
     getMyntraCode,
     getUserDetails,
-    decodeHtmlEntities ,
+    decodeHtmlEntities,
     getEmojiForCategory
-    
+
 };
