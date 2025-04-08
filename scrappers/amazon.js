@@ -225,7 +225,7 @@ async function extractAttribute(driver, attributeConfig) {
   return null;
 }
 
-async function safeExtract(driver, configPath) {
+async function safeExtract(driver, configPath, removeAllSpaces = false) {
   try {
     const val = await extractAttribute(driver, configPath);
     const decoded = decodeHtmlEntities(val || "");
