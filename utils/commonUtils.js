@@ -10,6 +10,7 @@ const constants = require('../config/constants.js');
 const config = require('../config/config.js');
 
 const { users } = require("../config/users");
+const { By } = require('selenium-webdriver');
 
 function validatePrice(value) {
     // Remove any HTML tags

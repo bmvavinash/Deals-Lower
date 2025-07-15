@@ -86,11 +86,11 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
     //   console.log("productText error");
     // }
     // try { product.productText = text || "" } catch (e) { console.log("url Text error") }
-
+    
     product.urltext = await safeExtract(driver, config?.productText);
     product.productText = text || "";
     if (!keyExist) {
-
+      
       product.category = {}
       product.category.mainCategory = await safeExtract(driver, config?.category?.mainCategory, true);
       product.category.c1 = await safeExtract(driver, config?.category?.c1, true);

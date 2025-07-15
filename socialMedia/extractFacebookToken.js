@@ -11,23 +11,25 @@ async function extractFacebookToken(driver) {
         console.log(`Navigated to ${url}`);
 
         // Ensure "User Token" button is interactable
-        let userTokenButton = await driver.wait(
-            until.elementLocated(By.css(userTokenButtonSelector)),
-            7000
-        );
-        await driver.wait(until.elementIsVisible(userTokenButton), 7000);
-        await driver.executeScript('arguments[0].click();', userTokenButton); // JS click
-        console.log('User Token button clicked (via JS).');
+        // let userTokenButton = await driver.wait(
+        //     until.elementLocated(By.css(userTokenButtonSelector)),
+        //     7000
+        // );
+        // await driver.wait(until.elementIsVisible(userTokenButton), 7000);
+        // await driver.executeScript('arguments[0].click();', userTokenButton); // JS click
+        // console.log('User Token button clicked (via JS).');
 
-        await driver.sleep(1500); // Allow modal to load
+        // await driver.sleep(1500); // Allow modal to load
 
-        // Look for "Continue as ..." button inside the modal
-        const continueBtn = await driver.wait(
-            until.elementLocated(By.xpath(`//span[contains(text(), '${continueButtonText}')]`)),
-            7000
-        );
-        await driver.executeScript('arguments[0].click();', continueBtn);
-        console.log(`Clicked "${continueButtonText}" in modal.`);
+        // // Look for "Continue as ..." button inside the modal
+        // const continueBtn = await driver.wait(
+        //     until.elementLocated(By.xpath(`//span[contains(text(), '${continueButtonText}')]`)),
+        //     7000
+        // );
+        // await driver.executeScript('arguments[0].click();', continueBtn);
+        // console.log(`Clicked "${continueButtonText}" in modal.`);
+
+
 
         // Wait for token to load in input field
         const tokenInput = await driver.wait(
