@@ -7,8 +7,8 @@ const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode, decodeHtmlEnt
 const { getExtrapeUrl } = require("../affiliate/extrape");
 const ajioConfig = require("../config/ajioConfig");
 const myntraConfig = require("../config/myntraConfig");
-const { getModuleLogger } = require("../logger/logger");
 const { decode } = require('html-entities');
+const { getModuleLogger } = require("../logger/logger");
 
 
 const logger = getModuleLogger('amazon');
@@ -92,7 +92,11 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
     if (!keyExist) {
       
       product.category = {}
-      product.category.mainCategory = await safeExtract(driver, config?.category?.mainCategory, true);
+      if(platform === "flipkart"){
+        product.category.mainCategory = await safeExtract(driver, config?.category, true);
+      } else {
+        product.category.mainCategory = await safeExtract(driver, config?.category?.mainCategory, true);
+      }
       product.category.c1 = await safeExtract(driver, config?.category?.c1, true);
       product.category.c2 = await safeExtract(driver, config?.category?.c2, true);
       product.category.c3 = await safeExtract(driver, config?.category?.c3, true);
