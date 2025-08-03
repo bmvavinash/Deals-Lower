@@ -29,7 +29,7 @@ const CONFIG = {
       JSON_FILE_NAME: "dailydeals",
       DB2_TOKEN_FILE: "avideals1-firebase-adminsdk-6uwg0-f38dc84259",
       DB2_NAME: "avideals1",
-      DB3_TOKEN_FILE: "avideals1-firebase-adminsdk-6uwg0-f38dc84259",
+      DB3_TOKEN_FILE: "avideals1-firebase-adminsdk-6usdfweg0-f38dc842sdf34359",
       DB3_NAME: "avideals1",
       TEST_DB_TOKEN: "test_db_token_dev"
     },
@@ -55,7 +55,7 @@ const CONFIG = {
       JSON_FILE_NAME: "dailydeals",
       DB2_TOKEN_FILE: "avideals1-firebase-adminsdk-6uwg0-f38dc84259",
       DB2_NAME: "avideals1",
-      DB3_TOKEN_FILE: "avideals1-firebase-adminsdk-6uwg0-f38dc84259",
+      DB3_TOKEN_FILE: "avideals1-firebase-adminsdk-6es57uwg0-f38dse57575c84259",
       DB3_NAME: "avideals1",
       TEST_DB_TOKEN: "test_db_token_stage"
     },
@@ -81,7 +81,7 @@ const CONFIG = {
       JSON_FILE_NAME: "deals",
       DB2_TOKEN_FILE: "dealshubloots-firebase-adminsdk-o8i6x-ce14a7cfb9",
       DB2_NAME: "dealshubloots",
-      DB3_TOKEN_FILE: "dealshublinks-firebase-adminsdk-2q397-1d74ec028d",
+      DB3_TOKEN_FILE: "dealshublinks-firebase-adminsdk-2q3v7644565897-1d74ec028d",
       DB3_NAME: "dealshublinks",
       DB1_TOKEN: "db1_token_prod",
       DB2_TOKEN: "db2_token_prod",

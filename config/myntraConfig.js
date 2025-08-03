@@ -1,42 +1,58 @@
-const { validatePrice, validateDiscount, validateText } = require("../utils/commonUtils");
+const { validatePrice, validateDiscount, validateText, validateMRP, validateRatingsCount } = require("../utils/commonUtils");
 
 module.exports = {
+    brand: [
+        { type: "css", selector: ".pdp-title", validator: validateText },
+    ],
+    title: [
+        { type: "css", selector: ".pdp-name", validator: validateText },
+    ],
     productText: [
-        { type: "id", selector: "pdp-title", validator: validateText },
-        { type: "className", selector: "pdp-name", validator: validateText },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/h1', validator: validateText },
+        { type: "css", selector: ".pdp-title", validator: validateText },
+        { type: "css", selector: ".pdp-name", validator: validateText },
     ],
     price: [
-        { type: "id", selector: "pdp-price", validator: validatePrice },
-        { type: "className", selector: "pdp-price", validator: validatePrice },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/p/span/strong', validator: validatePrice },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/div/p[1]/span/strong', validator: validatePrice },
+        { type: "css", selector: ".pdp-price strong", validator: validatePrice },
     ],
     mrp: [
-        { type: "id", selector: "pdp-mrp", validator: validatePrice },
-        { type: "className", selector: "pdp-mrp-verbiage-amt", validator: validatePrice },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/p/div/div[2]/span', validator: validatePrice },
+        { type: "css", selector: ".pdp-mrp-verbiage .pdp-mrp-verbiage-amt", validator: validateMRP },
+        { type: "css", selector: ".pdp-mrp s", validator: validateMRP },
     ],
     discount: [
-        { type: "id", selector: "pdp-discount", validator: validateDiscount },
-        { type: "className", selector: "pdp-discount", validator: validateDiscount },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[2]/div[1]/p/span', validator: validateDiscount },
+        { type: "css", selector: ".pdp-discount", validator: validateDiscount },
     ],
-    ratings: [
-        { type: "id", selector: "index-overallRating" },
-        { type: "className", selector: "index-overallRating" },
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/div/div[1]/div[1]/div' },
+    rating: [
+        { type: "css", selector: ".index-overallRatingContainer .index-overallRating > div" },
     ],
-    photo: [
-        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/div[1]/div/div[1]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][1]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][2]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][3]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][4]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][5]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][6]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][7]', attribute: "style" },
-        { type: "xpath", selector: '//*[@class="image-grid-image"][8]', attribute: "style" }
+    ratingsCount: [
+        { type: "css", selector: ".index-overallRatingContainer .index-ratingsCount", validator: validateRatingsCount },
+    ],
+    images: [
+        {
+            type: "css-background-image",
+            selector: ".image-grid-image",
+            attribute: "style",
+            multiple: true
+        }
+    ],
+    offers: [
+        // Best Offer block
+        {
+            type: "css-offers",
+            selector: ".pdp-offers-offer", // the whole offer block
+            labelSelector: ".pdp-offers-offerTitle b",
+            contentSelector: ".pdp-offers-offerDesc .pdp-offers-labelMarkup",
+            couponSelector: ".pdp-offers-boldText",
+            classifyType: true
+        },
+        // Extra Offers block
+        {
+            type: "css-offers",
+            selector: ".pdp-offers-offerLikeBestPrice", // each extra offer block
+            labelSelector: ".pdp-offers-offerTitle b",
+            contentSelector: ".pdp-offers-offerDesc .pdp-offers-labelMarkup",
+            classifyType: true
+        }
     ],
     
     category: {
@@ -71,16 +87,62 @@ module.exports = {
             { type: "className", selector: "breadcrumbs-link" },
         ],
     },
-    description: {
-        d1: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[1]' }],
-        d2: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[2]' }],
-        d3: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[3]' }],
-        d4: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[4]' }],
-        d5: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[5]' }],
-        d6: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[6]' }],
-        d7: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[7]' }],
-        d8: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[8]' }],
-        d9: [{ type: "xpath", selector: '//*[@class="pdp-product-description-content"]/text()[9]' }]
-    }
-    
+    description: [
+        { type: "css", selector: ".pdp-product-description-content" },
+        { type: "css", selector: ".product-description" }
+    ],
+    photo: [
+        { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/div[1]/div/div[1]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][1]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][2]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][3]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][4]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][5]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][6]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][7]', attribute: "style" },
+        { type: "xpath", selector: '//*[@class="image-grid-image"][8]', attribute: "style" }
+    ],
+    sizeFit: [
+        { type: "css", selector: ".pdp-sizeFitDescContent" },
+    ],
+    materialCare: [
+        { type: "css", selector: ".pdp-sizeFitDescContent" },
+    ],
+    specifications: [
+        {
+            type: "css-table",
+            selector: ".index-tableContainer .index-row",
+            keySelector: ".index-rowKey",
+            valueSelector: ".index-rowValue",
+        }
+    ],
+    productCode: [
+        { type: "css", selector: ".supplier-styleId" },
+    ],
+    seller: [
+        { type: "css", selector: ".supplier-productSellerName" },
+    ],
+    reviewsCount: [
+        { type: "css", selector: ".index-overallRatingContainer .index-ratingsCount" },
+    ],
+    color: [
+        { type: "css", selector: ".pdp-colorInfo" },
+        { type: "css", selector: ".pdp-colorName" },
+    ],
+    sizes: [
+        { type: "css", selector: ".size-buttons-size-button", multiple: true },
+        { type: "css", selector: ".size-variant-item", multiple: true },
+    ],
+    extraOffers: [
+        { type: "css", selector: ".pdp-offers-extraOffer" },
+    ],
+    coupon: [
+        { type: "css", selector: ".coupon-badge" },
+        { type: "css", selector: ".pdp-offers-boldText" },
+    ],
+    timer: [
+        { type: "css", selector: ".countdown-timer" },
+        { type: "css", selector: ".deal-timer" },
+    ],
+    // category and description configs can be added as needed
 };

@@ -17,121 +17,279 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
   // Load the appropriate config
   const config = platform === "amazon" ? amazonConfig : platform === "flipkart" ? flipkartConfig : platform === "ajio" ? ajioConfig : platform === "myntra" ? myntraConfig : null;
   if (!config) {
-    console.log(`Config for ${platform} is missing`);
+    logger.error(`Config for ${platform} is missing`);
     return {};
   }
 
   let product = {};
   try {
-    // Extract price, discount, etc., using the generic function
-    try { product.price = String(await extractAttribute(driver, config.price)) || ""; } catch (e) { console.log("price error", e) }
-    try { product.discount = String(await extractAttribute(driver, config.discount)) || ""; } catch (e) { console.log("discount error", e) }
-    try { product.timer = String(await extractAttribute(driver, config?.timer)) || ""; } catch (e) { console.log("timer error", e) }
+    logger.info(`[${platform}] Starting product scraping for URL: ${url}`);
+    
+    // Extract basic product information with proper error handling
+    try { 
+      const brandValue = await extractAttribute(driver, config?.brand);
+      product.brand = brandValue ? String(brandValue) : "";
+    } catch (e) { logger.error(`[${platform}] brand error:`, { error: e.message, stack: e.stack }); product.brand = ""; }
+    try { 
+      const titleValue = await extractAttribute(driver, config?.title);
+      product.title = titleValue ? String(titleValue) : "";
+    } catch (e) { logger.error(`[${platform}] title error:`, { error: e.message, stack: e.stack }); product.title = ""; }
+    try { 
+      const priceValue = await extractAttribute(driver, config.price);
+      product.price = priceValue ? String(priceValue) : "";
+    } catch (e) { logger.error(`[${platform}] price error:`, { error: e.message, stack: e.stack }); product.price = ""; }
+    try { 
+      const discountValue = await extractAttribute(driver, config.discount);
+      product.discount = discountValue ? String(discountValue) : "";
+      // Log if discount value is greater than 100
+      if (product.discount) {
+        const discountNumeric = parseFloat(product.discount.replace(/[^\d.-]/g, ''));
+        if (!isNaN(discountNumeric) && discountNumeric > 100) {
+          logger.warn(`[${platform}] High discount value detected:`, { 
+            discount: product.discount, 
+            numericValue: discountNumeric,
+            url: url 
+          });
+        }
+      }
+    } catch (e) { logger.error(`[${platform}] discount error:`, { error: e.message, stack: e.stack }); product.discount = ""; }
+    try { 
+      const mrpValue = await extractAttribute(driver, config?.mrp);
+      product.mrp = mrpValue ? String(mrpValue) : "";
+    } catch (e) { logger.error(`[${platform}] mrp error:`, { error: e.message, stack: e.stack }); product.mrp = ""; }
+    try { 
+      const ratingValue = await extractAttribute(driver, config?.rating);
+      product.rating = ratingValue ? String(ratingValue) : "";
+    } catch (e) { logger.error(`[${platform}] rating error:`, { error: e.message, stack: e.stack }); product.rating = ""; }
+    try { 
+      const ratingsCountValue = await extractAttribute(driver, config?.ratingsCount);
+      product.ratingsCount = ratingsCountValue ? String(ratingsCountValue) : "";
+    } catch (e) { logger.error(`[${platform}] ratingsCount error:`, { error: e.message, stack: e.stack }); product.ratingsCount = ""; }
+    try { 
+      const reviewsCountValue = await extractAttribute(driver, config?.reviewsCount);
+      product.reviewsCount = reviewsCountValue ? String(reviewsCountValue) : "";
+    } catch (e) { logger.error(`[${platform}] reviewsCount error:`, { error: e.message, stack: e.stack }); product.reviewsCount = ""; }
+    try { 
+      const colorValue = await extractAttribute(driver, config?.color);
+      product.color = colorValue ? String(colorValue) : "";
+    } catch (e) { logger.error(`[${platform}] color error:`, { error: e.message, stack: e.stack }); product.color = ""; }
+    
+    // Platform-specific attributes
+    // Flipkart-specific: flipkartAssure
+    if (platform === "flipkart") {
+      try { 
+        const flipkartAssureValue = await extractAttribute(driver, config?.flipkartAssure);
+        product.flipkartAssure = flipkartAssureValue ? String(flipkartAssureValue) : "";
+      } catch (e) { logger.error(`[${platform}] flipkartAssure error:`, { error: e.message, stack: e.stack }); product.flipkartAssure = ""; }
+    }
+    
+    // Amazon-specific: asin
+    if (platform === "amazon") {
+      try { 
+        const asinValue = await extractAttribute(driver, config?.asin);
+        product.asin = asinValue ? String(asinValue) : "";
+      } catch (e) { logger.error(`[${platform}] asin error:`, { error: e.message, stack: e.stack }); product.asin = ""; }
+    } else {
+      product.asin = "";
+    }
+    
+    // Common attributes for all platforms
+    try { 
+      const extraOffersValue = await extractAttribute(driver, config?.extraOffers);
+      product.extraOffers = extraOffersValue ? String(extraOffersValue) : "";
+    } catch (e) { logger.error(`[${platform}] extraOffers error:`, { error: e.message, stack: e.stack }); product.extraOffers = ""; }
+    try { 
+      const sizeFitValue = await extractAttribute(driver, config?.sizeFit);
+      product.sizeFit = sizeFitValue ? String(sizeFitValue) : "";
+    } catch (e) { logger.error(`[${platform}] sizeFit error:`, { error: e.message, stack: e.stack }); product.sizeFit = ""; }
+    try { 
+      const materialCareValue = await extractAttribute(driver, config?.materialCare);
+      product.materialCare = materialCareValue ? String(materialCareValue) : "";
+    } catch (e) { logger.error(`[${platform}] materialCare error:`, { error: e.message, stack: e.stack }); product.materialCare = ""; }
+    try { 
+      const sellerValue = await extractAttribute(driver, config?.seller);
+      product.seller = sellerValue ? String(sellerValue) : "";
+    } catch (e) { logger.error(`[${platform}] seller error:`, { error: e.message, stack: e.stack }); product.seller = ""; }
+    
+    // Timer extraction with platform-specific handling
+    try {
+      if (platform === "flipkart" && Array.isArray(config.timer)) {
+        // Extract all timer spans and join them
+        let timerElements = await driver.findElements(By.css('.mSzn2o .E2lCdq span:not(.DWia7o)'));
+        let timerParts = [];
+        for (let el of timerElements) {
+          let text = (await el.getText()).trim();
+          if (text) timerParts.push(text);
+        }
+        product.timer = timerParts.length > 0 ? timerParts.join(' ') : "";
+        logger.debug(`[${platform}] Timer extracted: ${product.timer}`);
+      } else {
+        const timerValue = await extractAttribute(driver, config?.timer);
+        product.timer = timerValue ? String(timerValue) : "";
+      }
+    } catch (e) { logger.error(`[${platform}] timer error:`, { error: e.message, stack: e.stack }); product.timer = ""; }
 
     // Product code extraction based on platform
-    // #Todo : Convert using StoreMap
-    // #Todo : Import values dynamically directly from config (don't mention the names like price or discount but extract all key values from the config)
     if (platform === "amazon") {
       product.productCode = getAsin(url) || "";
     } else if (platform === "flipkart") {
       try {
-        product.productCode = getFlipkartProductId(url) || ""
-        // const parsedUrl = new URL(url);
-        // const searchParams = new URLSearchParams(parsedUrl.search);
-        // product.productCode = searchParams.get("pid") || "";
-      } catch (e) {
-        console.log("asin error so skipping the product")
-        //  return {};
-      }
-      // }
-      // else {
-      //   product.productCode = asin;
-      // }
-      // catch(e){
-      //   console.log("Asin New Url Extract Error")
-      // }
+        product.productCode = getFlipkartProductId(url) || "";
+      } catch (e) { logger.error(`[${platform}] productCode error:`, { error: e.message, stack: e.stack }); product.productCode = ""; }
     } else if (platform === "ajio") {
       product.productCode = getAjioCode(url);
     } else if (platform === "myntra") {
       product.productCode = getMyntraCode(url);
     }
+    logger.debug(`[${platform}] Product code extracted: ${product.productCode}`);
+
+    // Myntra special image handling (background-image style)
     if (platform === "myntra") {
-      try { imageElement = await extractAttribute(driver, config?.photo) || ""; } catch (e) { console.log("photo error") }
-      // const imageElement = document.querySelector(".image-grid-image");
-
-      // Extract the URL from the background-image style attribute
-      try { product.photo = imageElement.match(/url\("(.*?)"\)/)[1]; } catch (e) { console.log("Image Extract Error in Myntra ", e); }
-
-      // Output the single image URL
-      // console.log(imageUrl);
-      // const imageUrls = config.images.map(image => {
-      //   const style = image.getAttribute("style");
-      //   return style.match(/url\("(.*?)"\)/)[1]; // Extracts URL from the style attribute
-
-      // });
-      // try{ product.photo = imageUrls[0] } catch(e) { console.log("Myntra Image Error")}
-      // try{ product.images = imageUrls; } catch(e) { console.log("Myntra Multiple Image Error")} 
+      try { 
+        const imageElement = await extractAttribute(driver, config?.photo);
+        if (imageElement) {
+          try { product.photo = imageElement.match(/url\("(.*?)"\)/)[1]; } catch (e) { logger.error(`[${platform}] Image Extract Error:`, { error: e.message, stack: e.stack }); product.photo = ""; }
+        } else {
+          product.photo = "";
+        }
+      } catch (e) { logger.error(`[${platform}] photo error:`, { error: e.message, stack: e.stack }); product.photo = ""; }
     } else {
-
-      try { product.photo = await extractAttribute(driver, config?.photo) || ""; } catch (e) { console.log("photo error") }
+      try { 
+        const photoValue = await extractAttribute(driver, config?.photo);
+        product.photo = photoValue ? String(photoValue) : "";
+      } catch (e) { logger.error(`[${platform}] photo error:`, { error: e.message, stack: e.stack }); product.photo = ""; }
     }
-    // try { product.urltext = await extractAttribute(driver, config?.productText) || ""; } catch (e) { console.log("productText error") }
-    // try {
-    //   let rawText = await extractAttribute(driver, config?.productText) || "";
-    //   // Decode HTML entities like &nbsp;
-    //   rawText = decode(rawText);
-    //   // Replace multiple spaces (including non-breaking) with a single regular space
-    //   product.urltext = rawText.replace(/\s+/g, ' ').trim();
-    // } catch (e) {
-    //   console.log("productText error");
-    // }
-    // try { product.productText = text || "" } catch (e) { console.log("url Text error") }
-    
-    product.urltext = await safeExtract(driver, config?.productText);
+
+    try { product.urltext = await safeExtract(driver, config?.productText); } catch (e) { logger.error(`[${platform}] urltext error:`, { error: e.message, stack: e.stack }); product.urltext = ""; }
     product.productText = text || "";
-    if (!keyExist) {
-      
-      product.category = {}
-      if(platform === "flipkart"){
-        product.category.mainCategory = await safeExtract(driver, config?.category, true);
-      } else {
-        product.category.mainCategory = await safeExtract(driver, config?.category?.mainCategory, true);
-      }
-      product.category.c1 = await safeExtract(driver, config?.category?.c1, true);
-      product.category.c2 = await safeExtract(driver, config?.category?.c2, true);
-      product.category.c3 = await safeExtract(driver, config?.category?.c3, true);
-      product.category.c4 = await safeExtract(driver, config?.category?.c4, true);
-      product.category.c5 = await safeExtract(driver, config?.category?.c5, true);
-
-      product.description = {};
-      product.description.d1 = await safeExtract(driver, config?.description?.d1);
-      product.description.d2 = await safeExtract(driver, config?.description?.d2);
-      product.description.d3 = await safeExtract(driver, config?.description?.d3);
-      product.description.d4 = await safeExtract(driver, config?.description?.d4);
-      product.description.d5 = await safeExtract(driver, config?.description?.d5);
-      product.description.d6 = await safeExtract(driver, config?.description?.d6);
-      product.description.d7 = await safeExtract(driver, config?.description?.d7);
-      product.description.d8 = await safeExtract(driver, config?.description?.d8);
-      product.description.d9 = await safeExtract(driver, config?.description?.d9);
-      // product?.brand = await extractAttribute(driver, config?.brand);
+    
+    // Extract multiple elements with error handling
+    try { product.images = await extractMultiple(driver, config?.images); } catch (e) { logger.error(`[${platform}] images error:`, { error: e.message, stack: e.stack }); product.images = []; }
+    try { product.sizes = await extractMultiple(driver, config?.sizes); } catch (e) { logger.error(`[${platform}] sizes error:`, { error: e.message, stack: e.stack }); product.sizes = []; }
+    try { product.specifications = await extractMultiple(driver, config?.specifications); } catch (e) { logger.error(`[${platform}] specifications error:`, { error: e.message, stack: e.stack }); product.specifications = {}; }
+    
+    // Amazon-specific: productTable
+    if (platform === "amazon") {
+      try { product.productTable = await extractMultiple(driver, config?.productTable); } catch (e) { logger.error(`[${platform}] productTable error:`, { error: e.message, stack: e.stack }); product.productTable = {}; }
+    } else {
+      product.productTable = {};
     }
-    if (product?.photo != "") {
-
-
-      if (product && product?.links && product?.links?.avinashbmv != "") {
-
+    
+    // Common attributes for all platforms
+    try { product.promoInfo = await extractMultiple(driver, config?.promoInfo); } catch (e) { logger.error(`[${platform}] promoInfo error:`, { error: e.message, stack: e.stack }); product.promoInfo = []; }
+    try { product.coupon = await extractMultiple(driver, config?.coupon); } catch (e) { logger.error(`[${platform}] coupon error:`, { error: e.message, stack: e.stack }); product.coupon = []; }
+    
+    // Description extraction with fallback logic
+    try {
+      let desc = await extractMultiple(driver, config?.description);
+      if (!desc || (Array.isArray(desc) && desc.length === 0)) {
+        // Fallback: try old logic (single string extraction)
+        let fallbackDesc = await extractAttribute(driver, config?.description);
+        product.description = fallbackDesc ? [fallbackDesc] : [];
+        logger.warn(`[${platform}] Fallback to old description extraction logic.`);
       } else {
+        product.description = desc;
+      }
+    } catch (e) {
+      logger.error(`[${platform}] description error:`, { error: e.message, stack: e.stack });
+      product.description = [];
+    }
 
-        product.links = {};
-        try { product.links.avinashbmvINR = ""; } catch (e) { console.log("avinashbmvINR Error", e) }
+    // Category extraction (only if keyExist is false)
+    if (!keyExist) {
+      product.category = {};
+      if (platform === "flipkart") {
+        try { product.category.mainCategory = await safeExtract(driver, config?.category, true); } catch (e) { logger.error(`[${platform}] mainCategory error:`, { error: e.message, stack: e.stack }); product.category.mainCategory = ""; }
+      } else {
+        try { product.category.mainCategory = await safeExtract(driver, config?.category?.mainCategory, true); } catch (e) { logger.error(`[${platform}] mainCategory error:`, { error: e.message, stack: e.stack }); product.category.mainCategory = ""; }
+      }
+      try { product.category.c1 = await safeExtract(driver, config?.category?.c1, true); } catch (e) { logger.error(`[${platform}] category.c1 error:`, { error: e.message, stack: e.stack }); product.category.c1 = ""; }
+      try { product.category.c2 = await safeExtract(driver, config?.category?.c2, true); } catch (e) { logger.error(`[${platform}] category.c2 error:`, { error: e.message, stack: e.stack }); product.category.c2 = ""; }
+      try { product.category.c3 = await safeExtract(driver, config?.category?.c3, true); } catch (e) { logger.error(`[${platform}] category.c3 error:`, { error: e.message, stack: e.stack }); product.category.c3 = ""; }
+      try { product.category.c4 = await safeExtract(driver, config?.category?.c4, true); } catch (e) { logger.error(`[${platform}] category.c4 error:`, { error: e.message, stack: e.stack }); product.category.c4 = ""; }
+      try { product.category.c5 = await safeExtract(driver, config?.category?.c5, true); } catch (e) { logger.error(`[${platform}] category.c5 error:`, { error: e.message, stack: e.stack }); product.category.c5 = ""; }
+      try { product.category.c6 = await safeExtract(driver, config?.category?.c6, true); } catch (e) { logger.error(`[${platform}] category.c6 error:`, { error: e.message, stack: e.stack }); product.category.c6 = ""; }
+
+      // Detailed description extraction (only for Amazon)
+      if (platform === "amazon") {
+        product.description = {};
+        try { product.description.d1 = await safeExtract(driver, config?.description?.d1); } catch (e) { logger.error(`[${platform}] description.d1 error:`, { error: e.message, stack: e.stack }); product.description.d1 = ""; }
+        try { product.description.d2 = await safeExtract(driver, config?.description?.d2); } catch (e) { logger.error(`[${platform}] description.d2 error:`, { error: e.message, stack: e.stack }); product.description.d2 = ""; }
+        try { product.description.d3 = await safeExtract(driver, config?.description?.d3); } catch (e) { logger.error(`[${platform}] description.d3 error:`, { error: e.message, stack: e.stack }); product.description.d3 = ""; }
+        try { product.description.d4 = await safeExtract(driver, config?.description?.d4); } catch (e) { logger.error(`[${platform}] description.d4 error:`, { error: e.message, stack: e.stack }); product.description.d4 = ""; }
+        try { product.description.d5 = await safeExtract(driver, config?.description?.d5); } catch (e) { logger.error(`[${platform}] description.d5 error:`, { error: e.message, stack: e.stack }); product.description.d5 = ""; }
+        try { product.description.d6 = await safeExtract(driver, config?.description?.d6); } catch (e) { logger.error(`[${platform}] description.d6 error:`, { error: e.message, stack: e.stack }); product.description.d6 = ""; }
+        try { product.description.d7 = await safeExtract(driver, config?.description?.d7); } catch (e) { logger.error(`[${platform}] description.d7 error:`, { error: e.message, stack: e.stack }); product.description.d7 = ""; }
+        try { product.description.d8 = await safeExtract(driver, config?.description?.d8); } catch (e) { logger.error(`[${platform}] description.d8 error:`, { error: e.message, stack: e.stack }); product.description.d8 = ""; }
+        try { product.description.d9 = await safeExtract(driver, config?.description?.d9); } catch (e) { logger.error(`[${platform}] description.d9 error:`, { error: e.message, stack: e.stack }); product.description.d9 = ""; }
+      }
+    }
+
+    // Robust offers extraction: try all selectors in config.offers in order, return first non-empty
+    let offersExtracted = false;
+    if (platform === "myntra" && Array.isArray(config.offers)) {
+      try {
+        // Always extract all offers for Myntra using extractCssOffers
+        logger.info(`[${platform}] Extracting Myntra offers...`);
+        const offers = await extractCssOffers(driver, config.offers);
+        product.offers = Array.isArray(offers) ? offers : [];
+        logger.info(`[${platform}] Myntra offers extracted: ${product.offers.length}`);
+        // Do NOT set offersExtracted or overwrite product.offers for Myntra
+      } catch (e) {
+        logger.error(`[${platform}] Error extracting Myntra offers:`, { error: e.message, stack: e.stack });
+        product.offers = [];
+      }
+    } else if (Array.isArray(config.offers)) {
+      for (const offerConfig of config.offers) {
+        try {
+          let offers = [];
+          if (offerConfig.type === 'css-bankoffers') {
+            offers = await extractBankOffers(driver, [offerConfig]);
+          } else if (offerConfig.type === 'css-offers') {
+            offers = await extractCssOffers(driver, [offerConfig]);
+          }
+          if (offers && offers.length > 0) {
+            product.offers = offers;
+            offersExtracted = true;
+            logger.info(`[${platform}] Offers extracted successfully: ${offers.length} offers`);
+            break;
+          }
+        } catch (e) { logger.error(`[${platform}] offers error:`, { error: e.message, stack: e.stack }); }
+      }
+      if (!offersExtracted) product.offers = [];
+    }
+
+    // Robust description extraction: try all selectors in config.description in order, return first non-empty
+    let descExtracted = false;
+    if (Array.isArray(config.description)) {
+      for (const descConfig of config.description) {
+        try {
+          const desc = await extractMultiple(driver, [descConfig]);
+          if (desc && desc.length > 0) {
+            product.description = desc;
+            descExtracted = true;
+            break;
+          }
+        } catch (e) { logger.error(`[${platform}] description error:`, { error: e.message, stack: e.stack }); }
+      }
+    }
+    if (!descExtracted) product.description = [];
+
+    try {
+      if (platform === "amazon" && config.coupon) {
+        product.coupon = await extractMultiple(driver, config.coupon) || [];
+      }
+    } catch (e) { logger.error(`[${platform}] coupon error:`, { error: e.message, stack: e.stack }); product.coupon = []; }
+
+    // --- URL Generation: always generate product.links ---
+    if (!product.links) product.links = {};
         try {
           if (username?.includes("dealsglobalhub")) {
-
             if (platform === "amazon") {
               try {
                 product.links.avinashbmv = await amazonLinkGenerator(driver) || "";
                 product.links.avinashbmvINR = "";
-              } catch (e) { console.log("Amazon link generation error") }
+          } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
             } else {
               try {
                 product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
@@ -140,33 +298,24 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
                 } else {
                   product.links.avinashbmv = shortUrl || await getExtrapeUrl(driver, url);
                 }
-              } catch (e) { console.log("Generic link generation error") }
+          } catch (e) { logger.error(`[${platform}] Generic link generation error:`, { error: e.message, stack: e.stack }); }
             }
           } else {
             product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
             product.links[username] = shortUrl || "";
-            product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
-            // logger.info("Skipping the link generation as the user is not dealsglobalhub" , { functionName: 'scrapeProduct' });
-          }
-        } catch (e) {
-          console.log("Error in link generation ", e);
-        }
+        try { product.links.avinashbmv = await getExtrapeUrl(driver, url) || ""; } catch (e) { logger.error(`[${platform}] getExtrapeUrl error:`, { error: e.message, stack: e.stack }); }
       }
-    }
+    } catch (e) { logger.error(`[${platform}] Error in link generation:`, { error: e.message, stack: e.stack }); }
 
+    logger.info(`[${platform}] Product scraping completed successfully`, { 
+      productCode: product.productCode, 
+      title: product.title?.substring(0, 50) + '...',
+      price: product.price,
+      offersCount: product.offers?.length || 0
+    });
 
-
-
-
-    // try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { console.log("link generation error") }
-    // }
-    else {
-      console.log("No Photo hence skipping the link generation")
-    }
-    // Log product or further processing
-    // console.log("Product is ", product);
     return product;
-  } catch (e) { console.log("Error in scrap Product ", e); }
+  } catch (e) { logger.error(`[${platform}] Error in scrap Product:`, { error: e.message, stack: e.stack, url }); }
 }
 
 async function extractAttribute(driver, attributeConfig) {
@@ -226,7 +375,7 @@ async function extractAttribute(driver, attributeConfig) {
   // } else {
   // console.log("All xpaths failed or validation failed for all xpaths."); // #ToDo Need to remove
   // }
-  return null;
+  return ""; // Return empty string instead of null
 }
 
 async function safeExtract(driver, configPath, removeAllSpaces = false) {
@@ -245,6 +394,211 @@ async function safeExtract(driver, configPath, removeAllSpaces = false) {
     console.log(`${configPath} error`);
     return "";
   }
+}
+
+async function extractMultiple(driver, config) {
+  if (!Array.isArray(config)) {
+    logger.warn("extractMultiple: config is not iterable", { config });
+    // Fallback: If config is for description, try old logic (single string extraction)
+    if (config && (config.type === 'css' || config.type === 'xpath')) {
+      try {
+        let val = await extractAttribute(driver, [config]);
+        if (val) return [val];
+      } catch (e) {
+        logger.error('extractMultiple fallback error:', { error: e.message, stack: e.stack });
+      }
+    }
+    return (config && config.type === 'css-table') ? {} : [];
+  }
+  for (let c of config) {
+    try {
+      if (c.multiple && c.attribute) {
+        // For images
+        let elements = await driver.findElements(By.css(c.selector));
+        logger.debug(`[extractMultiple] Images selector: ${c.selector}, Found: ${elements.length}`);
+        let values = [];
+        if (c.type === 'css-background-image') {
+          // Special handling: extract only the URL from background-image style
+          for (let el of elements) {
+            let style = await el.getAttribute(c.attribute);
+            if (style) {
+              // Extract URL from: background-image: url("...");
+              let match = style.match(/background-image:\s*url\(["']?(.*?)["']?\)/i);
+              if (match && match[1]) values.push(match[1]);
+            }
+          }
+        } else {
+          for (let el of elements) {
+            let val = await el.getAttribute(c.attribute);
+            if (val) values.push(val);
+          }
+        }
+        logger.debug(`[extractMultiple] Images extracted: ${values.length}`);
+        if (values.length > 0) return values;
+      } else if (c.type === "css-list") {
+        // For description
+        let elements = await driver.findElements(By.css(c.selector));
+        let values = [];
+        for (let el of elements) {
+          let text = (await el.getText()).trim();
+          if (text) values.push(text);
+        }
+        if (values.length > 0) return values;
+      } else if (c.type === "css-table") {
+        // For productTable
+        let rows = await driver.findElements(By.css(c.selector));
+        let table = {};
+        for (let row of rows) {
+          try {
+            let keyEl = await row.findElement(By.css(c.keySelector));
+            let valueEl = await row.findElement(By.css(c.valueSelector));
+            let key = (await keyEl.getText()).trim();
+            let value = (await valueEl.getText()).trim();
+            if (key && value) table[key] = value;
+          } catch (e) {}
+        }
+        if (Object.keys(table).length > 0) return table;
+      } else if (c.type === "css") {
+        // For single text content
+        let elements = await driver.findElements(By.css(c.selector));
+        for (let el of elements) {
+          let text = (await el.getText()).trim();
+          if (text) return [text];
+        }
+      }
+    } catch (e) {
+      // Log and continue
+      logger.error('extractMultiple error:', { error: e.message, stack: e.stack, selector: c.selector });
+    }
+  }
+  return (config && config[0] && config[0].type === 'css-table') ? {} : [];
+}
+
+async function extractBankOffers(driver, offersConfig) {
+  for (let config of offersConfig) {
+    if (config.type === "css-bankoffers") {
+      let offerCards = await driver.findElements(By.css(config.selector));
+      logger.info(`Found ${offerCards.length} offer cards with selector: ${config.selector}`);
+      let offers = [];
+      for (let card of offerCards) {
+        let offerType = "";
+        let offerContent = "";
+        try {
+          let h6 = await card.findElement(By.css(config.offerTypeSelector));
+          offerType = (await h6.getText()).trim();
+          logger.debug(`Offer type found: "${offerType}"`);
+        } catch (e) {
+          // logger.error(`Error finding offer type:`, { error: e.message, stack: e.stack });
+        }
+        try {
+          let contentFull = await card.findElement(By.css(config.offerContentSelectorFull));
+          logger.debug(`Found content element with selector: ${config.offerContentSelectorFull}`);
+          offerContent = (await contentFull.getText()).trim();
+          logger.debug(`Offer content (full) found: "${offerContent}"`);
+          if (!offerContent) {
+            // Try innerText if getText() returns empty
+            offerContent = (await contentFull.getAttribute('innerText')).trim();
+            logger.debug(`Offer content (innerText) found: "${offerContent}"`);
+          }
+        } catch (e) {
+          // logger.error(`Error finding full content:`, { error: e.message, stack: e.stack });
+          try {
+            let contentCut = await card.findElement(By.css(config.offerContentSelectorCut));
+            offerContent = (await contentCut.getText()).trim();
+            logger.debug(`Offer content (cut) found: "${offerContent}"`);
+          } catch (e2) {
+            // logger.error(`Error finding cut content:`, { error: e2.message, stack: e2.stack });
+            // Try alternative approach - get all text from the content area
+            try {
+              let contentArea = await card.findElement(By.css(".offers-items-content"));
+              offerContent = (await contentArea.getText()).trim();
+              logger.debug(`Offer content (area) found: "${offerContent}"`);
+            } catch (e3) {
+              // logger.error(`Error finding content area:`, { error: e3.message, stack: e3.stack });
+            }
+          }
+        }
+        if (offerType && offerContent) {
+          // Classify as EMI or non-EMI
+          let isEmi = /emi/i.test(offerType) || /emi/i.test(offerContent);
+          offers.push({
+            type: offerType,
+            content: offerContent,
+            emi: isEmi ? 'emi' : 'non-emi'
+            
+          });
+        } else if (offerType || offerContent) {
+          // Push partial offers if at least one is present
+          logger.warn('Partial offer extracted:', { offerType, offerContent });
+          offers.push({
+            type: offerType || '',
+            content: offerContent || '',
+            emi: (/emi/i.test((offerType || '') + (offerContent || ''))) ? 'emi' : 'non-emi'
+          });
+        } else {
+          // Log if both are missing
+          let cardHtml = await card.getAttribute('outerHTML');
+          logger.warn('Empty offer card HTML:', { cardHtml: cardHtml.substring(0, 200) + '...' });
+          logger.warn('Empty offer card:', { offerType, offerContent });
+        }
+      }
+      if (offers.length > 0) {
+        return offers;
+      } else {
+        logger.warn(`[extractBankOffers] No offers extracted from ${offerCards.length} offer cards`);
+      }
+    }
+  }
+  logger.warn(`[extractBankOffers] No offers found with any configuration`);
+  return [];
+}
+
+// Add this function for css-offers extraction (Flipkart, Ajio, Myntra, etc.)
+async function extractCssOffers(driver, offersConfig) {
+  let allOffers = [];
+  for (let config of offersConfig) {
+    if (config.type === 'css-offers') {
+      let offerLis = await driver.findElements(By.css(config.selector));
+      logger.debug(`[extractCssOffers] Selector: ${config.selector}, Found: ${offerLis.length}`);
+      for (let li of offerLis) {
+        try {
+          let outerHTML = await li.getAttribute('outerHTML');
+          logger.debug(`[extractCssOffers] Offer element outerHTML:`, { outerHTML: outerHTML.substring(0, 200) + '...' });
+          let label = '';
+          let content = '';
+          let type = 'other';
+          if (config.labelSelector) {
+            try {
+              let labelEl = await li.findElement(By.css(config.labelSelector));
+              label = (await labelEl.getText()).trim();
+            } catch (e) { logger.error('[extractCssOffers] labelSelector error:', { error: e.message, stack: e.stack }); }
+          }
+          if (config.contentSelector) {
+            let contentEls = await li.findElements(By.css(config.contentSelector));
+            if (contentEls.length > 1) {
+              content = (await contentEls[1].getText()).trim();
+            } else if (contentEls.length === 1) {
+              content = (await contentEls[0].getText()).trim();
+            } else {
+              content = (await li.getText()).replace(label, '').trim();
+            }
+          } else {
+            content = (await li.getText()).replace(label, '').trim();
+          }
+          if (/bank offer/i.test(label)) type = 'bank';
+          else if (/emi/i.test(label + content)) type = 'emi';
+          else if (/special price/i.test(label)) type = 'special';
+          allOffers.push({ type, label, content });
+        } catch (e) { logger.error('[extractCssOffers] offer element error:', { error: e.message, stack: e.stack }); }
+      }
+    }
+  }
+  if (allOffers.length > 0) {
+    return allOffers;
+  } else {
+    logger.warn(`[extractCssOffers] No offers extracted from any configuration`);
+  }
+  return allOffers;
 }
 
 

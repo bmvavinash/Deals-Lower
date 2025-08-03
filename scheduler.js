@@ -190,6 +190,19 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
   // finally {
   // }
 }
+
+function sanitizeFirebaseKeys(obj) {
+  if (typeof obj !== 'object' || obj === null) return obj;
+
+  const sanitized = {};
+  for (let key in obj) {
+    // Replace all invalid Firebase key characters
+    const safeKey = key.replace(/[.#$/[\]]/g, '_');
+    sanitized[safeKey] = sanitizeFirebaseKeys(obj[key]);
+  }
+  return sanitized;
+}
+
 module.exports = {
   getProductDetails,
 };

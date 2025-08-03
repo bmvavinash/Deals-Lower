@@ -46,17 +46,167 @@ function validatePrice(value) {
 
 
 function validateDiscount(value) {
-    // Remove unnecessary text and symbols
-    const cleanedValue = value.replace(/[()%\s]*OFF[()%\s]*/gi, "").trim();
-    const match = cleanedValue.match(/\d+/); // Capture only digits
+    let cleanedValue = value.replace(/%|\s|&nbsp;|-/g, "").trim();
+    const discount = parseInt(cleanedValue, 10);
+    return {
+        isValid: discount > 0,
+        value: discount
+    };
+}
 
-    const discount = match ? parseInt(match[0], 10) : NaN;
+// Function to extract ASIN from data-csa-c-item-id attribute
+function extractAsin(value) {
+    if (!value) return { isValid: false, value: "N/A" };
+    
+    console.log("Extracting ASIN from:", value); // Debug log
+    
+    // Extract ASIN from format like "amzn1.asin.1.B0F4DG9ZH5"
+    const asinMatch = value.match(/amzn1\.asin\.\d+\.([A-Z0-9]{10})/);
+    if (asinMatch) {
+        console.log("ASIN extracted:", asinMatch[1]); // Debug log
+        return {
+            isValid: true,
+            value: asinMatch[1]
+        };
+    }
+    
+    // Try alternative format if the first one doesn't work
+    const altMatch = value.match(/([A-Z0-9]{10})/);
+    if (altMatch) {
+        console.log("ASIN extracted (alternative):", altMatch[1]); // Debug log
+        return {
+            isValid: true,
+            value: altMatch[1]
+        };
+    }
+    
+    console.log("No ASIN found in:", value); // Debug log
+    return { isValid: false, value: "N/A" };
+}
+
+// Function to extract actual product URL from Amazon's sponsored link format
+function extractProductUrl(value) {
+    if (!value) return { isValid: false, value: "N/A" };
+    
+    console.log("Extracting product URL from:", value); // Debug log
+    
+    // If it's already a direct product URL
+    if (value.includes('/dp/') && !value.includes('/sspa/')) {
+        return {
+            isValid: true,
+            value: value.startsWith('http') ? value : `https://www.amazon.in${value}`
+        };
+    }
+    
+    // Extract from sponsored link format
+    const urlMatch = value.match(/url=([^&]+)/);
+    if (urlMatch) {
+        try {
+            const decodedUrl = decodeURIComponent(urlMatch[1]);
+            console.log("Decoded URL:", decodedUrl); // Debug log
+            
+            if (decodedUrl.includes('/dp/')) {
+                const fullUrl = decodedUrl.startsWith('http') ? decodedUrl : `https://www.amazon.in${decodedUrl}`;
+                return {
+                    isValid: true,
+                    value: fullUrl
+                };
+            }
+        } catch (error) {
+            console.log("Error decoding URL:", error); // Debug log
+        }
+    }
+    
+    console.log("No product URL found in:", value); // Debug log
+    return { isValid: false, value: "N/A" };
+}
+
+// Function to extract brand name from product title
+function extractBrand(value) {
+    if (!value) return { isValid: false, value: "N/A" };
+    
+    console.log("Extracting brand from:", value); // Debug log
+    
+    // Common brand patterns - extract the first word before any special characters or spaces
+    const brandMatch = value.match(/^([A-Za-z]+)/);
+    if (brandMatch) {
+        const brand = brandMatch[1];
+        console.log("Brand extracted:", brand); // Debug log
+        return {
+            isValid: true,
+            value: brand
+        };
+    }
+    
+    console.log("No brand found in:", value); // Debug log
+    return { isValid: false, value: "N/A" };
+}
+
+// Function to clean ratings count by removing parentheses
+function validateRatingsCount(value) {
+    if (!value) return { isValid: false, value: "N/A" };
+    
+    // Remove parentheses and clean the text
+    const cleanedValue = value.replace(/[()]/g, '').trim();
 
     return {
-        isValid: !isNaN(discount) && discount > 0,
-        value: isNaN(discount) ? value : discount, // Return raw value if invalid
-        cleanedValue: match ? match[0] : cleanedValue // Partially cleaned or raw value
+        isValid: cleanedValue.length > 0,
+        value: cleanedValue
     };
+}
+
+// Function to extract discount percentage from text like "(35% off)"
+function validateDiscountPercentage(value) {
+    if (!value) return { isValid: false, value: "N/A" };
+    
+    console.log("Extracting discount from:", value); // Debug log
+    
+    // Extract percentage from text like "(35% off)"
+    const discountMatch = value.match(/\((\d+)%\s*off\)/);
+    if (discountMatch) {
+        const discount = parseInt(discountMatch[1], 10);
+        console.log("Discount extracted:", discount); // Debug log
+        return {
+            isValid: true,
+            value: discount
+        };
+    }
+    
+    console.log("No discount found in:", value); // Debug log
+    return { isValid: false, value: "N/A" };
+}
+
+// Function to validate bought in past month text and filter out M.R.P
+function validateBoughtInPastMonth(value) {
+    if (!value) return { isValid: false, value: "N/A" };
+    
+    console.log("Validating bought in past month:", value); // Debug log
+    
+    // Check if it contains "bought in past month" pattern
+    if (value.includes("bought in past month")) {
+        console.log("Valid bought in past month text:", value); // Debug log
+        return {
+            isValid: true,
+            value: value
+        };
+    }
+    
+    // If it's M.R.P or other text, return N/A
+    console.log("Not a bought in past month text:", value); // Debug log
+    return { isValid: false, value: "N/A" };
+}
+
+// Function to validate original price with debug logging
+function validateOriginalPrice(value) {
+    if (!value) return { isValid: false, value: "N/A" };
+    
+    console.log("Validating original price:", value); // Debug log
+    
+    // Use the existing validatePrice function but with debug logging
+    const result = validatePrice(value);
+    console.log("Original price validation result:", result); // Debug log
+    
+    return result;
 }
 
 function validateText(value) {
@@ -401,6 +551,22 @@ function getEmojiForCategory(category = "") {
 //     return categoryMap[category] ? categoryMap[category] : "🛍️"; // default fallback
 //   }
 
+function validateMRP(value) {
+    // Same logic as validatePrice
+    return validatePrice(value);
+}
+
+function validateRatingsCount(value) {
+    // Extract only the numeric part from strings like '646 Ratings'
+    const match = value.replace(/,/g, '').match(/\d+/);
+    const count = match ? parseInt(match[0], 10) : NaN;
+    return {
+        isValid: !isNaN(count) && count > 0,
+        value: isNaN(count) ? value : count,
+        cleanedValue: match ? match[0] : value
+    };
+}
+
 // Function to read URLs from a text file and process them
 async function extrapeLogin(driver) {
     try {
@@ -601,6 +767,8 @@ module.exports = {
     formatProductInfo,
     validateDiscount,
     validateText,
+    validateMRP,
+    validateRatingsCount,
     shortenProductText,
     getAsin,
     getFlipkartProductId,
@@ -612,6 +780,12 @@ module.exports = {
     getMyntraCode,
     getUserDetails,
     decodeHtmlEntities,
-    getEmojiForCategory
-
+    getEmojiForCategory,
+    extractAsin,
+    extractProductUrl,
+    extractBrand,
+    validateRatingsCount,
+    validateDiscountPercentage,
+    validateBoughtInPastMonth,
+    validateOriginalPrice
 };

@@ -59,6 +59,17 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
     await driver.get(link);
     link = await driver.getCurrentUrl();
     const storeKey = Object.keys(storeMap).find(key => link.includes(key));
+    
+    // Check if store is supported
+    if (!storeKey || !storeMap[storeKey]) {
+      logger.warn(`Unsupported store detected: ${link}`, { 
+        functionName: 'handleProductProcessing', 
+        storeKey: storeKey || 'unknown',
+        url: link 
+      });
+      return searchStatus.SEARCH_NOT_APPLICABLE;
+    }
+    
     const { getCode, storeType } = storeMap[storeKey];
     productCode = getCode(link);
     // let generateLink=false;
@@ -80,6 +91,17 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
       try {
         // Load configuration for the specified platform
         const platform = Object.keys(storeMap).find(key => link.includes(key));
+        
+        // Check if platform is supported for scraping
+        if (!platform || !storeMap[platform]) {
+          logger.warn(`Unsupported platform for scraping: ${link}`, { 
+            functionName: 'handleProductProcessing', 
+            platform: platform || 'unknown',
+            url: link 
+          });
+          return searchStatus.SEARCH_NOT_APPLICABLE;
+        }
+        
         const pageType = 'searchPage';
         const config = await loadConfig(`./PageConfig/${platform}PageConfig.js`);
 
@@ -101,15 +123,18 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
             // Process first 3 products with `productpost = true`
             await driver.get(product?.productUrl);
             await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, true, username, generateLink);
-          } else if (i < 5) {
+          } else if (i < 3) {
             // Process next 7 products with `productpost = false`
             await driver.get(product?.productUrl);
             await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, false, username, generateLink);
           } else {
             // Remaining products - Add to holdProducts
             // Add all remaining products (from index 10 onwards) to holdProducts at once
-            holdProducts.push(...products.slice(10));
-            console.log('Added remaining products to hold');
+            // #Todo uncomment 112 and 113 after adding the logic to handle "View Similar Products"
+
+            // holdProducts.push(...products.slice(10));
+            // console.log('Added remaining products to hold');
+            
             break;  // Exit the loop since all remaining products are processed
           }
         }

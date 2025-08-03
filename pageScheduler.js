@@ -110,7 +110,7 @@ async function scrapeGeneral(driver, pageConfig, storeKey) {
 async function extractGeneralProduct(element, selectors, storeKey) {
     const productData = {};
     for (const [key, selectorConfig] of Object.entries(selectors)) {
-        const { type, selector } = selectorConfig;
+        const { type, selector, attribute, validate } = selectorConfig;
         try {
             if (key === "productUrl" && type === "css") {
                 // Special handling for product URLs
@@ -122,8 +122,18 @@ async function extractGeneralProduct(element, selectors, storeKey) {
                     : new URL(rawValue, baseUrl).href;
             } else {
                 // General data extraction
-            const rawValue = await extractText(element, type, selector);
-                productData[key] = rawValue || "N/A";
+                const childElement = await element.findElement(By.css(selector));
+                const rawValue = attribute 
+                    ? await childElement.getAttribute(attribute)
+                    : await childElement.getText();
+                
+                // Apply validation if provided
+                if (validate && rawValue) {
+                    const validationResult = validate(rawValue);
+                    productData[key] = validationResult.isValid ? validationResult.value : "N/A";
+                } else {
+                    productData[key] = rawValue || "N/A";
+                }
             }
         } catch (error) {
             productData[key] = 'N/A';

@@ -1,6 +1,20 @@
 const { validatePrice, validateDiscount, validateText } = require("../utils/commonUtils");
 
 module.exports = {
+  brand: [
+    { type: "id", selector: "bylineInfo", validator: validateText },
+    { type: "css", selector: "#bylineInfo", validator: validateText },
+    { type: "css", selector: ".contributorNameID", validator: validateText },
+  ],
+  title: [
+    { type: "id", selector: "productTitle", validator: validateText },
+    { type: "css", selector: "#productTitle", validator: validateText },
+  ],
+  productText: [
+    { type: "id", selector: "productTitle" },
+    { type: "xpath", selector: '//*[@id="productDescription"]/p' },
+    // Add more xpaths as needed
+  ],
   price: [
     {
       type: "css",
@@ -93,10 +107,118 @@ module.exports = {
     },
     // Add more xpaths as needed
   ],
+  mrp: [
+    {
+      type: "css",
+      selector: ".a-price.a-text-price[data-a-strike=\"true\"] .a-offscreen",
+      attribute: "innerText",
+      validator: validatePrice,
+    },
+    {
+      type: "css",
+      selector: ".a-text-price .a-offscreen",
+      attribute: "innerText",
+      validator: validatePrice,
+    },
+    // Add more selectors as needed
+  ],
+  rating: [
+    { type: "css", selector: ".a-icon-alt" },
+    { type: "css", selector: ".a-star-rating-text" },
+    { type: "css", selector: ".a-icon-star-small" },
+  ],
+  ratingsCount: [
+    { type: "css", selector: "#acrCustomerReviewText" },
+    { type: "css", selector: ".a-size-base.s-underline-text" },
+  ],
+  reviewsCount: [
+    { type: "css", selector: "#acrCustomerReviewText" },
+    { type: "css", selector: ".a-size-base.s-underline-text" },
+  ],
+  color: [
+    { type: "css", selector: "#variation_color_name .selection" },
+    { type: "css", selector: ".imgSwatch[title]" },
+  ],
+  sizes: [
+    { type: "css", selector: "#variation_size_name .selection", multiple: true },
+    { type: "css", selector: ".a-button-text", multiple: true },
+  ],
+  sizeFit: [
+    { type: "css", selector: "#feature-bullets li" },
+    { type: "css", selector: ".a-expander-content" },
+  ],
+  materialCare: [
+    { type: "css", selector: "#feature-bullets li" },
+    { type: "css", selector: ".a-expander-content" },
+  ],
+  seller: [
+    { type: "css", selector: "#merchant-info" },
+    { type: "css", selector: ".tabular-buybox-text" },
+  ],
+  productCode: [
+    { type: "css", selector: "#productDetails_detailBullets_sections1 tr" },
+    { type: "css", selector: ".prodDetTable tr" },
+  ],
+  promoInfo: [
+    { type: "css", selector: ".a-box-group .a-box" },
+    { type: "css", selector: ".a-section.a-spacing-none" },
+  ],
   photo: [
     { type: "id", selector: "landingImage", attribute: "src" },
     { type: "id", selector: "productImageUrl", attribute: "value" },
     // Add more xpaths as needed
+  ],
+  images: [
+    {
+      type: "css",
+      selector: "#altImages img",
+      attribute: "src",
+      multiple: true
+    }
+  ],
+  productTable: [
+    {
+      type: "css-table",
+      selector: ".a-expander-content table tr",
+      keySelector: "td.a-span3 .a-text-bold",
+      valueSelector: "td.a-span9 .po-break-word"
+    }
+  ],
+  description: [
+    {
+      type: "css-list",
+      selector: "#feature-bullets ul.a-unordered-list.a-vertical.a-spacing-mini li .a-list-item"
+    },
+    {
+      type: "css-list",
+      selector: "#feature-bullets .a-list-item"
+    }
+  ],
+  offers: [
+    {
+      type: "css-bankoffers",
+      selector: ".offers-items",
+      offerTypeSelector: "h6",
+      offerContentSelectorFull: ".offers-items-content .a-truncate.a-size-base",
+      offerContentSelectorCut: ".offers-items-content .a-truncate-cut",
+      classifyEmi: true
+    },
+    {
+      type: "css-bankoffers",
+      selector: ".a-carousel-card .offers-items",
+      offerTypeSelector: "h6",
+      offerContentSelectorFull: ".offers-items-content .a-truncate.a-size-base",
+      offerContentSelectorCut: ".offers-items-content .a-truncate-cut",
+      classifyEmi: true
+    },
+    {
+      type: "css-bankoffers",
+      selector: ".a-section.a-spacing-none .a-size-base",
+      offerTypeSelector: "h6",
+      offerContentSelectorFull: ".a-section.a-spacing-none .a-size-base",
+      offerContentSelectorCut: ".a-section.a-spacing-none .a-size-base",
+      classifyEmi: false
+    }
   ],
   asin: [
     {
@@ -117,11 +239,6 @@ module.exports = {
       selector:
         'detailpage-dealBadge-countdown-timer', // Minutes and Seconds 
     },
-    // Add more xpaths as needed
-  ],
-  productText: [
-    { type: "id", selector: "productTitle" },
-    { type: "xpath", selector: '//*[@id="productDescription"]/p' },
     // Add more xpaths as needed
   ],
   category: {
@@ -163,6 +280,12 @@ module.exports = {
 
     // Add more xpaths as needed
   },
+  coupon: [
+    { type: 'css', selector: '.newCouponBadge' },
+    { type: 'css', selector: '[id^="couponText"]' },
+    { type: 'css', selector: '.couponLabelText' },
+    // Add more selectors as needed
+  ],
   // Placeholder for future attributes
   description: {
     d1: [{ type: "xpath", selector: '//*[@id="feature-bullets"]/ul/li[1]/span' }],

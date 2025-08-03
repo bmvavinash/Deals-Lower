@@ -1,126 +1,102 @@
-const { validatePrice, validateDiscount } = require("../utils/commonUtils");
+const { validatePrice, validateDiscount, validateText } = require("../utils/commonUtils");
 
 module.exports = {
-  productText: [
-    { type: 'id', selector: 'productTitle', attribute: 'aria-label' },
-    { type: 'className', selector: 'prod-name', attribute: 'aria-label' },
-    { type: 'xpath', selector: '//*[@class="prod-name"]', attribute: 'aria-label' },
-  ],
-  brand: [
-    { type: 'id', selector: 'brandTitle', attribute: 'aria-label' },
-    { type: 'className', selector: 'brand-name', attribute: 'aria-label' },
-    { type: 'xpath', selector: '//*[@class="brand-name"]', attribute: 'aria-label' },
-  ],
-  ratings: [
-    { type: 'className', selector: 'rating-popup _3c5q0', attribute: 'textContent' },
-    { type: 'xpath', selector: '//*[@class="rating-popup"]//*[@class="_3c5q0"]', attribute: 'textContent' },
-  ],
-  price: [
-    { type: 'id', selector: 'specialPrice', validator: validatePrice },
-    { type: 'className', selector: 'prod-sp', validator: validatePrice },
-    { type: 'className', selector: '.price-info.ellipsis', validator: validatePrice },
-    { type: 'xpath', selector: '//*[@class="prod-sp"]', validator: validatePrice },
-  ],
-  mrp: [
-    { type: 'id', selector: 'originalPrice', validator: validatePrice },
-    { type: 'className', selector: 'prod-cp', validator: validatePrice },
-    { type: 'xpath', selector: '//*[@class="prod-cp"]', validator: validatePrice },
-  ],
-  discount: [
-    { type: 'id', selector: 'discountPercent', validator: validateDiscount },
-    { type: 'className', selector: 'prod-discnt', validator: validateDiscount },
-    { type: 'className', selector: '.price-info .discount', validator: validateDiscount },
-    { type: 'xpath', selector: '//*[@class="prod-discnt"]', validator: validateDiscount },
-  ],
-  coupon: [
-    { type: 'id', selector: 'couponBlock', attribute: 'aria-label' },
-    { type: 'className', selector: 'pdp-promo-block promo-desc', attribute: 'aria-label' },
-    { type: 'xpath', selector: '//*[@class="pdp-promo-block"]//*[@class="promo-desc"]', attribute: 'aria-label' },
-  ],
-  photo: [
-    { type: 'className', selector: 'rilrtl-lazy-img', attribute: 'src' },
-    { type: 'id', selector: 'selectedImage', attribute: 'src' },
-    { type: 'className', selector: 'swatch-image-selected', attribute: 'src' },
-    { type: 'xpath', selector: '//*[@class="swatch-image-selected"]', attribute: 'src' },
-  ],
+    brand: [
+        { type: "css", selector: ".brand-name", validator: validateText },
+    ],
+    title: [
+        { type: "css", selector: ".prod-name", validator: validateText },
+    ],
+    productText: [
+        { type: "css", selector: ".brand-name", validator: validateText },
+        { type: "css", selector: ".prod-name", validator: validateText },
+    ],
+    price: [
+        { type: "css", selector: ".prod-sp", validator: validatePrice },
+    ],
+    mrp: [
+        { type: "css", selector: ".prod-cp", validator: validatePrice },
+    ],
+    discount: [
+        { type: "css", selector: ".prod-discnt", validator: validateDiscount },
+    ],
+    rating: [
+        { type: "css", selector: ".rating-popup ._1jiCk span._3c5q0" },
+        { type: "css", selector: "._3KsA3 span._1P7MF" },
+    ],
+    ratingsCount: [
+        { type: "css", selector: ".rating-popup .rating-label-star-count span._38RNg" },
+        { type: "css", selector: "._3KsA3 ._3AxgC" },
+    ],
+    images: [
+        { type: "css", selector: ".product-image-gallery img.img-alignment", attribute: "src", multiple: true },
+        { type: "css", selector: ".product-image-gallery img", attribute: "src", multiple: true },
+    ],
+    photo: [
+        { type: 'className', selector: 'rilrtl-lazy-img', attribute: 'src' },
+        { type: 'id', selector: 'selectedImage', attribute: 'src' },
+        { type: 'className', selector: 'swatch-image-selected', attribute: 'src' },
+        { type: 'xpath', selector: '//*[@class="swatch-image-selected"]', attribute: 'src' },
+      ],
+    offers: [
+        {
+            type: "css-offers",
+            selector: ".pdp-promo-block, .promo-blck, .pdp-offers-offer, .pdp-offers-extraOffer",
+            labelSelector: ".promo-title, .pdp-offers-offerTitle, .pdp-offers-offerLikeBestPrice b",
+            contentSelector: ".promo-desc, .promo-desc-block, .pdp-offers-offerDesc, .pdp-offers-extraOfferDesc, .pdp-offers-labelMarkup",
+            classifyType: true
+        }
+    ],
+    description: [
+        { type: "css", selector: ".prod-desc .prod-list" },
+        { type: "css", selector: ".prod-desc .prod-list-item" }
+    ],
+    color: [
+        { type: "css", selector: ".prod-color", validator: validateText },
+    ],
+    sizes: [
+        { type: "css", selector: ".size-variant-block .circle.size-variant-item.size-instock span", multiple: true },
+    ],
+    specifications: [
+        {
+            type: "css-table",
+            selector: ".pdpTabContainer .pdpTabSub",
+            keySelector: ".tabName",
+            valueSelector: ".detail-list",
+        }
+    ],
+    promoInfo: [
+        { type: "css", selector: ".promo-title-blck .promo-title" },
+        { type: "css", selector: ".promo-desc-block .promo-desc" },
+    ],
+    reviewsCount: [
+        { type: "css", selector: ".rating-popup .rating-label-star-count span._38RNg" },
+        { type: "css", selector: "._3KsA3 ._3AxgC" },
+    ],
 
-  description: {
-    d1: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(1)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[1]' }
+    extraOffers: [
+        { type: "css", selector: ".pdp-promo-block" },
+        { type: "css", selector: ".promo-blck" },
     ],
-    d2: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(2)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[2]' }
+    sizeFit: [
+        { type: "css", selector: ".size-fit-guide" },
+        { type: "css", selector: ".fit-guide" },
     ],
-    d3: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(3)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[3]' }
+    materialCare: [
+        { type: "css", selector: ".material-care" },
+        { type: "css", selector: ".care-instructions" },
     ],
-    d4: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(4)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[4]' }
+    seller: [
+        { type: "css", selector: ".seller-info" },
+        { type: "css", selector: ".brand-seller" },
     ],
-    d5: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(5)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[5]' }
+    productCode: [
+        { type: "css", selector: ".style-id" },
+        { type: "css", selector: ".product-code" },
     ],
-    d6: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(6)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[6]' }
+    timer: [
+        { type: "css", selector: ".countdown-timer" },
+        { type: "css", selector: ".deal-timer" },
     ],
-    d7: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(7)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[7]' }
-    ],
-    d8: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(8)' },
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[8]' }
-    ],
-    d9: [
-        { type: "className", selector: '.prod-list .detail-list:nth-child(9) span' },  // Product Code
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[9]/span' }
-    ],
-    d10: [
-        { type: "className", selector: '.prod-list .mandatory-list:nth-child(10) .title' }, // MRP
-        { type: "xpath", selector: '//*[@class="prod-list"]/li[10]//div[@class="title"]' }
-    ]
-},
-
-category: {
-    c1: [
-      {
-        type: "xpath",
-        selector: '//ul[@class="breadcrumb-sec"]/li[1]/a',
-      },
-    ],
-    c2: [
-      {
-        type: "xpath",
-        selector: '//ul[@class="breadcrumb-sec"]/li[2]/a',
-      },
-    ],
-    c3: [
-      {
-        type: "xpath",
-        selector: '//ul[@class="breadcrumb-sec"]/li[3]/a',
-      },
-    ],
-    c4: [
-      {
-        type: "xpath",
-        selector: '//ul[@class="breadcrumb-sec"]/li[4]/a',
-      },
-    ],
-    c5: [
-      {
-        type: "xpath",
-        selector: '//ul[@class="breadcrumb-sec"]/li[5]/a',
-      },
-    ],
-  }
-  
-
-
-  // Additional fields and selectors can be added here
+    // Add more fields as needed
 };
