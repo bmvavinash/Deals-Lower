@@ -49,7 +49,8 @@ module.exports = {
       bannerUrls: [
         'https://www.amazon.in',
         'https://www.amazon.in/deals',
-        'https://www.amazon.in/events/greatfreedomsale'
+        'https://www.amazon.in/events/greatfreedomsale',
+        'https://affiliate-program.amazon.in/home'
       ],
       selectors: {
         carousel: 'li.a-carousel-card',
@@ -59,13 +60,17 @@ module.exports = {
         // Alternative selectors for different page structures
         alternativeCarousel: 'div.a-carousel-card',
         alternativeBannerLink: 'a[href*="amazon.in"]',
-        alternativeBannerImage: 'img[src*="amazon.com"]'
+        alternativeBannerImage: 'img[src*="amazon.com"]',
+        // Specific selectors for affiliate page
+        affiliateCarousel: '[aria-roledescription="slide"]',
+        affiliateBannerLink: 'a[target="_blank"]',
+        affiliateBannerImage: 'img[border="0"]'
       },
       validation: {
         minImageWidth: 200,
         minImageHeight: 100,
         allowedDomains: ['media-amazon.com', 'amazon.com'],
-        excludedKeywords: ['associate', 'commission', 'affiliate']
+        excludedKeywords: ['associate', 'commission', 'affiliate', 'whatsapp']
       }
     },
 

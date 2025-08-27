@@ -1,0 +1,56 @@
+{
+  "amazon-banner-prime-bounty-0": {
+    "id": "amazon-banner-prime-bounty-0",
+    "url": "https://m.media-amazon.com/images/G/31/INAssociates/2020/AC/amazon_associates_banner.jpg",
+    "clickRedirectUrl": "https://www.amazon.in/amazonprime?ref=ac_in_carousel-SLOT1",
+    "altText": "Prime Bounty",
+    "title": "Prime Bounty",
+    "platform": "amazon",
+    "sourceUrl": "https://affiliate-program.amazon.in/home",
+    "category": "hero",
+    "validationScore": 7,
+    "validationReasons": [
+      "Identified as promotional banner",
+      "Has promotional image pattern",
+      "Has banner context",
+      "Valid banner dimensions"
+    ],
+    "isActive": true,
+    "order": 0,
+    "creationTimestamp": "2025-01-27T10:51:12.731Z",
+    "updateTimestamp": "2025-01-27T10:51:12.731Z",
+    "metadata": {
+      "elementType": "li",
+      "elementClasses": "a-carousel-card",
+      "elementId": "",
+      "parentContext": "li.a-carousel-card"
+    }
+  },
+  "amazon-banner-serve-deals-1": {
+    "id": "amazon-banner-serve-deals-1",
+    "url": "https://m.media-amazon.com/images/G/31/img2020/fashion/WA_2020/Aug25TTalks/uber/TTALK_UBER_2148x588.png",
+    "clickRedirectUrl": "https://www.amazon.in/b?node=207906552031&ref=ac_in_carousel-SLOT5",
+    "altText": "SERVE | Min. 60% off + Extra 5% Off  | Trendtalk deals",
+    "title": "SERVE Trendtalk deals",
+    "platform": "amazon",
+    "sourceUrl": "https://affiliate-program.amazon.in/home",
+    "category": "promotional",
+    "validationScore": 6,
+    "validationReasons": [
+      "Identified as promotional banner",
+      "Has promotional image pattern",
+      "Has banner context",
+      "Valid banner dimensions"
+    ],
+    "isActive": true,
+    "order": 1,
+    "creationTimestamp": "2025-01-27T10:51:12.743Z",
+    "updateTimestamp": "2025-01-27T10:51:12.743Z",
+    "metadata": {
+      "elementType": "li",
+      "elementClasses": "a-carousel-card",
+      "elementId": "",
+      "parentContext": "li.a-carousel-card"
+    }
+  }
+}
