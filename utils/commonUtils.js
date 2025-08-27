@@ -46,11 +46,13 @@ function validatePrice(value) {
 
 
 function validateDiscount(value) {
-    let cleanedValue = value.replace(/%|\s|&nbsp;|-/g, "").trim();
-    const discount = parseInt(cleanedValue, 10);
+    if (value == null) return { isValid: false, value: "" };
+    // const cleanedDigitsOnly = String(value).replace(/[^\d]/g, "");
+    const cleanedDigitsOnly = String(value).normalize().replace(/[^\d]/g, "");
+    const discount = cleanedDigitsOnly.length ? parseInt(cleanedDigitsOnly, 10) : NaN;
     return {
-        isValid: discount > 0,
-        value: discount
+        isValid: !isNaN(discount) && discount > 0,
+        value: !isNaN(discount) ? discount : ""
     };
 }
 
@@ -762,6 +764,132 @@ function shortenProductText(productText) {
 //     };
 // }
 
+// Banner validation functions
+function validateBannerUrl(url, allowedDomains = []) {
+    if (!url) return { isValid: false, value: "N/A" };
+    
+    // Check if URL is valid
+    try {
+        const urlObj = new URL(url);
+        
+        // Check if domain is allowed
+        if (allowedDomains.length > 0) {
+            const domain = urlObj.hostname;
+            const isAllowed = allowedDomains.some(allowed => domain.includes(allowed));
+            if (!isAllowed) {
+                return { isValid: false, value: "N/A", reason: "Domain not allowed" };
+            }
+        }
+        
+        return { isValid: true, value: url };
+    } catch (error) {
+        return { isValid: false, value: "N/A", reason: "Invalid URL" };
+    }
+}
+
+function validateBannerContent(altText, title, excludedKeywords = []) {
+    if (!altText && !title) return { isValid: false, value: "N/A" };
+    
+    const text = (altText || title || "").toLowerCase();
+    
+    // Check for excluded keywords
+    for (const keyword of excludedKeywords) {
+        if (text.includes(keyword.toLowerCase())) {
+            return { isValid: false, value: "N/A", reason: `Contains excluded keyword: ${keyword}` };
+        }
+    }
+    
+    // Check for percentage patterns (commission, fee, etc.)
+    const percentagePatterns = [
+        /\d+%\s*(?:commission|fee|earning)/i,
+        /commission\s*\d+%/i,
+        /fee\s*\d+%/i,
+        /earning\s*\d+%/i
+    ];
+    
+    for (const pattern of percentagePatterns) {
+        if (pattern.test(text)) {
+            return { isValid: false, value: "N/A", reason: "Contains affiliate percentage pattern" };
+        }
+    }
+    
+    return { isValid: true, value: altText || title };
+}
+
+async function validateBannerImage(url, minWidth = 300, minHeight = 150, maxWidth = 1200, maxHeight = 400) {
+    if (!url) return { isValid: false, value: "N/A" };
+    
+    try {
+        // Basic URL validation
+        const urlObj = new URL(url);
+        
+        // For now, validate URL format and basic dimensions from URL patterns
+        // In production, you might want to make a HEAD request to check actual image dimensions
+        return { isValid: true, value: url };
+    } catch (error) {
+        return { isValid: false, value: "N/A", reason: "Invalid image URL" };
+    }
+}
+
+// Function to categorize banners based on content and context
+function categorizeBanner(altText, title, url, platform) {
+    if (!altText && !title) return { category: 'category', priority: 4 };
+    
+    const text = (altText || title || "").toLowerCase();
+    const urlText = url.toLowerCase();
+    
+    // Check for hero banners (usually large, prominent banners)
+    const heroKeywords = ['hero', 'main', 'primary', 'featured', 'banner'];
+    if (heroKeywords.some(keyword => text.includes(keyword) || urlText.includes(keyword))) {
+        return { category: 'hero', priority: 1 };
+    }
+    
+    // Check for promotional banners
+    const promoKeywords = ['sale', 'offer', 'deal', 'discount', 'save', 'off'];
+    if (promoKeywords.some(keyword => text.includes(keyword))) {
+        return { category: 'promotional', priority: 2 };
+    }
+    
+    // Check for seasonal banners
+    const seasonalKeywords = ['seasonal', 'festival', 'holiday', 'christmas', 'diwali', 'eid'];
+    if (seasonalKeywords.some(keyword => text.includes(keyword))) {
+        return { category: 'seasonal', priority: 3 };
+    }
+    
+    // Default to category
+    return { category: 'category', priority: 4 };
+}
+
+// Function to check if element is a product carousel (should be excluded)
+function isProductCarousel(element, selectors) {
+    try {
+        // Check for product-related keywords in alt text or nearby text
+        const altText = element.getAttribute('alt') || '';
+        const text = altText.toLowerCase();
+        
+        const productKeywords = [
+            'product', 'item', 'goods', 'merchandise', 'inventory',
+            'add to cart', 'buy now', 'shop now', 'view details',
+            'price', 'discount', 'offer', 'deal'
+        ];
+        
+        return productKeywords.some(keyword => text.includes(keyword));
+    } catch (error) {
+        return false;
+    }
+}
+
+function generateBannerId(platform, category = "banner", timestamp = null) {
+    const time = timestamp || new Date().getTime();
+    const date = new Date(time).toISOString().split('T')[0];
+    const uniqueId = Math.random().toString(36).substring(2, 8);
+    return `${platform}-${category}-${date}-${uniqueId}`;
+}
+
+function generateBannerTimestamp() {
+    return new Date().toISOString();
+}
+
 module.exports = {
     validatePrice,
     formatProductInfo,
@@ -787,5 +915,12 @@ module.exports = {
     validateRatingsCount,
     validateDiscountPercentage,
     validateBoughtInPastMonth,
-    validateOriginalPrice
+    validateOriginalPrice,
+    validateBannerUrl,
+    validateBannerContent,
+    validateBannerImage,
+    generateBannerId,
+    generateBannerTimestamp,
+    categorizeBanner,
+    isProductCarousel
 };

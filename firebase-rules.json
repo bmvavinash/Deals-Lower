@@ -1,0 +1,19 @@
+{
+  "rules": {
+    "banners": {
+      ".indexOn": ["isActive", "platform", "order"],
+      "$bannerId": {
+        ".read": true,
+        ".write": true,
+        ".validate": "newData.hasChildren(['id', 'url', 'clickRedirectUrl', 'isActive', 'order', 'creationTimestamp', 'updateTimestamp'])"
+      }
+    },
+    "deals": {
+      ".indexOn": ["productCode", "storeType", "discount"],
+      "$dealId": {
+        ".read": true,
+        ".write": true
+      }
+    }
+  }
+} 

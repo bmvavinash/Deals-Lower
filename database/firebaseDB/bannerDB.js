@@ -1,214 +1,303 @@
-const config = require('../../config/config.js');
-var constants = require('../../config/constants.js');
-const { getModuleLogger } = require("../../logger/logger.js");
-// console.log = require("../../logger/logger.js");
-var firebase = require('firebase/app');
-var database = require('firebase/database');
 const admin = require('firebase-admin');
+const constants = require('../../config/constants.js');
+const config = require('../../config/config.js');
+const { getModuleLogger } = require("../../logger/logger.js");
 
 const logger = getModuleLogger('bannerDB');
-const BANNERS_PATH = 'banners';
 
-// const { getModuleLogger } = require("../../logger/logger.js");
-// console.log = require("../../logger/logger.js");
-
-env=constants.env
-
-
-const productStatus = {
-  BANNER_UPDATED: 'Banner updated successfully',
-  BANNER_CREATED: 'Banner created successfully',
-};
-
-
-const dbname= constants.postingTypesConfig[constants.type].DB
-let DB_Name=config.DATABASE_CONFIG[`${dbname}_NAME`];
+const dbname = constants.postingTypesConfig[constants.type].DB;
+let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
-jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
   databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
 });
+}
 
 const db = admin.database();
 
+class BannerDB {
+    constructor() {
+        this.bannersRef = db.ref('banners');
+    }
 
-const firebaseConfig = {
-
-    apiKey: constants.FirebaseApiKey,
-    authDomain: `${DB_Name}.firebaseapp.com`,
-    databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`,
-    projectId: `${DB_Name}`,
-    storageBucket: `${DB_Name}.appspot.com`,
-    messagingSenderId: "848061960225",
-    appId: "1:848061960225:web:30d1b2fbd6c6243b2e1360",
-    measurementId: "G-HJNCM2MN6Q"
-        
-  // Your Firebase configuration
-};
-const app = firebase.initializeApp(firebaseConfig);
-// const db = database.getDatabase(app);
-
-// const db = getDatabase(app); // Get the database instance
-// const ref = ref(db, '/deals'); // Create a reference to the '/deals' path
-
-var ref = database.ref(db, '/deals');
-
-// Unified function to create/update banners
-async function updateBanner(bannerId, updatedData) {
-  // logger.info(`updateBanner() called for ID=${bannerId}`, { updatedData });
-  // console.log(`updateBanner() called for ID=${bannerId}`, { updatedData });
-
-  try {
-    const bannerRef = db.ref(`${BANNERS_PATH}/${bannerId}`);
-    logger.debug(`Fetching existing banner at ${BANNERS_PATH}/${bannerId}`);
-    // console.log(`Fetching existing banner at ${BANNERS_PATH}/${bannerId}`);
-    const bannerSnapshot = await bannerRef.once('value');
-
-    const now = new Date().toISOString();
-    const defaultData = {
-      isActive: true,
-      order: 0,
-      creationTimestamp: now,
-      updateTimestamp: now,
-    };
-
-    if (bannerSnapshot.exists()) {
-      logger.info(`Banner ${bannerId} exists – will update`);
-      // console.log(`Banner ${bannerId} exists – will update`);
-      const existingData = bannerSnapshot.val();
-      logger.debug('Existing data:', existingData);
-      // console.log('Existing data:', existingData);
-
-      const mergedData = {
-        ...existingData,
-        ...updatedData,
-        updateTimestamp: now,
-        creationTimestamp: existingData.creationTimestamp || now,
-      };
-
-      // Preserve critical fields
-      ['id', 'creationTimestamp'].forEach(field => {
-        if (existingData[field]) {
-          mergedData[field] = existingData[field];
-          logger.debug(`Preserved field ${field}:`, existingData[field]);
-          // console.log(`Preserved field ${field}:`, existingData[field]);
+    async storeBanner(bannerData) {
+        try {
+            const bannerRef = this.bannersRef.child(bannerData.id);
+            
+            // Check if banner already exists
+            const snapshot = await bannerRef.once('value');
+            
+            if (snapshot.exists()) {
+                // Update existing banner
+                const existingData = snapshot.val();
+                const updatedData = {
+                    ...existingData,
+                    ...bannerData,
+                    updateTimestamp: new Date().toISOString()
+                };
+                
+                await bannerRef.update(updatedData);
+                logger.info(`Banner updated: ${bannerData.id}`);
+                return { status: 200, message: 'Banner updated successfully' };
+            } else {
+                // Create new banner
+                await bannerRef.set(bannerData);
+                logger.info(`Banner created: ${bannerData.id}`);
+                return { status: 201, message: 'Banner created successfully' };
+            }
+        } catch (error) {
+            logger.error(`Error storing banner ${bannerData.id}:`, { error: error.message });
+            return { status: 500, message: 'Error storing banner', error: error.message };
         }
-      });
+    }
 
-      logger.debug('Merged data to write:', mergedData);
-      // console.log('Merged data to write:', mergedData);
-      await bannerRef.update(mergedData);
-      logger.info(`Banner ${bannerId} updated successfully`);
-      // console.log(`Banner ${bannerId} updated successfully`);
-      return { status: 200, message: productStatus.BANNER_UPDATED };
+    async storeMultipleBanners(banners) {
+        const results = [];
+        
+        for (const banner of banners) {
+            const result = await this.storeBanner(banner);
+            results.push({ id: banner.id, ...result });
+        }
+        
+        return results;
+    }
+
+    async getBanner(bannerId) {
+        try {
+            const snapshot = await this.bannersRef.child(bannerId).once('value');
+            
+            if (snapshot.exists()) {
+                return { status: 200, data: snapshot.val() };
+            } else {
+                return { status: 404, message: 'Banner not found' };
+            }
+        } catch (error) {
+            logger.error(`Error getting banner ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error getting banner', error: error.message };
+        }
+    }
+
+    async getAllBanners() {
+        try {
+            const snapshot = await this.bannersRef.once('value');
+            
+            if (snapshot.exists()) {
+                return { status: 200, data: snapshot.val() };
+            } else {
+                return { status: 200, data: {} };
+            }
+        } catch (error) {
+            logger.error('Error getting all banners:', { error: error.message });
+            return { status: 500, message: 'Error getting banners', error: error.message };
+        }
+    }
+
+    async getActiveBanners() {
+        try {
+            const snapshot = await this.bannersRef.orderByChild('isActive').equalTo(true).once('value');
+            
+            if (snapshot.exists()) {
+                return { status: 200, data: snapshot.val() };
+            } else {
+                return { status: 200, data: {} };
+            }
+        } catch (error) {
+            logger.error('Error getting active banners:', { error: error.message });
+            return { status: 500, message: 'Error getting active banners', error: error.message };
+        }
+    }
+
+    async activateBanner(bannerId) {
+        try {
+            const bannerRef = this.bannersRef.child(bannerId);
+            await bannerRef.update({
+                isActive: true,
+                updateTimestamp: new Date().toISOString()
+            });
+            
+            logger.info(`Banner activated: ${bannerId}`);
+            return { status: 200, message: 'Banner activated successfully' };
+        } catch (error) {
+            logger.error(`Error activating banner ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error activating banner', error: error.message };
+        }
+    }
+
+    async deactivateBanner(bannerId) {
+        try {
+            const bannerRef = this.bannersRef.child(bannerId);
+            await bannerRef.update({
+                isActive: false,
+                updateTimestamp: new Date().toISOString()
+            });
+            
+            logger.info(`Banner deactivated: ${bannerId}`);
+            return { status: 200, message: 'Banner deactivated successfully' };
+        } catch (error) {
+            logger.error(`Error deactivating banner ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error deactivating banner', error: error.message };
+        }
+    }
+
+    async deactivateOldBanners(activeBannerIds) {
+        try {
+            // Get all banners
+            const allBannersResult = await this.getAllBanners();
+            
+            if (allBannersResult.status !== 200) {
+                return allBannersResult;
+            }
+            
+            const allBanners = allBannersResult.data;
+            let deactivatedCount = 0;
+            
+            // Deactivate banners that are not in the active list
+            for (const [bannerId, bannerData] of Object.entries(allBanners)) {
+                if (bannerData.isActive && !activeBannerIds.includes(bannerId)) {
+                    await this.deactivateBanner(bannerId);
+                    deactivatedCount++;
+                }
+            }
+            
+            logger.info(`Deactivated ${deactivatedCount} old banners`);
+            return { status: 200, message: `Deactivated ${deactivatedCount} banners` };
+            
+        } catch (error) {
+            logger.error('Error deactivating old banners:', { error: error.message });
+            return { status: 500, message: 'Error deactivating old banners', error: error.message };
+        }
+    }
+
+    async deleteBanner(bannerId) {
+        try {
+            await this.bannersRef.child(bannerId).remove();
+            logger.info(`Banner deleted: ${bannerId}`);
+            return { status: 200, message: 'Banner deleted successfully' };
+        } catch (error) {
+            logger.error(`Error deleting banner ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error deleting banner', error: error.message };
+        }
+    }
+
+    async getBannersByPlatform(platform) {
+        try {
+            const snapshot = await this.bannersRef.orderByChild('platform').equalTo(platform).once('value');
+            
+            if (snapshot.exists()) {
+                return { status: 200, data: snapshot.val() };
+            } else {
+                return { status: 200, data: {} };
+            }
+        } catch (error) {
+            logger.error(`Error getting banners for platform ${platform}:`, { error: error.message });
+            return { status: 500, message: 'Error getting platform banners', error: error.message };
+        }
+    }
+
+    async updateBannerOrder(bannerId, order) {
+        try {
+            await this.bannersRef.child(bannerId).update({
+                order: order,
+                updateTimestamp: new Date().toISOString()
+            });
+            
+            logger.info(`Banner order updated: ${bannerId} -> ${order}`);
+            return { status: 200, message: 'Banner order updated successfully' };
+        } catch (error) {
+            logger.error(`Error updating banner order ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error updating banner order', error: error.message };
+        }
+    }
+
+    async deleteBanner(bannerId) {
+        try {
+            await this.bannersRef.child(bannerId).remove();
+            logger.info(`Banner deleted: ${bannerId}`);
+            return { status: 200, message: 'Banner deleted successfully' };
+        } catch (error) {
+            logger.error(`Error deleting banner ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error deleting banner', error: error.message };
+        }
+    }
+
+    async deleteBannersByPlatform(platform) {
+        try {
+            const snapshot = await this.bannersRef.orderByChild('platform').equalTo(platform).once('value');
+            
+            if (snapshot.exists()) {
+                const banners = snapshot.val();
+                const bannerIds = Object.keys(banners);
+                
+                for (const bannerId of bannerIds) {
+                    await this.bannersRef.child(bannerId).remove();
+                }
+                
+                logger.info(`Deleted ${bannerIds.length} banners for platform: ${platform}`);
+                return { status: 200, message: `Deleted ${bannerIds.length} banners for platform ${platform}` };
     } else {
-      logger.info(`Banner ${bannerId} does not exist – will create new`);
-      // console.log(`Banner ${bannerId} does not exist – will create new`);
-      const newBanner = {
-        ...defaultData,
-        ...updatedData,
-        id: bannerId,
-        creationTimestamp: now,
-      };
-      logger.debug('New banner data:', newBanner);
-      // console.log('New banner data:', newBanner);
+                return { status: 404, message: `No banners found for platform ${platform}` };
+            }
+        } catch (error) {
+            logger.error(`Error deleting banners for platform ${platform}:`, { error: error.message });
+            return { status: 500, message: 'Error deleting platform banners', error: error.message };
+        }
+    }
 
-      await bannerRef.set(newBanner);
-      logger.info(`New banner ${bannerId} created successfully`);
-      // console.log(`New banner ${bannerId} created successfully`);
-      return { status: 201, message: productStatus.BANNER_CREATED };
+    async deleteBannersByCategory(category) {
+        try {
+            const snapshot = await this.bannersRef.orderByChild('category').equalTo(category).once('value');
+            
+            if (snapshot.exists()) {
+                const banners = snapshot.val();
+                const bannerIds = Object.keys(banners);
+                
+                for (const bannerId of bannerIds) {
+                    await this.bannersRef.child(bannerId).remove();
+                }
+                
+                logger.info(`Deleted ${bannerIds.length} banners for category: ${category}`);
+                return { status: 200, message: `Deleted ${bannerIds.length} banners for category ${category}` };
+            } else {
+                return { status: 404, message: `No banners found for category ${category}` };
     }
   } catch (error) {
-    logger.error(`Error in updateBanner(${bannerId}):`, error);
-    // console.log(`Error in updateBanner(${bannerId}):`, error);
-    return {
-      status: error.code === 'permission-denied' ? 403 : 500,
-      message: error.message,
-    };
-  }
-}
+            logger.error(`Error deleting banners for category ${category}:`, { error: error.message });
+            return { status: 500, message: 'Error deleting category banners', error: error.message };
+        }
+    }
 
-/**
- * Seed Firebase with a set of default banners.
- */
-async function initializeBanners() {
-  // logger.info('initializeBanners() called – seeding default banners');
-  // console.log('initializeBanners() called – seeding default banners');
-  const defaultBanners = [
-    {
-      id: 'amazon-summer-banner',
-      url: 'https://a.media-amazon.com/images/G/31/prime/MayART/header/New/AMAZON-PRIME-MAY-ART-PC-HEADER-1_4_1.gif',
-      order: 0,
-      isActive: true,
-      clickRedirectUrl: '/deals',
-      expirationTimestamp: null,
-    },
-    {
-      id: 'flipkart-summer-banner',
-      url: 'https://rukminim2.flixcart.com/fk-p-flap/1620/270/image/b692b7eec25beda6.jpg?q=20',
-      order: 1,
-      isActive: true,
-      targetDealId: 'summer-deals-123',
-      expirationTimestamp: '2024-08-31T23:59:59Z',
-    },
-  ];
-
-  try {
-    const results = await Promise.all(
-      defaultBanners.map(banner => {
-        logger.debug('Seeding banner:', banner.id);
-        // console.log('Seeding banner:', banner.id);
-        return updateBanner(banner.id, banner);
-      })
-    );
-    const created = results.filter(r => r.status === 201).length;
-    const updated = results.filter(r => r.status === 200).length;
-    logger.info(`initializeBanners complete – created: ${created}, updated: ${updated}`);
-    // console.log(`initializeBanners complete – created: ${created}, updated: ${updated}`);
-    return { success: created, updated };
+    async bulkDeleteBanners(bannerIds) {
+        try {
+            let deletedCount = 0;
+            
+            for (const bannerId of bannerIds) {
+                try {
+                    await this.bannersRef.child(bannerId).remove();
+                    deletedCount++;
   } catch (error) {
-    // logger.error('Error in initializeBanners():', error);
-    // console.log('Error in initializeBanners():', error);
-    return { status: 500, error: error.message };
-  }
-}
-
-/**
- * Fetch all banners (raw).
- */
-async function getBanners() {
-  // logger.info('getBanners() called – fetching all banners');
-  // console.log('getBanners() called – fetching all banners');
-  try {
-    const ref = db.ref(BANNERS_PATH);
-    const snapshot = await ref.once('value');
-    const data = snapshot.val();
-    logger.debug('Raw banners data:', data);
-    // console.log('Raw banners data:', data);
-    return data;
+                    logger.error(`Error deleting banner ${bannerId}:`, { error: error.message });
+                }
+            }
+            
+            logger.info(`Bulk deleted ${deletedCount} banners`);
+            return { status: 200, message: `Bulk deleted ${deletedCount} banners` };
   } catch (error) {
-    logger.error('Error in getBanners():', error);
-    // console.log('Error in getBanners():', error);
-    throw error;
-  }
+            logger.error('Error in bulk delete operation:', { error: error.message });
+            return { status: 500, message: 'Error in bulk delete operation', error: error.message };
+        }
+    }
 }
 
-getBanners();
-initializeBanners();
-updateBanner('test-banner', {
-  url: 'https://example.com/test-banner.jpg',
-  order: 1,
-  isActive: true,
-  clickRedirectUrl: '/test-deal',
-  expirationTimestamp: '2024-12-31T23:59:59Z',
-});
+// Create and export a singleton instance
+const bannerDB = new BannerDB();
 
 module.exports = {
-  updateBanner,
-  initializeBanners,
-  getBanners,
+    bannerDB,
+    BannerDB
 };

@@ -4,12 +4,23 @@ const { By, Key, Builder, Button, until } = require("selenium-webdriver");
 async function amazonLinkGenerator( driver) {
     let l=1
     try{
-
         await driver.findElement(By.id("amzn-ss-get-link-button")).click();
         // await driver.findElement(By.id("amzn-ss-text-link")).click(); // old
       }
       catch(e) {
         console.log(e);
+        
+        // Check if this is an excluded product
+        try {
+          const excludedProductAlert = await driver.findElement(By.css(".amzn-ss-asin-alert-text-content"));
+          if (excludedProductAlert) {
+            console.log("Excluded Product detected - this product is not eligible for Amazon Associates Program");
+            return ""; // Return empty string for excluded products
+          }
+        } catch (excludedCheckError) {
+          console.log("No excluded product alert found, proceeding with normal flow");
+        }
+        
         try {
           await driver.findElement(By.xpath('//*[@id="aod-close"]/span/span/i')).click();
         } catch(e) {

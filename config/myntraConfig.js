@@ -20,12 +20,15 @@ module.exports = {
     ],
     discount: [
         { type: "css", selector: ".pdp-discount", validator: validateDiscount },
+        { type: "css", selector: ".pdp-mrp-verbiage .pdp-mrp-verbiage-amt", validator: validateDiscount },
     ],
     rating: [
-        { type: "css", selector: ".index-overallRatingContainer .index-overallRating > div" },
+        { type: "css", selector: ".index-overallRatingContainer .index-overallRating > div:first-child" },
+        { type: "css", selector: ".index-overallRating > div:first-child" },
     ],
     ratingsCount: [
         { type: "css", selector: ".index-overallRatingContainer .index-ratingsCount", validator: validateRatingsCount },
+        { type: "css", selector: ".index-ratingsCount", validator: validateRatingsCount },
     ],
     images: [
         {
@@ -128,6 +131,11 @@ module.exports = {
     color: [
         { type: "css", selector: ".pdp-colorInfo" },
         { type: "css", selector: ".pdp-colorName" },
+    ],
+    stockStatus: [
+        { type: "css", selector: ".size-buttons-out-of-stock" },
+        { type: "css", selector: ".pdp-add-to-bag.pdp-out-of-stock" },
+        { type: "css", selector: ".pdp-action-container .pdp-out-of-stock" },
     ],
     sizes: [
         { type: "css", selector: ".size-buttons-size-button", multiple: true },

@@ -22,6 +22,7 @@ const { processAllInstruments } = require("./dataSources/stock");
 const { readUrlsFromTxt } = require("./dataSources/textFile");
 const { initializeBot, continuousProcess } = require("./dataSources/autoTelegramAll");
 const extractFacebookToken = require("./socialMedia/extractFacebookToken");
+const { bannerScheduler } = require("./scheduler/bannerScheduler");
 
 require("events").EventEmitter.defaultMaxListeners = 20;
 
@@ -88,6 +89,11 @@ async function openAmazonWebsite() {
         break;
       case "speedDeals":
         await getSpeedDeals();
+        break;
+      case "banners":
+        // Start banner extraction scheduler
+        await bannerScheduler.start();
+        console.log("Banner scheduler started");
         break;
       default:
         console.log("Invalid type specified");

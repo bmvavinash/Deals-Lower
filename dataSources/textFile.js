@@ -75,6 +75,8 @@ async function readUrlsFromTxt(driver) {
                         len += 1
                     } else if (isProductPosted == productStatus.PRODUCT_ERROR) {
                         missedLinks += link + "\n"
+                    } else if (isProductPosted == productStatus.PRODUCT_EXCLUDED) {
+                        console.log("Excluded product detected - not eligible for Amazon Associates Program");
                     }
                 }
             } catch (e) {

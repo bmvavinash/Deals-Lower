@@ -47,6 +47,8 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
     len += 1;
   } else if (isProductPosted === productStatus.PRODUCT_ERROR) {
     logger.warn(`Missed link: ${link}`, { functionName: 'processProduct' });
+  } else if (isProductPosted === productStatus.PRODUCT_EXCLUDED) {
+    logger.warn(`Excluded product: ${link} - not eligible for Amazon Associates Program`, { functionName: 'processProduct' });
   }
 }
 
@@ -132,8 +134,8 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
             // Add all remaining products (from index 10 onwards) to holdProducts at once
             // #Todo uncomment 112 and 113 after adding the logic to handle "View Similar Products"
 
-            // holdProducts.push(...products.slice(10));
-            // console.log('Added remaining products to hold');
+            holdProducts.push(...products.slice(10));
+            console.log('Added remaining products to hold');
             
             break;  // Exit the loop since all remaining products are processed
           }

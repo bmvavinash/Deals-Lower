@@ -286,6 +286,14 @@ module.exports = {
     { type: 'css', selector: '.couponLabelText' },
     // Add more selectors as needed
   ],
+  dealProgress: [
+    { type: 'id', selector: 'dealsx_percent_message' },
+    { type: 'css', selector: '#dealsx_percent_message' },
+    { type: 'css', selector: '.new-percentage-message .a-text-bold' },
+    { type: 'xpath', selector: '//span[@id="dealsx_percent_message"]' },
+    { type: 'xpath', selector: '//div[@id="dealsx_new_progress_view"]//span[contains(@class, "a-text-bold")]' },
+    // Add more selectors as needed
+  ],
   // Placeholder for future attributes
   description: {
     d1: [{ type: "xpath", selector: '//*[@id="feature-bullets"]/ul/li[1]/span' }],

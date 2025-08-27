@@ -1,30 +1,141 @@
-import TelegramBot from 'node-telegram-bot-api';
-import { TelegramBotKey } from '../config/constants.js';
+// src/services/bannerService.js
 
-const bot = new TelegramBot(TelegramBotKey, { polling: true });
+// 1) Import your logger and Firebase DB
+const logger = require('../logger');    // ← adjust path to your logger
+const { db } = require('../firebase');  // ← your Firebase initialization
+const BANNERS_PATH = 'banners';
 
-// Set the ID of your channel or group (negative number for channels)
-const targetChannelId = -1001234567890;  // Replace with your actual channel's chat ID
+const productStatus = {
+  BANNER_UPDATED: 'Banner updated successfully',
+  BANNER_CREATED: 'Banner created successfully',
+};
 
-// Listen for new messages in any chat the bot has access to
-bot.on('message', (msg) => {
-    const chatId = msg.chat.id;
+/**
+ * Create or update a banner in Firebase.
+ */
+async function updateBanner(bannerId, updatedData) {
+  logger.info(`updateBanner() called for ID=${bannerId}`, { updatedData });
 
-    // Check if the message is from the specified channel/group
-    if (chatId === targetChannelId) {
-        console.log(`Received message from your channel/group: ${msg.text}`);
-        
-        // Process the messages (e.g., extract deals or URLs)
-        const deals = extractDealsFromText(msg.text);
-        console.log("Deals found: ", deals);
-        
-        // Send the deals to another channel (if required)
-        // sendToMyChannel(deals);  // You can use your existing code to send the deals
+  try {
+    const bannerRef = db.ref(`${BANNERS_PATH}/${bannerId}`);
+    logger.debug(`Fetching existing banner at ${BANNERS_PATH}/${bannerId}`);
+    const bannerSnapshot = await bannerRef.once('value');
+
+    const now = new Date().toISOString();
+    const defaultData = {
+      isActive: true,
+      order: 0,
+      creationTimestamp: now,
+      updateTimestamp: now,
+    };
+
+    if (bannerSnapshot.exists()) {
+      logger.info(`Banner ${bannerId} exists – will update`);
+      const existingData = bannerSnapshot.val();
+      logger.debug('Existing data:', existingData);
+
+      const mergedData = {
+        ...existingData,
+        ...updatedData,
+        updateTimestamp: now,
+        creationTimestamp: existingData.creationTimestamp || now,
+      };
+
+      // Preserve critical fields
+      ['id', 'creationTimestamp'].forEach(field => {
+        if (existingData[field]) {
+          mergedData[field] = existingData[field];
+          logger.debug(`Preserved field ${field}:`, existingData[field]);
+        }
+      });
+
+      logger.debug('Merged data to write:', mergedData);
+      await bannerRef.update(mergedData);
+      logger.info(`Banner ${bannerId} updated successfully`);
+      return { status: 200, message: productStatus.BANNER_UPDATED };
+    } else {
+      logger.info(`Banner ${bannerId} does not exist – will create new`);
+      const newBanner = {
+        ...defaultData,
+        ...updatedData,
+        id: bannerId,
+        creationTimestamp: now,
+      };
+      logger.debug('New banner data:', newBanner);
+
+      await bannerRef.set(newBanner);
+      logger.info(`New banner ${bannerId} created successfully`);
+      return { status: 201, message: productStatus.BANNER_CREATED };
     }
-});
-
-// Function to extract URLs (or deals) from the message text
-function extractDealsFromText(text) {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
-    return text.match(urlRegex) || [];  // Adjust based on the data structure
+  } catch (error) {
+    logger.error(`Error in updateBanner(${bannerId}):`, error);
+    return {
+      status: error.code === 'permission-denied' ? 403 : 500,
+      message: error.message,
+    };
+  }
 }
+
+/**
+ * Seed Firebase with a set of default banners.
+ */
+async function initializeBanners() {
+  logger.info('initializeBanners() called – seeding default banners');
+  const defaultBanners = [
+    {
+      id: 'amazon-summer-banner',
+      url: 'https://a.media-amazon.com/images/G/31/prime/MayART/header/New/AMAZON-PRIME-MAY-ART-PC-HEADER-1_4_1.gif',
+      order: 0,
+      isActive: true,
+      clickRedirectUrl: '/deals',
+      expirationTimestamp: null,
+    },
+    {
+      id: 'flipkart-summer-banner',
+      url: 'https://rukminim2.flixcart.com/fk-p-flap/1620/270/image/b692b7eec25beda6.jpg?q=20',
+      order: 1,
+      isActive: true,
+      targetDealId: 'summer-deals-123',
+      expirationTimestamp: '2024-08-31T23:59:59Z',
+    },
+  ];
+
+  try {
+    const results = await Promise.all(
+      defaultBanners.map(banner => {
+        logger.debug('Seeding banner:', banner.id);
+        return updateBanner(banner.id, banner);
+      })
+    );
+    const created = results.filter(r => r.status === 201).length;
+    const updated = results.filter(r => r.status === 200).length;
+    logger.info(`initializeBanners complete – created: ${created}, updated: ${updated}`);
+    return { success: created, updated };
+  } catch (error) {
+    logger.error('Error in initializeBanners():', error);
+    return { status: 500, error: error.message };
+  }
+}
+
+/**
+ * Fetch all banners (raw).
+ */
+async function getBanners() {
+  logger.info('getBanners() called – fetching all banners');
+  try {
+    const ref = db.ref(BANNERS_PATH);
+    const snapshot = await ref.once('value');
+    const data = snapshot.val();
+    logger.debug('Raw banners data:', data);
+    return data;
+  } catch (error) {
+    logger.error('Error in getBanners():', error);
+    throw error;
+  }
+}
+
+module.exports = {
+  updateBanner,
+  initializeBanners,
+  getBanners,
+};

@@ -8,6 +8,7 @@ const PRODUCT_STATUS = {
     PRODUCT_UPDATED_SUCCESSFULLY: 'Product updated successfully',
     PRODUCT_CREATED: 'New Product Created',
     PRODUCT_ERROR: 'Invalid Product Details',
+    PRODUCT_EXCLUDED: 'Product Excluded from Associates Program',
 };
 
 const SEARCH_STATUS = {

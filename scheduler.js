@@ -80,6 +80,13 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
 
     // Scrape product details and set store type
     product = await scrapeProduct(link, storeKey, driver, text, keyExist, username, generateLink, shortUrl);
+    
+    // Check if product is excluded from Amazon Associates Program
+    if (product.isExcluded) {
+      logger.warn(`Product is excluded from Amazon Associates Program: ${link}`, { functionName: 'getProductDetails' });
+      return productStatus.PRODUCT_EXCLUDED;
+    }
+    
     product.storeType = storeType;
     product.date = String(todayDate);
     product.updatedatetime = Date.now();
@@ -94,6 +101,16 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     product.isDisplay = postProduct;
     product.productType = "Affiliate";
     product.shortText = shortenProductText(product?.urltext);
+    
+    // Handle out-of-stock products
+    if (product.stockStatus && product.stockStatus.includes("OUT OF STOCK")) {
+        product.isOutOfStock = true;
+        product.price = product.price || "0"; // Set price to 0 if not available
+        logger.info(`[${product.storeType}] Out-of-stock product detected: ${product.title?.substring(0, 50)}...`, { functionName: 'getProductDetails' });
+    } else {
+        product.isOutOfStock = false;
+    }
+    
     if(product?.category?.mainCategory === "") {
       product.category.mainCategory = product?.category?.c1;
     }
@@ -114,7 +131,7 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
   // ) {
 
   if (
-    product?.price > 0 &&
+    (product?.price > 0 || (product?.stockStatus && product?.stockStatus.includes("OUT OF STOCK"))) &&
     (
         (
             product.storeType !== "Amazon" &&

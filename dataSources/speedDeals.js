@@ -5,6 +5,7 @@ const { getProductDetails } = require("../scheduler");
 const { firebaseget } = require("../database/firebaseget");
 const { getAccessToken } = require("../database/getAccessToken");
 const constants = require("../config/constants");
+const { productStatus } = require("../config/const");
 const { exit } = require("process");
 const fs = require("fs").promises;
 
@@ -53,8 +54,10 @@ async function getSpeedDeals(driver) {
           }
           isProductPosted = await getProductDetails(driver,link, text, len, access_token);
           console.log("-=-=-=-=-=-=-=-=-=-=-> Is product Posted in speed deals: ",isProductPosted)
-          if(isProductPosted){
+          if(isProductPosted === productStatus.PRODUCT_CREATED){
             len+=1
+          } else if(isProductPosted === productStatus.PRODUCT_EXCLUDED) {
+            console.log("Excluded product detected - not eligible for Amazon Associates Program");
           }
         }
 

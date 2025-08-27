@@ -40,19 +40,26 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
     } catch (e) { logger.error(`[${platform}] price error:`, { error: e.message, stack: e.stack }); product.price = ""; }
     try { 
       const discountValue = await extractAttribute(driver, config.discount);
-      product.discount = discountValue ? String(discountValue) : "";
-      // Log if discount value is greater than 100
-      if (product.discount) {
-        const discountNumeric = parseFloat(product.discount.replace(/[^\d.-]/g, ''));
-        if (!isNaN(discountNumeric) && discountNumeric > 100) {
-          logger.warn(`[${platform}] High discount value detected:`, { 
-            discount: product.discount, 
-            numericValue: discountNumeric,
-            url: url 
-          });
-        }
+      const rawDiscount = discountValue ? String(discountValue) : "";
+      const trimmedDiscount = rawDiscount.replace(/\s+/g, ' ').trim();
+      product.discount = trimmedDiscount;
+
+      // Determine numeric value after stripping non-digits
+      const numericString = trimmedDiscount.replace(/[^\d.-]/g, '');
+      const discountNumeric = numericString === "" ? NaN : parseFloat(numericString);
+
+      if (trimmedDiscount === "" || isNaN(discountNumeric)) {
+        // Explicitly log when discount is missing, empty, or not numeric
+        logger.error(`[${platform}] Discount missing or invalid`, { code: 'DISCOUNT_MISSING', discountRaw: rawDiscount, url: url });
+      } else if (discountNumeric > 100) {
+        logger.warn(`[${platform}] High discount value detected`, { 
+          code: 'DISCOUNT_HIGH',
+          discount: trimmedDiscount, 
+          numericValue: discountNumeric,
+          url: url 
+        });
       }
-    } catch (e) { logger.error(`[${platform}] discount error:`, { error: e.message, stack: e.stack }); product.discount = ""; }
+    } catch (e) { logger.error(`[${platform}] discount error`, { code: 'DISCOUNT_ERROR', error: e.message, stack: e.stack, url }); product.discount = ""; }
     try { 
       const mrpValue = await extractAttribute(driver, config?.mrp);
       product.mrp = mrpValue ? String(mrpValue) : "";
@@ -89,8 +96,15 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
         const asinValue = await extractAttribute(driver, config?.asin);
         product.asin = asinValue ? String(asinValue) : "";
       } catch (e) { logger.error(`[${platform}] asin error:`, { error: e.message, stack: e.stack }); product.asin = ""; }
+      
+      // Amazon-specific: deal progress
+      try { 
+        const dealProgressValue = await extractAttribute(driver, config?.dealProgress);
+        product.dealProgress = dealProgressValue ? String(dealProgressValue) : "";
+      } catch (e) { logger.error(`[${platform}] dealProgress error:`, { error: e.message, stack: e.stack }); product.dealProgress = ""; }
     } else {
       product.asin = "";
+      product.dealProgress = "";
     }
     
     // Common attributes for all platforms
@@ -287,8 +301,29 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
           if (username?.includes("dealsglobalhub")) {
             if (platform === "amazon") {
               try {
-                product.links.avinashbmv = await amazonLinkGenerator(driver) || "";
-                product.links.avinashbmvINR = "";
+                const amazonLink = await amazonLinkGenerator(driver);
+                if (amazonLink === "") {
+                  // Check if this is due to excluded product
+                  try {
+                    const excludedProductAlert = await driver.findElement(By.css(".amzn-ss-asin-alert-text-content"));
+                    if (excludedProductAlert) {
+                      logger.warn(`[${platform}] Product is excluded from Amazon Associates Program`);
+                      product.links.avinashbmv = "";
+                      product.links.avinashbmvINR = "";
+                      product.isExcluded = true; // Add flag to indicate excluded product
+                    } else {
+                      product.links.avinashbmv = amazonLink || "";
+                      product.links.avinashbmvINR = "";
+                    }
+                  } catch (excludedCheckError) {
+                    // No excluded product alert, treat as normal empty link
+                    product.links.avinashbmv = amazonLink || "";
+                    product.links.avinashbmvINR = "";
+                  }
+                } else {
+                  product.links.avinashbmv = amazonLink || "";
+                  product.links.avinashbmvINR = "";
+                }
           } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
             } else {
               try {
