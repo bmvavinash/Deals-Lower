@@ -55,10 +55,10 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
         logger.warn(`[${platform}] High discount value detected`, { 
           code: 'DISCOUNT_HIGH',
           discount: trimmedDiscount, 
-          numericValue: discountNumeric,
-          url: url 
-        });
-      }
+            numericValue: discountNumeric,
+            url: url 
+          });
+        }
     } catch (e) { logger.error(`[${platform}] discount error`, { code: 'DISCOUNT_ERROR', error: e.message, stack: e.stack, url }); product.discount = ""; }
     try { 
       const mrpValue = await extractAttribute(driver, config?.mrp);
@@ -322,7 +322,7 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
                   }
                 } else {
                   product.links.avinashbmv = amazonLink || "";
-                  product.links.avinashbmvINR = "";
+                product.links.avinashbmvINR = "";
                 }
           } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
             } else {

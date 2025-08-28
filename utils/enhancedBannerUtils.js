@@ -204,6 +204,19 @@ class EnhancedBannerUtils {
 		return hasBannerContext && !hasProductContext;
 	}
 	
+	// Detect product detail/search links vs promotional/category links
+	static isProductLink(url) {
+		if (!url) return false;
+		const u = url.toLowerCase();
+		return u.includes('/dp/') || u.includes('/gp/product') || u.includes('/gp/offer-listing') || u.includes('/s?') || u.includes('/ref=sr_');
+	}
+	
+	static isPromoOrCategoryLink(url) {
+		if (!url) return false;
+		const u = url.toLowerCase();
+		return u.includes('/b?') || u.includes('/l/') || u.includes('/events/') || u.includes('/deals') || u.includes('/fmc/');
+	}
+	
 	// Validate banner dimensions (rectangular shape)
 	static validateBannerDimensions(width, height) {
 		if (!width || !height) return { isValid: false, reason: 'Missing dimensions' };
@@ -291,6 +304,18 @@ class EnhancedBannerUtils {
 			category: 'unknown'
 		};
 		
+		// Exclude obvious product links
+		if (this.isProductLink(url)) {
+			validation.reasons.push('Product link');
+			validation.score -= 4;
+		}
+		
+		// Prefer promo/category links
+		if (this.isPromoOrCategoryLink(url)) {
+			validation.reasons.push('Promo/category link');
+			validation.score += 2;
+		}
+		
 		// Check for affiliate content first
 		if (this.hasAffiliateContent(altText, url)) {
 			validation.reasons.push('Contains affiliate content');
@@ -328,16 +353,16 @@ class EnhancedBannerUtils {
 		if (dimensions) {
 			const dimensionValidation = this.validateBannerDimensions(dimensions.width, dimensions.height);
 			if (dimensionValidation.isValid) {
-				validation.score += 1;
+				validation.score += 2;
 				validation.reasons.push('Valid banner dimensions');
 			} else {
-				validation.score -= 1;
+				validation.score -= 2;
 				validation.reasons.push(`Dimension issue: ${dimensionValidation.reason}`);
 			}
 		}
 		
 		// Determine category based on score
-		if (validation.score >= 5) {
+		if (validation.score >= 6) {
 			validation.category = 'hero';
 		} else if (validation.score >= 3) {
 			validation.category = 'promotional';
@@ -348,10 +373,11 @@ class EnhancedBannerUtils {
 		}
 		
 		// Final validation decision - stricter requirements
-		validation.isValid = validation.score >= 3 && 
+		validation.isValid = validation.score >= 3 &&
 						  !validation.reasons.some(reason => 
 							  reason.includes('affiliate content') ||
-							  reason.includes('small/non-banner image')
+							  reason.includes('small/non-banner image') ||
+							  reason.includes('Product link')
 						  );
 		
 		return validation;

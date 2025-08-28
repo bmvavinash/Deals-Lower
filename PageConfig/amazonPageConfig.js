@@ -52,5 +52,56 @@ module.exports = {
       // Deal - should show "Limited time deal" instead of "Previously viewed"
       "deal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" }
     }
+  },
+  
+  // Fallback 1: Deals Grid (bottom of some category pages)
+  "dealsGridPage": {
+    "baseSelector": "div[data-testid='product-card']",
+    "selectors": {
+      "brand": { type: "css", selector: "p[id^='title-']", validate: extractBrand },
+      "name": { type: "css", selector: "p[id^='title-']" },
+      "discountedPrice": { type: "css", selector: "[data-testid='price-section'] .a-price .a-price-whole", validate: validatePrice },
+      "originalPrice": { type: "css", selector: "[data-testid='price-section'] .a-text-price", validate: validateOriginalPrice },
+      "discountPercentage": { type: "css", selector: ".style_filledRoundedBadgeLabel__Vo-4g .a-size-mini, [data-testid='price-section'] .a-size-mini", validate: validateDiscountPercentage },
+      "rating": { type: "css", selector: "i.a-icon-star-medium .a-icon-alt" },
+      "ratingsCount": { type: "css", selector: "span.a-size-small.a-color-secondary" },
+      "productUrl": { type: "css", selector: "a[data-testid='product-card-link']", attribute: "href" },
+      "productImage": { type: "css", selector: ".ProductCardImage-module__wrapper_YgLz4kq6ekChj01qeqOf img", attribute: "src" },
+      "asin": { type: "css", selector: "div[data-testid='product-card']", attribute: "data-asin" }
+    }
+  },
+
+  // Fallback 2: Category horizontal carousel blocks (ACS)
+  "carouselPage": {
+    "baseSelector": "li._carousel-v2_style_acs-product-block-v2-layout__1hFyR div.acsProductBlockV2",
+    "selectors": {
+      "brand": { type: "css", selector: ".acsProductBlockV2__contributor .a-text-bold", validate: extractBrand },
+      "name": { type: "css", selector: ".acsProductBlockV2__product-title .a-truncate-full" },
+      "discountedPrice": { type: "css", selector: ".acsProductBlockV2__price .a-price .a-price-whole", validate: validatePrice },
+      "originalPrice": { type: "css", selector: ".acsProductBlockV2__price .a-text-price", validate: validateOriginalPrice },
+      "discountPercentage": { type: "css", selector: ".acsProductBlockV2__price .a-size-mini, .acsProductBlockV2__price .a-color-secondary", validate: validateDiscountPercentage },
+      "rating": { type: "css", selector: ".acsProductBlockV2__review .a-icon-alt" },
+      "ratingsCount": { type: "css", selector: ".acsProductBlockV2__review .acsProductBlockV2__rating__review-count", validate: validateRatingsCount },
+      "productUrl": { type: "css", selector: "a.a-link-normal", attribute: "href" },
+      "productImage": { type: "css", selector: ".acsProductBlockV2__product_image img", attribute: "src" },
+      "asin": { type: "css", selector: "div.acsProductBlockV2", attribute: "data-asin" }
+    }
+  },
+
+  // Fallback 3: Best Sellers / New Releases carousel blocks (ZGBS)
+  "bestCarouselPage": {
+    "baseSelector": "li.a-carousel-card div[data-asin]",
+    "selectors": {
+      "brand": { type: "css", selector: ".p13n-sc-truncate-desktop-type2", validate: extractBrand },
+      "name": { type: "css", selector: ".p13n-sc-truncate-desktop-type2" },
+      "discountedPrice": { type: "css", selector: "._cDEzb_p13n-sc-price_3mJ9Z, .a-color-price span" },
+      "originalPrice": { type: "css", selector: ".a-text-price" },
+      "discountPercentage": { type: "css", selector: ".a-size-mini.a-color-secondary" },
+      "rating": { type: "css", selector: ".a-icon-alt" },
+      "ratingsCount": { type: "css", selector: ".a-size-small", validate: validateRatingsCount },
+      "productUrl": { type: "css", selector: "a.a-link-normal[href*='/dp/']", attribute: "href" },
+      "productImage": { type: "css", selector: "img.p13n-sc-dynamic-image, img", attribute: "src" },
+      "asin": { type: "css", selector: "div[data-asin]", attribute: "data-asin", validate: extractAsin }
+    }
   }
 };
