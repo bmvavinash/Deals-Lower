@@ -1,0 +1,7 @@
+{"level":"info","message":"Banner amazon-summer-banner does not exist – will create new","moduleName":"bannerDB","timestamp":"2025-04-27T10:51:12.733Z"}
+{"level":"info","message":"Banner flipkart-summer-banner does not exist – will create new","moduleName":"bannerDB","timestamp":"2025-04-27T10:51:12.744Z"}
+{"level":"info","message":"Banner test-banner does not exist – will create new","moduleName":"bannerDB","timestamp":"2025-04-27T10:51:12.747Z"}
+{"level":"info","message":"New banner amazon-summer-banner created successfully","moduleName":"bannerDB","timestamp":"2025-04-27T10:51:14.636Z"}
+{"level":"info","message":"New banner flipkart-summer-banner created successfully","moduleName":"bannerDB","timestamp":"2025-04-27T10:51:14.639Z"}
+{"level":"info","message":"initializeBanners complete – created: 2, updated: 0","moduleName":"bannerDB","timestamp":"2025-04-27T10:51:14.642Z"}
+{"level":"info","message":"New banner test-banner created successfully","moduleName":"bannerDB","timestamp":"2025-04-27T10:51:14.646Z"}

@@ -297,7 +297,113 @@ class BannerDB {
 // Create and export a singleton instance
 const bannerDB = new BannerDB();
 
+// Test BannerDB class for testing purposes
+class TestBannerDB {
+    constructor() {
+        this.testBannersRef = db.ref('test-banners');
+    }
+
+    async storeTestBanner(bannerData) {
+        try {
+            const bannerRef = this.testBannersRef.child(bannerData.id);
+            
+            // Check if banner already exists
+            const snapshot = await bannerRef.once('value');
+            
+            if (snapshot.exists()) {
+                // Update existing banner
+                const existingData = snapshot.val();
+                const updatedData = {
+                    ...existingData,
+                    ...bannerData,
+                    updateTimestamp: new Date().toISOString()
+                };
+                
+                await bannerRef.update(updatedData);
+                logger.info(`Test banner updated: ${bannerData.id}`);
+                return { status: 200, message: 'Test banner updated successfully' };
+            } else {
+                // Create new banner
+                await bannerRef.set(bannerData);
+                logger.info(`Test banner created: ${bannerData.id}`);
+                return { status: 201, message: 'Test banner created successfully' };
+            }
+        } catch (error) {
+            logger.error(`Error storing test banner ${bannerData.id}:`, { error: error.message });
+            return { status: 500, message: 'Error storing test banner', error: error.message };
+        }
+    }
+
+    async storeMultipleTestBanners(banners) {
+        const results = [];
+        
+        for (const banner of banners) {
+            const result = await this.storeTestBanner(banner);
+            results.push({ id: banner.id, ...result });
+        }
+        
+        return results;
+    }
+
+    async getTestBanner(bannerId) {
+        try {
+            const snapshot = await this.testBannersRef.child(bannerId).once('value');
+            
+            if (snapshot.exists()) {
+                return { status: 200, data: snapshot.val() };
+            } else {
+                return { status: 404, message: 'Test banner not found' };
+            }
+        } catch (error) {
+            logger.error(`Error getting test banner ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error getting test banner', error: error.message };
+        }
+    }
+
+    async getAllTestBanners() {
+        try {
+            const snapshot = await this.testBannersRef.once('value');
+            
+            if (snapshot.exists()) {
+                return { status: 200, data: snapshot.val() };
+            } else {
+                return { status: 200, data: {} };
+            }
+        } catch (error) {
+            logger.error('Error getting all test banners:', { error: error.message });
+            return { status: 500, message: 'Error getting test banners', error: error.message };
+        }
+    }
+
+    async deleteTestBanner(bannerId) {
+        try {
+            await this.testBannersRef.child(bannerId).remove();
+            logger.info(`Test banner deleted: ${bannerId}`);
+            return { status: 200, message: 'Test banner deleted successfully' };
+        } catch (error) {
+            logger.error(`Error deleting test banner ${bannerId}:`, { error: error.message });
+            return { status: 500, message: 'Error deleting test banner', error: error.message };
+        }
+    }
+
+    async deleteAllTestBanners() {
+        try {
+            await this.testBannersRef.remove();
+            logger.info('All test banners deleted');
+            return { status: 200, message: 'All test banners deleted successfully' };
+        } catch (error) {
+            logger.error('Error deleting all test banners:', { error: error.message });
+            return { status: 500, message: 'Error deleting all test banners', error: error.message };
+        }
+    }
+}
+
+// Create and export a singleton instance
+const testBannerDB = new TestBannerDB();
+
 module.exports = {
     bannerDB,
-    BannerDB
+    BannerDB,
+    testBannerDB,
+    TestBannerDB
 };

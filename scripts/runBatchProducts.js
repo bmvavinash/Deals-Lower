@@ -4,23 +4,15 @@ const { getModuleLogger } = require('../logger/logger');
 const logger = getModuleLogger('runBatchProducts');
 
 const DEFAULT_SEEDS = [
-	'https://www.amazon.in',
-	'https://www.amazon.in/deals',
-	'https://www.amazon.in/bestsellers',
-	'https://www.amazon.in/new-releases',
+	// Amazon
 	'https://www.amazon.in/s?k=mobile+phones',
-	'https://www.amazon.in/gp/browse.html?node=1389401031', // Mobiles & Accessories
-	'https://www.amazon.in/gp/browse.html?node=976419031',  // Electronics
-	'https://www.amazon.in/gp/browse.html?node=976442031',  // Home & Kitchen
-	'https://www.amazon.in/gp/browse.html?node=976392031',  // Computers & Accessories
-	'https://www.amazon.in/gp/browse.html?node=1380365031', // Large Appliances
-	'https://www.amazon.in/gp/browse.html?node=1355016031', // Beauty & Personal Care
-	'https://www.amazon.in/gp/browse.html?node=1968024031', // Fashion (Men)
-	'https://www.amazon.in/gp/browse.html?node=1968253031', // Fashion (Women)
-	'https://www.amazon.in/gp/browse.html?node=976389031',  // Books
-	'https://www.amazon.in/gp/browse.html?node=1350380031', // Toys & Games
-	'https://www.amazon.in/gp/browse.html?node=1984443031', // Sports & Outdoors
-	'https://www.amazon.in/gp/browse.html?node=4859480031'  // Grocery & Gourmet Foods
+	'https://www.amazon.in/bestsellers',
+	// Flipkart
+	'https://www.flipkart.com/search?q=mobile',
+	// Myntra
+	'https://www.myntra.com/men-tshirts',
+	// Ajio
+	'https://www.ajio.com/men-tshirts/c/830216'
 ];
 
 function parseArgs() {

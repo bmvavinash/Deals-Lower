@@ -7,12 +7,21 @@ const { productStatus } = require('../config/const');
 const { getModuleLogger } = require('../logger/logger');
 // const { getTelegramDealLink } = require('./telegram');
 // const { getTelegramDealLink } = require('../scheduler'); // Add other required functions
+const { handleProductProcessing } = require('./handleProductProcessing');
 
 
 const logger = getModuleLogger('autoTelegramAll');
 
 let bot;
 const messagesQueue = []; // Global array to store messages with links and text
+let processing = false;
+const MAX_CONCURRENT = 2;
+let globalDriver = null; // Global driver instance for queue processing
+
+// Function to set the driver for queue processing
+function setDriver(driverInstance) {
+    globalDriver = driverInstance;
+}
 
 // Function to initialize the bot and set up listeners
 // async function initializeBot(driver) {
@@ -20,19 +29,17 @@ async function initializeBot() {
     // bot = new TelegramBot(constants.DealsGlobalBotKey, { polling: true });
     try {
 
-        const bot = new TelegramBot(constants.TelegramBotKey, { polling: true });
+        // Use global bot instance so listeners stay active
+        bot = new TelegramBot(constants.TelegramBotKey, { polling: true });
         console.log('Bot initialized and listening for messages.');
         let links = [];
         let text = "";
 
         bot.on('channel_post', async (post) => {
-            console.log(`Received message from Channel: ${post.chat.title}`);
+            console.log(`[TELEGRAM] Received message from Channel: ${post.chat.title}`);
+            console.log(`[TELEGRAM] Message content:`, post.caption || post.text || 'No content');
+            console.log(`[TELEGRAM] Message ID:`, post.message_id);
             await processBotMessage(post);
-            // await processBotMessage(post?.caption || post?.text);
-            // await processBotMessage(driver,post.caption);
-            // await processAndQueue(post);
-            // links,text = await processAndCheck(post);
-            // links,text = await processAndCheck(driver, post);
         });
 
         bot.on('edited_channel_post', async (editedPost) => {
@@ -47,7 +54,9 @@ async function initializeBot() {
         // Listen for **Group Messages**
         bot.on('message', async (msg) => {
             if (msg.chat.type === 'group' || msg.chat.type === 'supergroup') {
-                console.log(`Received message from Group: ${msg.chat.title}`);
+                console.log(`[TELEGRAM] Received message from Group: ${msg.chat.title}`);
+                console.log(`[TELEGRAM] Message content:`, msg.text || msg.caption || 'No content');
+                console.log(`[TELEGRAM] Message ID:`, msg.message_id);
                 await processBotMessage(msg);
             }
         });
@@ -66,52 +75,66 @@ async function initializeBot() {
     // return {links,text};
 }
 
+let pollAttempt = 0;
 async function getNewBotMessages() {
-
+    // Snapshot current queue and clear for next cycle
     const messagesToProcess = messagesQueue;
-    messagesQueue.length = 0; // Clear the queue after copying
-
-
     messagesQueue.length = 0;
+
+    pollAttempt += 1;
+    console.log(`[TELEGRAM-POLL] attempt=${pollAttempt} queued=${messagesToProcess.length}`);
+    if (messagesToProcess.length === 0) {
+        console.log('[TELEGRAM-POLL] no messages in queue this attempt');
+    } else {
+        console.log(`[TELEGRAM-POLL] processing ${messagesToProcess.length} queued message(s)`);
+        messagesToProcess.forEach((msg, idx) => {
+            console.log(`[TELEGRAM-POLL] Message ${idx + 1}: ${msg.link}`);
+        });
+    }
+
     return new Promise((resolve) => {
         setTimeout(() => {
+            console.log(`[TELEGRAM-POLL] Resolving ${messagesToProcess.length} messages after 5s delay`);
             resolve([...messagesToProcess]);
-            // setTimeout(async () => {
-            // Fetch any new messages the bot has captured
-            // const newMessages = await processBotMessage();
-            // resolve(newMessages);
-        }, 5000); // Wait for 5 seconds before each check
+        }, 5000); // 5s polling interval
     });
 }
 
 
 // Function to process posts and trigger getProductDetails if links are present
 async function processBotMessage(post) {
-    // async function processBotMessage(driver={}, post) {
-    // async function processAndQueue(post) {
-    // async function processAndCheck(driver, post) {
-    // async function processAndCheck(post) {
+    console.log(`[TELEGRAM] Processing bot message...`);
     const { skip, links, plainText } = extractLinksAndText(post?.caption || post?.text);
-    // const { skip, links, plainText } = extractLinksAndText(post.caption);
     const username = post?.chat?.username;
 
+    console.log(`[TELEGRAM] Extracted - skip: ${skip}, links: ${links?.length || 0}, text length: ${plainText?.length || 0}`);
+    console.log(`[TELEGRAM] Links found:`, links);
+    console.log(`[TELEGRAM] Text preview:`, plainText?.substring(0, 100) + (plainText?.length > 100 ? '...' : ''));
+
     if (skip) {
-        console.log("No links found. Skipping further processing.");
+        console.log("[TELEGRAM] No links found. Skipping further processing.");
         return;  // Exit if no links are found
     }
 
     logger.info(`Links:, ${links}Text:, ${plainText} Username:, ${username}`, { functionName: 'processBotMessage' });
-    // console.log("Links found:", links);
-    // console.log("Text found:", plainText);
-    console.log("Username found:", username);
-
+    console.log("[TELEGRAM] Username found:", username);
 
     // Store each message as an object in the queue
     links.forEach(link => {
         messagesQueue.push({ link, plainText, username });
+        console.log(`[TELEGRAM] Added to queue: ${link} (Queue size: ${messagesQueue.length})`);
     });
-}
 
+    // Trigger processing immediately if enabled
+    if (constants.enableTelegramProcessing) {
+        console.log(`[TELEGRAM] Triggering queue processing. Queue size: ${messagesQueue.length}, Driver available: ${!!globalDriver}`);
+        kickOffQueueProcessing().catch((e) => {
+            console.error('[TELEGRAM] Queue processing failed:', e?.message);
+        });
+    } else {
+        console.log(`[TELEGRAM] Processing disabled via flag`);
+    }
+}
 
 
 // return { links, plainText };
@@ -144,6 +167,35 @@ async function processMessagesQueue() {
     //     console.log("Missed links:", missedLinks);
 }
 // }
+
+async function kickOffQueueProcessing() {
+    if (processing) {
+        console.log(`[TELEGRAM] Queue processing already in progress, skipping`);
+        return;
+    }
+    processing = true;
+    console.log(`[TELEGRAM] Starting queue processing with ${messagesQueue.length} messages`);
+    try {
+        while (messagesQueue.length > 0) {
+            const batch = messagesQueue.splice(0, MAX_CONCURRENT);
+            console.log(`[TELEGRAM] Processing batch of ${batch.length} messages`);
+            await Promise.all(batch.map(async ({ link, plainText, username }) => {
+                try {
+                    console.log(`[TELEGRAM] Processing message: ${link}`);
+                    console.log(`[TELEGRAM] Driver available: ${!!globalDriver}`);
+                    const result = await handleProductProcessing(globalDriver || {}, link, plainText, 0, '', {}, {}, username || '');
+                    console.log(`[TELEGRAM] Processing result for ${link}:`, result);
+                } catch (e) {
+                    console.error(`[TELEGRAM] handleProductProcessing failed for ${link}:`, e?.message);
+                    logger.error('handleProductProcessing failed', { link, error: e?.message });
+                }
+            }));
+        }
+        console.log('[TELEGRAM] Queue processing completed');
+    } finally {
+        processing = false;
+    }
+}
 
 // Controller function to manage continuous processing
 async function continuousProcess(driver) {
@@ -180,6 +232,6 @@ async function continuousProcess(driver) {
 //     }
 // }
 
-module.exports = { initializeBot, continuousProcess, getNewBotMessages, processBotMessage, processMessagesQueue };
+module.exports = { initializeBot, continuousProcess, getNewBotMessages, processBotMessage, processMessagesQueue, setDriver };
 
 // module.exports = { initializeBot, processPost };

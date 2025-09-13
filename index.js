@@ -9,9 +9,9 @@ const { firebase } = require("googleapis/build/src/apis/firebase");
 const { firebaseget } = require("./database/firebaseget");
 const { firebasepost } = require("./database/firebasepost");
 
-const constants = require('./config/constants');
 const config = require('./config/config');
 const { getTelegramDealLink, continuouslyProcessBotMessages } = require("./dataSources/telegram");
+const constants = require('./config/constants');
 const { getSpeedDeals } = require("./dataSources/speedDeals");
 const Zerodha = require("./Stock/Portal/Zerodha");
 const zerodhaHoldings = require("./Stock/Portal/zerodhaHoldings");
@@ -23,8 +23,58 @@ const { readUrlsFromTxt } = require("./dataSources/textFile");
 const { initializeBot, continuousProcess } = require("./dataSources/autoTelegramAll");
 const extractFacebookToken = require("./socialMedia/extractFacebookToken");
 const { bannerScheduler } = require("./scheduler/bannerScheduler");
+const ProcessLock = require("./utils/processLock");
 
 require("events").EventEmitter.defaultMaxListeners = 20;
+
+// Global variables for cleanup
+let driver = null;
+let isShuttingDown = false;
+let processLock = null;
+
+// Graceful shutdown handlers
+process.on('SIGINT', async () => {
+  console.log('\nReceived SIGINT. Shutting down gracefully...');
+  await gracefulShutdown();
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\nReceived SIGTERM. Shutting down gracefully...');
+  await gracefulShutdown();
+});
+
+process.on('uncaughtException', async (error) => {
+  console.error('Uncaught Exception:', error);
+  await gracefulShutdown();
+});
+
+process.on('unhandledRejection', async (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  await gracefulShutdown();
+});
+
+async function gracefulShutdown() {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+  
+  console.log("Performing graceful shutdown...");
+  try {
+    if (driver) {
+      await driver.quit();
+      console.log("Browser driver closed");
+    }
+  } catch (error) {
+    console.log("Error closing driver:", error.message);
+  }
+  
+  // Release process lock
+  if (processLock) {
+    processLock.release();
+  }
+  
+  console.log("Shutdown complete");
+  process.exit(0);
+}
 
 
 
@@ -34,6 +84,14 @@ let postflag = false;
 
 // async function openAmazonWebsite(link) {
 async function openAmazonWebsite() {
+  // Check for process lock to prevent multiple instances
+  processLock = new ProcessLock();
+  const lockAcquired = await processLock.acquire();
+  if (!lockAcquired) {
+    console.log("Another instance is already running. Exiting...");
+    process.exit(1);
+  }
+  processLock.setupCleanup();
 
   require("chromedriver");
 
@@ -65,13 +123,70 @@ async function openAmazonWebsite() {
       case "general":
         switch (constants.generaltype) {
           case "telegramFile":
-            await getTelegramDealLink(driver);
+            // Get initial data once
+            let len = 0;
+            let jsonData = {};
+            let todayJsonData = {};
+            try {
+              const result = await firebaseget();
+              jsonData = result.data || {};
+              len = result.len || 0;
+            } catch (error) {
+              console.log("Error getting initial data:", error);
+            }
+            try {
+              const todayResult = await firebaseget(true);
+              todayJsonData = todayResult.data || {};
+            } catch (error) {
+              console.log("Error getting today's data:", error);
+            }
+            await getTelegramDealLink(driver, len, jsonData, todayJsonData);
             break;
           case "urlsFile":
-            await readUrlsFromTxt(driver);
+            // Get initial data once
+            let urlsLen = 0;
+            let urlsJsonData = {};
+            let urlsTodayJsonData = {};
+            try {
+              const result = await firebaseget();
+              urlsJsonData = result.data || {};
+              urlsLen = result.len || 0;
+            } catch (error) {
+              console.log("Error getting initial data:", error);
+            }
+            try {
+              const todayResult = await firebaseget(true);
+              urlsTodayJsonData = todayResult.data || {};
+            } catch (error) {
+              console.log("Error getting today's data:", error);
+            }
+            await readUrlsFromTxt(driver, urlsLen, urlsJsonData, urlsTodayJsonData);
             break;
           case "telegramBot":
-            await continuouslyProcessBotMessages();
+            // Initialize required parameters for Telegram bot processing
+            let botLen = 0;
+            let accessToken = "";
+            let botJsonData = {};
+            let botTodayJsonData = {};
+            
+            // Get initial data
+            try {
+              const result = await firebaseget();
+              botJsonData = result.data || {};
+              botLen = result.len || 0;
+            } catch (error) {
+              console.log("Error getting initial data:", error);
+            }
+            
+            try {
+              const todayResult = await firebaseget(true);
+              botTodayJsonData = todayResult.data || {};
+            } catch (error) {
+              console.log("Error getting today's data:", error);
+            }
+            
+            console.log("Starting Telegram bot processing with driver and data...");
+            await continuouslyProcessBotMessages(driver, botLen, accessToken, botJsonData, botTodayJsonData);
             // await continuousProcess(driver);
             // await initializeBot(driver);
             break;
@@ -148,10 +263,19 @@ async function openAmazonWebsite() {
   //   whatsapp("Kzl4DB4yCXzJaaCP0Lrf1G",text);
   // }
   console.log("returning in index")
-  throw new Error("Script terminated.");
-  // return null;
-  // exit();
-  // process.exit(1); // halts all asynchronous operations so use sleep 
+  
+  // Graceful shutdown
+  console.log("Shutting down gracefully...");
+  try {
+    if (driver) {
+      await driver.quit();
+      console.log("Browser driver closed");
+    }
+  } catch (error) {
+    console.log("Error closing driver:", error.message);
+  }
+  
+  process.exit(0);
 
 }
 

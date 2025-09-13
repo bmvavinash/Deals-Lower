@@ -25,9 +25,9 @@ const generateLink=true
 const source="deals"
 // const source="stocks"
 
-const generaltype="telegramFile"
+// const generaltype="telegramFile"
 // const generaltype="urlsFile"
-// const generaltype="telegramBot"
+const generaltype="telegramBot"  // ENABLED FOR TELEGRAM BOT EXTRACTION
 
 const type="general"
 // const type="textfilelinks"
@@ -43,19 +43,44 @@ const DealsGlobalBotKey="8177765543:AAF1lYt4e6dH6u-Cfb_Sd7oBEcl5VJadZz8"
 
 
 const FirebaseApiKey="AIzaSyCpZ8uisdsfodfjpowijfsuSbimONqtRufvR8WBiUBFt7-_UI"
+// Interval for bulk updates (in ms). If changed to invalid, fallback will be 2 hours.
+// RE-ENABLED AFTER FIXING productDealsDB.js
+const bulkUpdateIntervalMs = 2 * 60 * 60 * 1000; // 2 hours
+// const bulkUpdateIntervalMs = null; // Disabled for testing
+
+// Execution toggles
+const enableTelegramProcessing = true; // Gate to start Telegram bot processing
+const enableBulkProcessing = true;     // Gate to start bulk website processing
+
+// Global timeouts and watchdogs
+const maxPageTimeoutMs = 2 * 60 * 1000;        // 2 minutes per webpage scrape
+const maxPlatformTimeoutMs = 15 * 60 * 1000;   // 15 minutes per platform/category batch
+const maxIdleGlobalMs = 5 * 60 * 1000;         // 5 minutes idle watchdog
+
+// TELEGRAM BOT WITH BULK UPDATES CONFIGURATION
+console.log("=== TELEGRAM BOT + BULK UPDATES MODE ENABLED ===");
+console.log("Type:", type);
+console.log("General Type:", generaltype, "(TELEGRAM BOT MODE)");
+console.log("Source:", source);
+console.log("Environment:", env);
+console.log("Bulk Updates:", bulkUpdateIntervalMs ? "ENABLED" : "DISABLED");
+console.log("Mode: Telegram Bot Product Extraction + Bulk Updates + DB Storage");
+console.log("==================================================");
 const POSTING_TYPES_CONFIG = {
   general: {
-    DB: 'DB1',
+    DB: 'DB1Backup',
+    // DB: 'DB1',
     postTo: {
-      telegram: true,
-      whatsapp: false,
+      telegram: true,  // ENABLED FOR TESTING
+      whatsapp: false, // DISABLED FOR TESTING
       // whatsapp: true,
-      facebook: true
+      facebook: false  // DISABLED FOR TESTING
     },
     typeValue: 'all'
   },
   textfilelinks: {
-    DB: 'DB1',
+    DB: 'DB1Backup',
+    // DB: 'DB1',
     postTo: {
       telegram: true,
       whatsapp: false,
@@ -112,5 +137,37 @@ module.exports = {
   extraPeUsername,
   extraPePassword,
   FirebaseApiKey,
-  generateLink
+  generateLink,
+  bulkUpdateIntervalMs,
+  enableTelegramProcessing,
+  enableBulkProcessing,
+  maxPageTimeoutMs,
+  maxPlatformTimeoutMs,
+  maxIdleGlobalMs,
+
+  // Secondary Firebase project for user favourites/preferences (uses Admin SDK)
+  userFirebase: {
+    serviceAccountPath: process.env.USERS_FIREBASE_SERVICE_ACCOUNT_PATH || 'F:/Study/Affiliate/Projects/Affiliate/New Clone Affiliate/Firebase/Firebase key', // Set path to users project service account JSON
+    databaseURL: process.env.USERS_FIREBASE_DATABASE_URL || 'https://dealshub-users-default-rtdb.asia-southeast1.firebasedatabase.app',
+    appName: 'user-favourites'
+  },
+
+  // Notification toggles and thresholds
+  notifications: {
+    enableWhatsapp: false,
+    enableTelegram: true,
+    enablePush: false,
+    enableBrowser: false,
+    enableFavoritesService: false,
+    lowStockThreshold: 2,
+    expiryWarnMinutes: 30,
+    respectDoNotDisturb: true,
+    // Favorites processing intervals (in milliseconds)
+    favoritesProcessingIntervalMs: 60 * 60 * 1000, // 1 hour - full favorites processing
+    favoritesUrgentCheckIntervalMs: 15 * 60 * 1000, // 15 minutes - urgent notifications check
+    // Maximum notifications per cycle to prevent spam
+    maxNotificationsPerCycle: 200,
+    // Price drop threshold for notifications (percentage)
+    priceDropThreshold: 0.1 // 10% default
+  }
 };

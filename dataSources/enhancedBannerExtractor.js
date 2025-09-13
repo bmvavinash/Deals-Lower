@@ -3,7 +3,7 @@ const chrome = require('selenium-webdriver/chrome');
 const bannerConfig = require('../config/bannerConfig');
 const EnhancedBannerUtils = require('../utils/enhancedBannerUtils');
 const { getModuleLogger } = require('../logger/logger');
-const { testBannerDB } = require('../database/firebaseDB/testBannerDB');
+const { testBannerDB } = require('../database/firebaseDB/bannerDB');
 
 const logger = getModuleLogger('enhancedBannerExtractor');
 

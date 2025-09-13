@@ -5,13 +5,254 @@ const { Builder, By } = require("selenium-webdriver");
 require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
 const { getProductDetails } = require("../scheduler");
+const { handleProductProcessing } = require('./handleProductProcessing');
 const { firebaseget } = require("../database/firebaseget");
 const constants = require("../config/constants");
 const { productStatus, storeMap, searchStatus } = require("../config/const");
-const { initializeBot, processMessagesQueue, getNewBotMessages } = require("./autoTelegramAll");
+const { initializeBot, processMessagesQueue, getNewBotMessages, setDriver } = require("./autoTelegramAll");
 const { getModuleLogger } = require("../logger/logger");
 const { scrapePage, loadConfig } = require("../pageScheduler");
 const { getformattedDate, extractLinksAndText } = require("../utils/commonUtils");
+const { runBulkUpdateAll } = require("../scripts/bulkUpdateAllPlatforms");
+const { productDealsDB } = require("../database/firebaseDB/productDealsDB");
+const { userFavoritesDB } = require("../database/firebaseDB/userFavoritesDB");
+const { isUrgent } = require("../utils/urgencyUtils");
+const { notifyTelegram, notifyWhatsapp, isWithinDND, buildMessage } = require("../services/notifyService");
+const { favoritesNotificationService } = require("../services/favoritesNotificationService");
+const { idleProcessingService } = require("../services/idleProcessingService");
+const { 
+  loadState, 
+  updateLastUpdated, 
+  updateLastBulkRun, 
+  isTimeForUpdate, 
+  getNextUpdateTime,
+  getStateSummary,
+  updateSchedulerDuration,
+  setActiveStatus,
+  // Previous state functions
+  loadPreviousState,
+  updateLastUpdatedScheduler,
+  updateSchedulerTriggerDuration,
+  backupCurrentStateToPrevious,
+  getPreviousStateSummary
+} = require("../database/firebaseDB/schedulerStateDB");
+// duplicate import removed
+
+// Scheduler controls for bulk updates triggered from bot processing
+const FALLBACK_INTERVAL = 2 * 60 * 60 * 1000; // 2 hours
+// RE-ENABLED AFTER FIXING productDealsDB.js
+let EFFECTIVE_INTERVAL = Number(constants.bulkUpdateIntervalMs || FALLBACK_INTERVAL);
+// let EFFECTIVE_INTERVAL = null; // Disabled for testing
+
+// Smart scheduling - trigger at specific times (e.g., every hour at :00 or :05)
+const SCHEDULE_MINUTES = [0, 5]; // Trigger at :00 and :05 minutes past the hour
+let lastScheduledRun = 0;
+
+// Favorites processing configuration
+const FAVORITES_PROCESSING_INTERVAL = Number(constants.notifications?.favoritesProcessingIntervalMs) || 60 * 60 * 1000; // 1 hour default
+const FAVORITES_URGENT_CHECK_INTERVAL = Number(constants.notifications?.favoritesUrgentCheckIntervalMs) || 5 * 60 * 1000; // 5 minutes default
+let lastFavoritesProcessingRun = 0;
+let lastUrgentCheckRun = 0;
+
+// Check if it's time for scheduled bulk update based on current time
+// RE-ENABLED AFTER FIXING productDealsDB.js
+function isTimeForScheduledBulk() {
+  const now = new Date();
+  const currentMinute = now.getMinutes();
+  const currentHour = now.getHours();
+  
+  // Check if current minute matches any of our scheduled minutes
+  const isScheduledMinute = SCHEDULE_MINUTES.includes(currentMinute);
+  
+  // Check if we haven't run in this hour yet (avoid multiple runs in same hour)
+  const currentHourKey = `${currentHour}-${currentMinute}`;
+  const hasRunThisHour = lastScheduledRun === currentHourKey;
+  
+  if (isScheduledMinute && !hasRunThisHour) {
+    lastScheduledRun = currentHourKey;
+    return true;
+  }
+  
+  return false;
+}
+
+// Check if it's time for favorites processing
+function isTimeForFavoritesProcessing() {
+  const now = Date.now();
+  return (now - lastFavoritesProcessingRun) >= FAVORITES_PROCESSING_INTERVAL;
+}
+
+// Check if it's time for urgent favorites check
+function isTimeForUrgentFavoritesCheck() {
+  const now = Date.now();
+  return (now - lastUrgentCheckRun) >= FAVORITES_URGENT_CHECK_INTERVAL;
+}
+
+// Process favorites notifications with proper error handling and metrics
+async function processFavoritesNotifications() {
+  if (!constants.notifications?.enableFavoritesService) {
+    logger.debug('Favorites service disabled via config');
+    return { success: false, reason: 'disabled' };
+  }
+
+  try {
+    const startTime = Date.now();
+    logger.info('Starting favorites notifications processing');
+    
+    await favoritesNotificationService.processFavoritesAndNotifications();
+    
+    const duration = Date.now() - startTime;
+    lastFavoritesProcessingRun = Date.now();
+    
+    logger.info('Favorites notifications processing completed', { 
+      duration: `${duration}ms`,
+      nextRunIn: `${FAVORITES_PROCESSING_INTERVAL / 1000}s`
+    });
+    
+    return { success: true, duration };
+  } catch (error) {
+    logger.error('Favorites notifications processing failed', { 
+      error: error.message,
+      stack: error.stack 
+    });
+    return { success: false, error: error.message };
+  }
+}
+
+// Process urgent favorites notifications (price drops, low stock, expiring deals)
+async function processUrgentFavoritesNotifications() {
+  if (!constants.notifications?.enableFavoritesService) {
+    return { success: false, reason: 'disabled' };
+  }
+
+  try {
+    const startTime = Date.now();
+    logger.debug('Starting urgent favorites notifications check');
+    
+    const snapshot = await productDealsDB.ref.once('value');
+    const records = snapshot.val() || {};
+    let notified = 0;
+    let checked = 0;
+    
+    for (const [key, product] of Object.entries(records)) {
+      if (!product || !product.productCode) continue;
+      
+      checked++;
+      const urgency = isUrgent(product);
+      if (!urgency.urgent) continue;
+      
+      // Find users who favorited or track this product
+      const userIds = await userFavoritesDB.getUsersFavouritedProduct(product.productCode);
+      const trackers = await userFavoritesDB.getUsersTrackingProduct(product.productCode);
+      const trackerUserIds = trackers.map(t => t.uid);
+      const audience = Array.from(new Set([...userIds, ...trackerUserIds]));
+      
+      if (audience.length === 0) continue;
+
+      const message = buildMessage(product);
+      for (const uid of audience) {
+        try {
+          const prefs = await userFavoritesDB.getUserPreferences(uid);
+          if (isWithinDND(prefs)) continue;
+          
+          const channels = await userFavoritesDB.getUserChannels(uid);
+          
+          // Telegram notification
+          if (prefs?.notifications?.channels?.telegram && channels?.telegram?.chatId) {
+            await notifyTelegram(channels.telegram.chatId, message);
+          }
+          
+          // WhatsApp notification
+          if (prefs?.notifications?.channels?.whatsapp && channels?.whatsapp?.optedIn && channels?.whatsapp?.phone) {
+            await notifyWhatsapp(channels.whatsapp.phone, message);
+          }
+          
+          notified++;
+        } catch (e) {
+          logger.warn('Notify user failed', { uid, error: e?.message });
+        }
+      }
+      
+      if (notified >= 200) break; // cap per cycle
+    }
+    
+    const duration = Date.now() - startTime;
+    lastUrgentCheckRun = Date.now();
+    
+    logger.info('Urgent favorites notifications check completed', { 
+      checked,
+      notified,
+      duration: `${duration}ms`,
+      nextCheckIn: `${FAVORITES_URGENT_CHECK_INTERVAL / 1000}s`
+    });
+    
+    return { success: true, checked, notified, duration };
+  } catch (error) {
+    logger.error('Urgent favorites notifications check failed', { 
+      error: error.message,
+      stack: error.stack 
+    });
+    return { success: false, error: error.message };
+  }
+}
+if (!Number.isFinite(EFFECTIVE_INTERVAL) || EFFECTIVE_INTERVAL < 60_000) {
+  EFFECTIVE_INTERVAL = FALLBACK_INTERVAL;
+}
+
+// Load persistent state from database
+let state = null;
+let lastBulkRunAt = 0;
+let isBulkRunning = false;
+let lastHealthLogAt = 0;
+
+// Initialize state from database
+async function initializeState() {
+  try {
+    // Load current state
+    state = await loadState();
+    lastBulkRunAt = state.lastBulkRun ? new Date(state.lastBulkRun).getTime() : 0;
+    
+    // Load previous state for comparison
+    const previousState = await loadPreviousState();
+    
+    // Update scheduler duration from database if available
+    if (state.schedulerDuration && state.schedulerDuration !== EFFECTIVE_INTERVAL) {
+      EFFECTIVE_INTERVAL = state.schedulerDuration;
+      logger.info('Scheduler duration loaded from database', { 
+        duration: EFFECTIVE_INTERVAL,
+        durationHours: EFFECTIVE_INTERVAL / (60 * 60 * 1000)
+      });
+    }
+    
+    // Set active status
+    await setActiveStatus(true);
+    
+    logger.info('Scheduler state initialized from database', {
+      currentState: {
+        lastBulkRun: state.lastBulkRun,
+        totalRuns: state.totalRuns,
+        isActive: state.isActive,
+        schedulerDuration: state.schedulerDuration
+      },
+      previousState: {
+        lastUpdatedScheduler: previousState.lastUpdatedScheduler,
+        schedulerTriggerDuration: previousState.schedulerTriggerDuration,
+        previousTotalRuns: previousState.previousTotalRuns
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to initialize state from database', { error: error.message });
+    // Fallback to default values
+    state = {
+      lastBulkRun: null,
+      schedulerDuration: EFFECTIVE_INTERVAL,
+      totalRuns: 0,
+      isActive: true
+    };
+  }
+}
+
+let orchestratorStarted = false;
 // const fs = require("fs").promises;
 
 const fs = require('fs');
@@ -53,112 +294,11 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
 }
 
 // Handles product processing flow, including getCode check and fallback function
-async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username="") {
-  let products = [];
-  try {
-
-    shortUrl = link;
-    await driver.get(link);
-    link = await driver.getCurrentUrl();
-    const storeKey = Object.keys(storeMap).find(key => link.includes(key));
-    
-    // Check if store is supported
-    if (!storeKey || !storeMap[storeKey]) {
-      logger.warn(`Unsupported store detected: ${link}`, { 
-        functionName: 'handleProductProcessing', 
-        storeKey: storeKey || 'unknown',
-        url: link 
-      });
-      return searchStatus.SEARCH_NOT_APPLICABLE;
-    }
-    
-    const { getCode, storeType } = storeMap[storeKey];
-    productCode = getCode(link);
-    // let generateLink=false;
-    // let generateLink=true; // for manual products link pasted in deals global #TODO: Rework this logic - In Telegram Data
-    // const productCode = await storeMap.getCode(link);
-
-    if (productCode) {
-      // logger.info("Product code found, proceeding with normal flow", { functionName: 'handleProductProcessing' });
-      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData,true, username, constants.generateLink,shortUrl);
-    } else if(!username.includes("dealsglobalhub")) {
-      // #TODO: Add logic to handle non-product pages - convert username to dealsglobalhub for non-product pages
-      logger.info("Other than dealsglobalhub for non product pages ", { functionName: 'handleProductProcessing' });
-      return searchStatus.SEARCH_NOT_APPLICABLE
-    } else {
-      generateLink = true;
-      // logger.info("No product code found, calling fallback function", { functionName: 'handleProductProcessing' });
-
-
-      try {
-        // Load configuration for the specified platform
-        const platform = Object.keys(storeMap).find(key => link.includes(key));
-        
-        // Check if platform is supported for scraping
-        if (!platform || !storeMap[platform]) {
-          logger.warn(`Unsupported platform for scraping: ${link}`, { 
-            functionName: 'handleProductProcessing', 
-            platform: platform || 'unknown',
-            url: link 
-          });
-          return searchStatus.SEARCH_NOT_APPLICABLE;
-        }
-        
-        const pageType = 'searchPage';
-        const config = await loadConfig(`./PageConfig/${platform}PageConfig.js`);
-
-        // Call the scrapePage function with the loaded configuration
-        products = await scrapePage(link, driver, config, pageType);
-
-        console.log("Extracted Products:", products);
-      } catch (error) {
-        console.error("Error during scraping:", error);
-      }
-
-      // const fallbackData = await scrapePage(); // Assumes this function returns array of objects
-
-      // for (const data of products) {
-      try {
-        for (let i = 0; i < products?.length; i++) {
-          const product = products[i];
-          if (i < 1) {
-            // Process first 3 products with `productpost = true`
-            await driver.get(product?.productUrl);
-            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, true, username, generateLink);
-          } else if (i < 3) {
-            // Process next 7 products with `productpost = false`
-            await driver.get(product?.productUrl);
-            await processProduct(driver, product?.productUrl, product.name, len, accessToken, jsonData, todayJsonData, false, username, generateLink);
-          } else {
-            // Remaining products - Add to holdProducts
-            // Add all remaining products (from index 10 onwards) to holdProducts at once
-            // #Todo uncomment 112 and 113 after adding the logic to handle "View Similar Products"
-
-            holdProducts.push(...products.slice(10));
-            console.log('Added remaining products to hold');
-            
-            break;  // Exit the loop since all remaining products are processed
-          }
-        }
-      } catch (error) {
-        console.error('Error in processProducts:', error.message);
-        // } finally {
-        //   // Save the holdProducts to file
-        //   try {
-        //     fs.writeFileSync(holdProductsFilePath, JSON.stringify(holdProducts, null, 2));
-        //     console.log('Hold products saved to file.');
-        //   } catch (error) {
-        //     console.error('Error saving holdProducts to file:', error.message);
-        //   }
-      }
-      return searchStatus.SEARCH_CREATED
-    }
-  } catch (e) {
-    console.log("Handle Product Processing Error ", e);
-    return searchStatus.SEARCH_ERROR
-
-  }
-
+// Shim stays for internal references; delegate to extracted module
+async function handleProductProcessingShim(driver, link, text, len, accessToken, jsonData, todayJsonData, username="") {
+  return require('./handleProductProcessing').handleProductProcessing(
+    driver, link, text, len, accessToken, jsonData, todayJsonData, username
+  );
 }
 
 // Processes JSON messages one by one and alternates to bot message processing after each JSON message
@@ -274,15 +414,109 @@ async function processBotMessages(driver, len, accessToken, jsonData, todayJsonD
   let missedSearchLinks;
   // Fetch new bot messages
   try {
+    logger.info("Polling Telegram bot for messages...", { functionName: 'processBotMessages' });
+    console.log('[bot] polling for messages...');
 
     let messagesToProcess = [];
     // messagesToProcess = await processMessagesQueue();
 
     messagesToProcess = await getNewBotMessages();
+    logger.info(`Fetched ${messagesToProcess.length} messages from bot queue`, { functionName: 'processBotMessages' });
+    console.log(`[bot] fetched ${messagesToProcess.length} messages from bot queue`);
+
+    const now = Date.now();
+    const dueForBulk = (now - lastBulkRunAt) >= EFFECTIVE_INTERVAL;
+    const scheduledBulk = isTimeForScheduledBulk();
+    
+    const maybeRunBulk = async (isIdle) => {
+      if (isBulkRunning) return;
+      
+      // Check if it's time for scheduled bulk OR if idle and due for regular bulk
+      const shouldRun = scheduledBulk || (isIdle && dueForBulk);
+      if (!shouldRun) return;
+      
+      isBulkRunning = true;
+      const start = Date.now();
+      try {
+        logger.info(`Bulk update starting (isIdle=${isIdle})`, { functionName: 'processBotMessages' });
+        // RE-ENABLED AFTER FIXING productDealsDB.js
+        await runBulkUpdateAll('website');
+        logger.info('Bulk update ENABLED and completed', { functionName: 'processBotMessages' });
+
+        // Enrichment pass for missing critical fields
+        const snapshot = await productDealsDB.ref.once('value');
+        const records = snapshot.val() || {};
+        let enrichedCount = 0;
+        for (const [key, record] of Object.entries(records)) {
+          if (!record || !record.productUrl) continue;
+          const missingCritical = !record.brand || !record.title || !record.price || !record.photo;
+          if (!missingCritical) continue;
+          try {
+            await handleProductProcessing(driver, record.productUrl, record.productText || record.urltext || '', 0, '', {}, {}, 'dealsglobalhub');
+            enrichedCount += 1;
+          } catch (e) {
+            logger.warn('Enrichment error for record', { key, error: e?.message });
+          }
+        }
+        const dur = Date.now() - start;
+        logger.info(`Bulk update complete in ${dur}ms, enriched=${enrichedCount}`, { functionName: 'processBotMessages' });
+      } catch (e) {
+        logger.error('Bulk update failed in bot loop', { functionName: 'processBotMessages', error: e?.message });
+      } finally {
+        // Backup current state to previous state before updating
+        await backupCurrentStateToPrevious();
+        
+        // Update database state
+        await updateLastBulkRun();
+        await updateLastUpdatedScheduler();
+        lastBulkRunAt = Date.now();
+        isBulkRunning = false;
+      }
+    };
 
     if (messagesToProcess.length === 0) {
-
       logger.info("No new bot messages to process", { functionName: 'processBotMessages' });
+      console.log('[bot] no new messages to process');
+      // small delay matches polling window and provides explicit heartbeat
+      await new Promise(r => setTimeout(r, 500));
+      // If not time for bulk, enrich today's records using productUrl
+      if (!dueForBulk) {
+        try {
+          // Use todayJsonData passed from caller instead of calling firebaseget()
+          const todayMap = todayJsonData || {};
+          const todaysKeys = Object.keys(todayMap);
+          let processed = 0;
+          for (const key of todaysKeys) {
+            const record = todayMap[key];
+            if (!record || !record.productUrl) continue;
+            const missingCritical = !record.brand || !record.title || !record.price || !record.photo;
+            if (!missingCritical) continue;
+            try {
+              await handleProductProcessing(driver, record.productUrl, record.productText || record.urltext || '', 0, '', {}, {}, 'dealsglobalhub');
+              processed += 1;
+              if (processed >= 20) break; // cap per idle cycle
+            } catch (e) {
+              logger.warn('Idle enrichment error for today record', { key, error: e?.message });
+            }
+          }
+          logger.info(`Idle enrichment done. processed=${processed}`, { functionName: 'processBotMessages' });
+        } catch (e) {
+          logger.warn('Idle enrichment fetch failed', { error: e?.message });
+        }
+      } else {
+        await maybeRunBulk(true);
+      }
+
+      // Check for urgent favorites notifications if it's time
+      if (isTimeForUrgentFavoritesCheck()) {
+        const urgentResult = await processUrgentFavoritesNotifications();
+        if (urgentResult.success) {
+          logger.info('Urgent favorites notifications processed', { 
+            checked: urgentResult.checked,
+            notified: urgentResult.notified 
+          });
+        }
+      }
       await processHoldProducts(driver, len, accessToken, jsonData, todayJsonData)
       return;
     }
@@ -331,6 +565,20 @@ async function processBotMessages(driver, len, accessToken, jsonData, todayJsonD
 
     }
     messagesToProcess = [];
+
+    // After batch, if scheduled time or due, trigger bulk in background so we keep latency low for next poll
+    // Do not await to avoid blocking bot processing
+    // Safe-guard: only one bulk at a time
+    if (!isBulkRunning && (scheduledBulk || (Date.now() - lastBulkRunAt) >= EFFECTIVE_INTERVAL)) {
+      // Fire and forget
+      maybeRunBulk(false);
+    }
+
+    // Periodic health log (once per minute)
+    if (Date.now() - lastHealthLogAt > 60_000) {
+      lastHealthLogAt = Date.now();
+      logger.info('Bot loop healthy', { functionName: 'processBotMessages', isBulkRunning, sinceLastBulkMs: Date.now() - lastBulkRunAt });
+    }
   } catch (e) {
     console.log("ProcessBotMessage error ", e);
   }
@@ -338,14 +586,12 @@ async function processBotMessages(driver, len, accessToken, jsonData, todayJsonD
 
 
 // Main function to get Telegram deal link, sequentially handling JSON and bot messages
-async function getTelegramDealLink(driver) {
+async function getTelegramDealLink(driver, len = 0, jsonData = {}, todayJsonData = {}) {
   try {
-    const firebaseData = await firebaseget();
-    len = firebaseData.len;
-    jsonData = firebaseData.data;
-
-    const todayFirebaseData = await firebaseget(true);
-    todayJsonData = todayFirebaseData.data;
+    // Initialize state from database first
+    await initializeState();
+    
+    // Data is now passed as parameters instead of calling firebaseget() multiple times
     let formattedDate = getformattedDate();
     const jsonFilePath = `C:/Users/avina/AppData/Roaming/Telegram Desktop/tdata/tdummy/tr9 deals/ChatExport_${formattedDate}/result.json`; // Specify the correct path
     const jsonMessages = await readJsonFile(jsonFilePath)?.messages || [];
@@ -366,15 +612,72 @@ async function getTelegramDealLink(driver) {
 // Continuously check for new bot messages
 async function continuouslyProcessBotMessages(driver, len, accessToken, jsonData, todayJsonData) {
   try {
+    if (!constants.enableTelegramProcessing) {
+      logger.warn("Telegram processing disabled via flag", { functionName: 'continuouslyProcessBotMessages' });
+      return;
+    }
+    
+    // Set the global driver for queue processing
+    setDriver(driver);
+    
     logger.info("Starting continuous bot message processing", { functionName: 'continuouslyProcessBotMessages' });
+    if (constants.notifications && constants.notifications.enableFavoritesService === false) {
+      logger.info('Favorites service disabled via flag. Telegram-only mode.');
+    } else {
+      logger.info('Favorites service enabled. Processing interval:', {
+        favoritesProcessingInterval: `${FAVORITES_PROCESSING_INTERVAL / 1000}s`,
+        urgentCheckInterval: `${FAVORITES_URGENT_CHECK_INTERVAL / 1000}s`
+      });
+    }
+    let loop = 0;
 
-    while (true) {
-      await processBotMessages(driver, len, accessToken, jsonData, todayJsonData);
+    let shouldContinue = true;
+    while (shouldContinue) {
+      loop += 1;
+      try {
+        await processBotMessages(driver, len, accessToken, jsonData, todayJsonData);
+        logger.info(`Bot loop tick #${loop} complete`, { functionName: 'continuouslyProcessBotMessages' });
 
-      // Monitor for performance issues (e.g., clear cache if needed)
-      if (shouldClearCache()) {
-        await clearBrowserCache(driver);
-        logger.info("Browser cache cleared for performance optimization", { functionName: 'continuouslyProcessBotMessages' });
+        // Monitor for performance issues (e.g., clear cache if needed)
+        if (shouldClearCache()) {
+          await clearBrowserCache(driver);
+          logger.info("Browser cache cleared for performance optimization", { functionName: 'continuouslyProcessBotMessages' });
+        }
+        
+        // Idle time processing when no new messages
+        await idleProcessingService.processIdleTime(driver);
+        
+        // Check if it's time for favorites processing
+        if (isTimeForFavoritesProcessing()) {
+          const favoritesResult = await processFavoritesNotifications();
+          if (favoritesResult.success) {
+            logger.info('Favorites processing completed in main loop', { 
+              duration: favoritesResult.duration 
+            });
+          }
+        }
+        
+        // Add a small delay to prevent excessive CPU usage
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        logger.error("Error in bot message processing loop", { functionName: 'continuouslyProcessBotMessages', error });
+        
+        // Check for network errors and add retry logic
+        if (error.message && (
+          error.message.includes('ENOTFOUND') || 
+          error.message.includes('ETIMEDOUT') || 
+          error.message.includes('ECONNRESET') ||
+          error.message.includes('FATAL')
+        )) {
+          logger.warn("Network error detected, waiting before retry", { error: error.message });
+          const delayMs = error.message.includes('FATAL') ? 60000 : 30000; // 1 min for fatal, 30s for network
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          
+          // If it's a fatal error, stop the loop
+          if (error.message.includes('FATAL')) {
+            shouldContinue = false;
+          }
+        }
       }
     }
   } catch (error) {
@@ -405,4 +708,129 @@ async function fallbackFunction() {
   return []; // Returns array of objects with link, text, and optional attributes like coupon, deal names
 }
 
-module.exports = { getTelegramDealLink, handleProductProcessing, continuouslyProcessBotMessages };
+module.exports = { getTelegramDealLink, handleProductProcessing: handleProductProcessingShim, continuouslyProcessBotMessages };
+
+// Orchestrator: runs Telegram continuously and triggers bulk update on a schedule
+async function startTelegramAndBulkOrchestrator(driver, intervalMs) {
+  try {
+    if (orchestratorStarted) return;
+    orchestratorStarted = true;
+    const fallbackInterval = 60 * 60 * 1000; // 1 hour
+    let effectiveInterval = Number(intervalMs || constants.bulkUpdateIntervalMs || fallbackInterval);
+    if (!Number.isFinite(effectiveInterval) || effectiveInterval < 60_000) {
+      effectiveInterval = fallbackInterval;
+    }
+
+    // Start favorites notification service
+    favoritesNotificationService.start();
+
+    // Periodic bulk update + enrichment loop
+    let shouldContinue = true;
+    while (shouldContinue) {
+      try {
+        logger.info(`Starting scheduled tasks (interval: ${effectiveInterval} ms)`, { functionName: 'startTelegramAndBulkOrchestrator' });
+
+        // 1. Run bulk update to productdeals database (website scraping) with timeout and flag
+        if (constants.enableBulkProcessing) {
+          const bulkTask = runBulkUpdateAll('website', 'productdeals');
+          const bulkTimed = Promise.race([
+            bulkTask,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('PLATFORM_TIMEOUT')), constants.maxPlatformTimeoutMs))
+          ]);
+          try {
+            await bulkTimed;
+            logger.info('Bulk update completed for website scraping', { functionName: 'startTelegramAndBulkOrchestrator' });
+          } catch (e) {
+            if (String(e.message).includes('PLATFORM_TIMEOUT')) {
+              logger.error('Bulk update timed out at platform/category level', { timeoutMs: constants.maxPlatformTimeoutMs });
+            } else {
+              throw e;
+            }
+          }
+        } else {
+          logger.warn('Bulk processing disabled via flag', { functionName: 'startTelegramAndBulkOrchestrator' });
+        }
+        
+        // 2. Run bulk update to deals database (Telegram processing) at :30 mark
+        // RE-ENABLED AFTER FIXING productDealsDB.js
+        const now = new Date();
+        if (constants.enableBulkProcessing && now.getMinutes() >= 30) {
+          const teleBulkTask = runBulkUpdateAll('telegram', 'deals');
+          const teleBulkTimed = Promise.race([
+            teleBulkTask,
+            new Promise((_, reject) => setTimeout(() => reject(new Error('PLATFORM_TIMEOUT')), constants.maxPlatformTimeoutMs))
+          ]);
+          try {
+            await teleBulkTimed;
+          } catch (e) {
+            if (String(e.message).includes('PLATFORM_TIMEOUT')) {
+              logger.error('Telegram deals bulk timed out', { timeoutMs: constants.maxPlatformTimeoutMs });
+            } else {
+              throw e;
+            }
+          }
+        }
+
+        // 3. Process favorites and notifications (configurable interval)
+        const favoritesResult = await processFavoritesNotifications();
+        if (favoritesResult.success) {
+          logger.info('Orchestrator favorites processing completed', { 
+            duration: favoritesResult.duration 
+          });
+        } else if (favoritesResult.reason !== 'disabled') {
+          logger.warn('Orchestrator favorites processing failed', { 
+            error: favoritesResult.error 
+          });
+        }
+
+        // 4. Idle time processing for both databases
+        await idleProcessingService.processIdleTime(driver);
+        
+        // 5. Deal expiry tracking
+        await idleProcessingService.processDealExpiryTracking();
+
+      } catch (e) {
+        logger.error('Scheduled bulk update failed', { error: e?.message });
+        // Check if it's a fatal error that should stop the loop
+        if (e.message && (e.message.includes('FATAL') || e.message.includes('network') || e.message.includes('timeout'))) {
+          logger.error('Fatal error detected, stopping orchestrator', { error: e?.message });
+          shouldContinue = false;
+        } else {
+          // Add delay before retrying for non-fatal errors
+          logger.info('Adding delay before retry due to error', { error: e?.message });
+          await new Promise(resolve => setTimeout(resolve, 60000)); // 1 minute delay
+        }
+      }
+
+      // Add a check for graceful shutdown
+      if (shouldContinue) {
+        await new Promise(r => setTimeout(r, effectiveInterval));
+      }
+    }
+  } catch (e) {
+    logger.error('startTelegramAndBulkOrchestrator fatal', { error: e?.message });
+  }
+}
+
+module.exports.startTelegramAndBulkOrchestrator = startTelegramAndBulkOrchestrator;
+
+// Start orchestrator from inside Telegram flows
+// 1) After processing JSON and bot messages the first time
+const _originalProcessJsonAndBotMessages = processJsonAndBotMessages;
+processJsonAndBotMessages = async function(driver, jsonMessages, len, accessToken, jsonData, todayJsonData) {
+  await _originalProcessJsonAndBotMessages(driver, jsonMessages, len, accessToken, jsonData, todayJsonData);
+  try {
+    await startTelegramAndBulkOrchestrator(driver, constants.bulkUpdateIntervalMs);
+  } catch (e) {
+    logger.error('Failed starting orchestrator after JSON processing', { error: e?.message });
+  }
+};
+
+// 2) Ensure orchestrator is started when processing bot messages loop kicks in
+const _originalProcessBotMessages = processBotMessages;
+processBotMessages = async function(driver, len, accessToken, jsonData, todayJsonData) {
+  if (!orchestratorStarted) {
+    try { await startTelegramAndBulkOrchestrator(driver, constants.bulkUpdateIntervalMs); } catch (_) {}
+  }
+  return _originalProcessBotMessages(driver, len, accessToken, jsonData, todayJsonData);
+};

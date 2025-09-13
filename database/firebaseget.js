@@ -1,6 +1,6 @@
 const { getformattedDate } = require("../utils/commonUtils");
 
-async function firebaseget(isToday=false) {
+async function firebaseget(isToday=false, collectionName=null) {
   let len = 0;
   let data;
   try {
@@ -13,7 +13,8 @@ async function firebaseget(isToday=false) {
 
     let formattedDate="";
     
-    jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
+    // Use provided collection name or default from config
+    const jsonFileName = collectionName || config.DATABASE_CONFIG.JSON_FILE_NAME;
 
     if (isToday){
       formattedDate = getformattedDate();
@@ -22,7 +23,7 @@ async function firebaseget(isToday=false) {
     } else {
       urlappend = `shallow=true`
     }
-    const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json?${urlappend}&print=pretty`;
+    const apiUrl = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${jsonFileName}.json?${urlappend}&print=pretty`;
     // const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json`;
 
     var requestOptions = {
@@ -51,7 +52,7 @@ const response = await fetch(apiUrl);
 if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
 
 data = await response.json();
-const objectCount = Object.keys(data).length;
+const objectCount = data ? Object.keys(data).length : 0;
 console.log(`Success in Firebase Get. Response contains ${objectCount} objects.`);
 len = objectCount;
 

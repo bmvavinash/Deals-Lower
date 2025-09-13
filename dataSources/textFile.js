@@ -10,30 +10,19 @@ const { getformattedDate } = require("../utils/commonUtils");
 const { productStatus } = require("../config/const");
 const fs = require('fs');
 const { createInterface } = require("readline");
-const { handleProductProcessing } = require("./telegram");
+const { handleProductProcessing } = require("./handleProductProcessing");
 
 // const fs = require("fs").promises;
 
 
-async function readUrlsFromTxt(driver) {
+async function readUrlsFromTxt(driver, len = 0, jsondata = {}, todayjsondata = {}) {
     let missedLinks = "";
     try {
-        let len;
-        let result = await firebaseget();
-        let todayresult = await firebaseget(true);
-        len = result.len;
-        let jsondata = result.data;
-        todaylen = todayresult.len;
-
-        let todayjsondata = todayresult.data;
+        // Data is now passed as parameters instead of calling firebaseget() multiple times
         let env = constants.env;
         if (len == 0) {
-
-            result = await firebaseget();
-            if (len == 0) {
-                console.log("Unable to fetch the length of DB")
-                exit();
-            }
+            console.log("Unable to fetch the length of DB")
+            exit();
         }
 
         let access_token = "";

@@ -12,9 +12,9 @@ async function extractText(element, type, selector) {
         const childElement = await element.findElement(By[type](selector));
         return await childElement.getText();
     } catch (error) {
-        // Log a warning and return default "N/A" for missing elements
+        // Log a warning and return empty string for missing elements
         console.warn(`Error extracting text using ${type} (${selector}):`, error.message);
-        return "N/A";
+        return "";
     }
 }
 

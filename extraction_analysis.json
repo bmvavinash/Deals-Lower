@@ -1,0 +1,1140 @@
+{
+  "timestamp": "2025-08-31T04:30:46.996Z",
+  "summary": {
+    "totalProducts": 285,
+    "platforms": {
+      "amazon": {
+        "totalProducts": 66,
+        "fieldIssues": {
+          "brand": [],
+          "title": [],
+          "price": [],
+          "mrp": [],
+          "discount": [],
+          "rating": [],
+          "ratingsCount": [
+            {
+              "type": "invalid_count",
+              "value": "Currently unavailable.",
+              "productIndex": 48,
+              "message": "Expected numeric count but got: Currently unavailable."
+            }
+          ],
+          "reviewsCount": [
+            {
+              "type": "invalid_count",
+              "value": "Currently unavailable.",
+              "productIndex": 48,
+              "message": "Expected numeric count but got: Currently unavailable."
+            }
+          ],
+          "productUrl": [],
+          "productCode": [],
+          "photo": [],
+          "offerPrice": []
+        },
+        "dataTypes": {
+          "brand": [
+            "string"
+          ],
+          "title": [
+            "string"
+          ],
+          "price": [
+            "number"
+          ],
+          "mrp": [
+            "number"
+          ],
+          "discount": [],
+          "rating": [],
+          "ratingsCount": [
+            "number",
+            "string"
+          ],
+          "reviewsCount": [
+            "number",
+            "string"
+          ],
+          "productUrl": [
+            "string"
+          ],
+          "productCode": [
+            "string"
+          ],
+          "photo": [
+            "string"
+          ],
+          "offerPrice": [
+            "number"
+          ]
+        }
+      },
+      "flipkart": {
+        "totalProducts": 24,
+        "fieldIssues": {
+          "brand": [],
+          "title": [],
+          "price": [],
+          "mrp": [],
+          "discount": [],
+          "rating": [],
+          "ratingsCount": [],
+          "reviewsCount": [],
+          "productUrl": [],
+          "productCode": [],
+          "photo": [],
+          "offerPrice": []
+        },
+        "dataTypes": {
+          "brand": [
+            "string"
+          ],
+          "title": [
+            "string"
+          ],
+          "price": [
+            "number"
+          ],
+          "mrp": [
+            "number"
+          ],
+          "discount": [
+            "number"
+          ],
+          "rating": [
+            "number"
+          ],
+          "ratingsCount": [
+            "number"
+          ],
+          "reviewsCount": [
+            "number"
+          ],
+          "productUrl": [
+            "string"
+          ],
+          "productCode": [
+            "string"
+          ],
+          "photo": [
+            "string"
+          ],
+          "offerPrice": [
+            "number"
+          ]
+        }
+      },
+      "myntra": {
+        "totalProducts": 150,
+        "fieldIssues": {
+          "brand": [],
+          "title": [],
+          "price": [],
+          "mrp": [],
+          "discount": [],
+          "rating": [],
+          "ratingsCount": [],
+          "reviewsCount": [],
+          "productUrl": [],
+          "productCode": [],
+          "photo": [],
+          "offerPrice": []
+        },
+        "dataTypes": {
+          "brand": [
+            "string"
+          ],
+          "title": [
+            "string"
+          ],
+          "price": [
+            "number"
+          ],
+          "mrp": [
+            "number"
+          ],
+          "discount": [
+            "number"
+          ],
+          "rating": [
+            "string"
+          ],
+          "ratingsCount": [
+            "string"
+          ],
+          "reviewsCount": [
+            "string"
+          ],
+          "productUrl": [
+            "string"
+          ],
+          "productCode": [
+            "string"
+          ],
+          "photo": [
+            "string"
+          ],
+          "offerPrice": []
+        }
+      },
+      "ajio": {
+        "totalProducts": 45,
+        "fieldIssues": {
+          "brand": [],
+          "title": [],
+          "price": [],
+          "mrp": [],
+          "discount": [],
+          "rating": [],
+          "ratingsCount": [
+            {
+              "type": "invalid_count",
+              "value": 1.9,
+              "productIndex": 10,
+              "message": "Expected numeric count but got: 1.9"
+            }
+          ],
+          "reviewsCount": [
+            {
+              "type": "invalid_count",
+              "value": 1.9,
+              "productIndex": 10,
+              "message": "Expected numeric count but got: 1.9"
+            }
+          ],
+          "productUrl": [],
+          "productCode": [],
+          "photo": [],
+          "offerPrice": [
+            {
+              "type": "non_numeric_price",
+              "value": "₹1,535",
+              "productIndex": 0,
+              "message": "Expected numeric value but got: ₹1,535"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹16,283",
+              "productIndex": 1,
+              "message": "Expected numeric value but got: ₹16,283"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹4,841",
+              "productIndex": 2,
+              "message": "Expected numeric value but got: ₹4,841"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹29,889",
+              "productIndex": 3,
+              "message": "Expected numeric value but got: ₹29,889"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹2,549",
+              "productIndex": 4,
+              "message": "Expected numeric value but got: ₹2,549"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹2,349",
+              "productIndex": 5,
+              "message": "Expected numeric value but got: ₹2,349"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹10,610",
+              "productIndex": 6,
+              "message": "Expected numeric value but got: ₹10,610"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹26,750",
+              "productIndex": 7,
+              "message": "Expected numeric value but got: ₹26,750"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹9,397",
+              "productIndex": 8,
+              "message": "Expected numeric value but got: ₹9,397"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹31,509",
+              "productIndex": 9,
+              "message": "Expected numeric value but got: ₹31,509"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹508",
+              "productIndex": 10,
+              "message": "Expected numeric value but got: ₹508"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹2,426",
+              "productIndex": 11,
+              "message": "Expected numeric value but got: ₹2,426"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹37,989",
+              "productIndex": 12,
+              "message": "Expected numeric value but got: ₹37,989"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹23,375",
+              "productIndex": 13,
+              "message": "Expected numeric value but got: ₹23,375"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹87,480",
+              "productIndex": 14,
+              "message": "Expected numeric value but got: ₹87,480"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹4,791",
+              "productIndex": 15,
+              "message": "Expected numeric value but got: ₹4,791"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹3,345",
+              "productIndex": 16,
+              "message": "Expected numeric value but got: ₹3,345"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹370",
+              "productIndex": 17,
+              "message": "Expected numeric value but got: ₹370"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹5,064",
+              "productIndex": 18,
+              "message": "Expected numeric value but got: ₹5,064"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹628",
+              "productIndex": 19,
+              "message": "Expected numeric value but got: ₹628"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹17,996",
+              "productIndex": 20,
+              "message": "Expected numeric value but got: ₹17,996"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹4,694",
+              "productIndex": 21,
+              "message": "Expected numeric value but got: ₹4,694"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹2,426",
+              "productIndex": 22,
+              "message": "Expected numeric value but got: ₹2,426"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹13,856",
+              "productIndex": 23,
+              "message": "Expected numeric value but got: ₹13,856"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹5,777",
+              "productIndex": 24,
+              "message": "Expected numeric value but got: ₹5,777"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹4,418",
+              "productIndex": 25,
+              "message": "Expected numeric value but got: ₹4,418"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹8,507",
+              "productIndex": 26,
+              "message": "Expected numeric value but got: ₹8,507"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹5,083",
+              "productIndex": 27,
+              "message": "Expected numeric value but got: ₹5,083"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹14,033",
+              "productIndex": 28,
+              "message": "Expected numeric value but got: ₹14,033"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹14,033",
+              "productIndex": 29,
+              "message": "Expected numeric value but got: ₹14,033"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹28,900",
+              "productIndex": 30,
+              "message": "Expected numeric value but got: ₹28,900"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹17,820",
+              "productIndex": 31,
+              "message": "Expected numeric value but got: ₹17,820"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹3,270",
+              "productIndex": 32,
+              "message": "Expected numeric value but got: ₹3,270"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹31,435",
+              "productIndex": 33,
+              "message": "Expected numeric value but got: ₹31,435"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹31,181",
+              "productIndex": 34,
+              "message": "Expected numeric value but got: ₹31,181"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹7,677",
+              "productIndex": 35,
+              "message": "Expected numeric value but got: ₹7,677"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹32,901",
+              "productIndex": 36,
+              "message": "Expected numeric value but got: ₹32,901"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹5,407",
+              "productIndex": 37,
+              "message": "Expected numeric value but got: ₹5,407"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹2,426",
+              "productIndex": 38,
+              "message": "Expected numeric value but got: ₹2,426"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹18,400",
+              "productIndex": 39,
+              "message": "Expected numeric value but got: ₹18,400"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹2,549",
+              "productIndex": 40,
+              "message": "Expected numeric value but got: ₹2,549"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹26,730",
+              "productIndex": 41,
+              "message": "Expected numeric value but got: ₹26,730"
+            },
+            {
+              "type": "non_numeric_price",
+              "value": "₹28,649",
+              "productIndex": 42,
+              "message": "Expected numeric value but got: ₹28,649"
+            }
+          ]
+        },
+        "dataTypes": {
+          "brand": [
+            "string"
+          ],
+          "title": [
+            "string"
+          ],
+          "price": [
+            "number"
+          ],
+          "mrp": [
+            "number"
+          ],
+          "discount": [
+            "number"
+          ],
+          "rating": [
+            "number"
+          ],
+          "ratingsCount": [
+            "number"
+          ],
+          "reviewsCount": [
+            "number"
+          ],
+          "productUrl": [
+            "string"
+          ],
+          "productCode": [
+            "string"
+          ],
+          "photo": [
+            "string"
+          ],
+          "offerPrice": [
+            "string"
+          ]
+        }
+      }
+    },
+    "dataQualityIssues": [],
+    "fieldMismatches": [
+      {
+        "platform": "amazon",
+        "field": "ratingsCount",
+        "issues": [
+          {
+            "type": "invalid_count",
+            "value": "Currently unavailable.",
+            "productIndex": 48,
+            "message": "Expected numeric count but got: Currently unavailable."
+          }
+        ]
+      },
+      {
+        "platform": "amazon",
+        "field": "reviewsCount",
+        "issues": [
+          {
+            "type": "invalid_count",
+            "value": "Currently unavailable.",
+            "productIndex": 48,
+            "message": "Expected numeric count but got: Currently unavailable."
+          }
+        ]
+      },
+      {
+        "platform": "ajio",
+        "field": "ratingsCount",
+        "issues": [
+          {
+            "type": "invalid_count",
+            "value": 1.9,
+            "productIndex": 10,
+            "message": "Expected numeric count but got: 1.9"
+          }
+        ]
+      },
+      {
+        "platform": "ajio",
+        "field": "reviewsCount",
+        "issues": [
+          {
+            "type": "invalid_count",
+            "value": 1.9,
+            "productIndex": 10,
+            "message": "Expected numeric count but got: 1.9"
+          }
+        ]
+      },
+      {
+        "platform": "ajio",
+        "field": "offerPrice",
+        "issues": [
+          {
+            "type": "non_numeric_price",
+            "value": "₹1,535",
+            "productIndex": 0,
+            "message": "Expected numeric value but got: ₹1,535"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹16,283",
+            "productIndex": 1,
+            "message": "Expected numeric value but got: ₹16,283"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹4,841",
+            "productIndex": 2,
+            "message": "Expected numeric value but got: ₹4,841"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹29,889",
+            "productIndex": 3,
+            "message": "Expected numeric value but got: ₹29,889"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹2,549",
+            "productIndex": 4,
+            "message": "Expected numeric value but got: ₹2,549"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹2,349",
+            "productIndex": 5,
+            "message": "Expected numeric value but got: ₹2,349"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹10,610",
+            "productIndex": 6,
+            "message": "Expected numeric value but got: ₹10,610"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹26,750",
+            "productIndex": 7,
+            "message": "Expected numeric value but got: ₹26,750"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹9,397",
+            "productIndex": 8,
+            "message": "Expected numeric value but got: ₹9,397"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹31,509",
+            "productIndex": 9,
+            "message": "Expected numeric value but got: ₹31,509"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹508",
+            "productIndex": 10,
+            "message": "Expected numeric value but got: ₹508"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹2,426",
+            "productIndex": 11,
+            "message": "Expected numeric value but got: ₹2,426"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹37,989",
+            "productIndex": 12,
+            "message": "Expected numeric value but got: ₹37,989"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹23,375",
+            "productIndex": 13,
+            "message": "Expected numeric value but got: ₹23,375"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹87,480",
+            "productIndex": 14,
+            "message": "Expected numeric value but got: ₹87,480"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹4,791",
+            "productIndex": 15,
+            "message": "Expected numeric value but got: ₹4,791"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹3,345",
+            "productIndex": 16,
+            "message": "Expected numeric value but got: ₹3,345"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹370",
+            "productIndex": 17,
+            "message": "Expected numeric value but got: ₹370"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹5,064",
+            "productIndex": 18,
+            "message": "Expected numeric value but got: ₹5,064"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹628",
+            "productIndex": 19,
+            "message": "Expected numeric value but got: ₹628"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹17,996",
+            "productIndex": 20,
+            "message": "Expected numeric value but got: ₹17,996"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹4,694",
+            "productIndex": 21,
+            "message": "Expected numeric value but got: ₹4,694"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹2,426",
+            "productIndex": 22,
+            "message": "Expected numeric value but got: ₹2,426"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹13,856",
+            "productIndex": 23,
+            "message": "Expected numeric value but got: ₹13,856"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹5,777",
+            "productIndex": 24,
+            "message": "Expected numeric value but got: ₹5,777"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹4,418",
+            "productIndex": 25,
+            "message": "Expected numeric value but got: ₹4,418"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹8,507",
+            "productIndex": 26,
+            "message": "Expected numeric value but got: ₹8,507"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹5,083",
+            "productIndex": 27,
+            "message": "Expected numeric value but got: ₹5,083"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹14,033",
+            "productIndex": 28,
+            "message": "Expected numeric value but got: ₹14,033"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹14,033",
+            "productIndex": 29,
+            "message": "Expected numeric value but got: ₹14,033"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹28,900",
+            "productIndex": 30,
+            "message": "Expected numeric value but got: ₹28,900"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹17,820",
+            "productIndex": 31,
+            "message": "Expected numeric value but got: ₹17,820"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹3,270",
+            "productIndex": 32,
+            "message": "Expected numeric value but got: ₹3,270"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹31,435",
+            "productIndex": 33,
+            "message": "Expected numeric value but got: ₹31,435"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹31,181",
+            "productIndex": 34,
+            "message": "Expected numeric value but got: ₹31,181"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹7,677",
+            "productIndex": 35,
+            "message": "Expected numeric value but got: ₹7,677"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹32,901",
+            "productIndex": 36,
+            "message": "Expected numeric value but got: ₹32,901"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹5,407",
+            "productIndex": 37,
+            "message": "Expected numeric value but got: ₹5,407"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹2,426",
+            "productIndex": 38,
+            "message": "Expected numeric value but got: ₹2,426"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹18,400",
+            "productIndex": 39,
+            "message": "Expected numeric value but got: ₹18,400"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹2,549",
+            "productIndex": 40,
+            "message": "Expected numeric value but got: ₹2,549"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹26,730",
+            "productIndex": 41,
+            "message": "Expected numeric value but got: ₹26,730"
+          },
+          {
+            "type": "non_numeric_price",
+            "value": "₹28,649",
+            "productIndex": 42,
+            "message": "Expected numeric value but got: ₹28,649"
+          }
+        ]
+      }
+    ]
+  },
+  "detailedIssues": [
+    {
+      "platform": "amazon",
+      "field": "ratingsCount",
+      "issues": [
+        {
+          "type": "invalid_count",
+          "value": "Currently unavailable.",
+          "productIndex": 48,
+          "message": "Expected numeric count but got: Currently unavailable."
+        }
+      ]
+    },
+    {
+      "platform": "amazon",
+      "field": "reviewsCount",
+      "issues": [
+        {
+          "type": "invalid_count",
+          "value": "Currently unavailable.",
+          "productIndex": 48,
+          "message": "Expected numeric count but got: Currently unavailable."
+        }
+      ]
+    },
+    {
+      "platform": "ajio",
+      "field": "ratingsCount",
+      "issues": [
+        {
+          "type": "invalid_count",
+          "value": 1.9,
+          "productIndex": 10,
+          "message": "Expected numeric count but got: 1.9"
+        }
+      ]
+    },
+    {
+      "platform": "ajio",
+      "field": "reviewsCount",
+      "issues": [
+        {
+          "type": "invalid_count",
+          "value": 1.9,
+          "productIndex": 10,
+          "message": "Expected numeric count but got: 1.9"
+        }
+      ]
+    },
+    {
+      "platform": "ajio",
+      "field": "offerPrice",
+      "issues": [
+        {
+          "type": "non_numeric_price",
+          "value": "₹1,535",
+          "productIndex": 0,
+          "message": "Expected numeric value but got: ₹1,535"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹16,283",
+          "productIndex": 1,
+          "message": "Expected numeric value but got: ₹16,283"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹4,841",
+          "productIndex": 2,
+          "message": "Expected numeric value but got: ₹4,841"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹29,889",
+          "productIndex": 3,
+          "message": "Expected numeric value but got: ₹29,889"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹2,549",
+          "productIndex": 4,
+          "message": "Expected numeric value but got: ₹2,549"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹2,349",
+          "productIndex": 5,
+          "message": "Expected numeric value but got: ₹2,349"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹10,610",
+          "productIndex": 6,
+          "message": "Expected numeric value but got: ₹10,610"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹26,750",
+          "productIndex": 7,
+          "message": "Expected numeric value but got: ₹26,750"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹9,397",
+          "productIndex": 8,
+          "message": "Expected numeric value but got: ₹9,397"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹31,509",
+          "productIndex": 9,
+          "message": "Expected numeric value but got: ₹31,509"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹508",
+          "productIndex": 10,
+          "message": "Expected numeric value but got: ₹508"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹2,426",
+          "productIndex": 11,
+          "message": "Expected numeric value but got: ₹2,426"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹37,989",
+          "productIndex": 12,
+          "message": "Expected numeric value but got: ₹37,989"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹23,375",
+          "productIndex": 13,
+          "message": "Expected numeric value but got: ₹23,375"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹87,480",
+          "productIndex": 14,
+          "message": "Expected numeric value but got: ₹87,480"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹4,791",
+          "productIndex": 15,
+          "message": "Expected numeric value but got: ₹4,791"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹3,345",
+          "productIndex": 16,
+          "message": "Expected numeric value but got: ₹3,345"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹370",
+          "productIndex": 17,
+          "message": "Expected numeric value but got: ₹370"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹5,064",
+          "productIndex": 18,
+          "message": "Expected numeric value but got: ₹5,064"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹628",
+          "productIndex": 19,
+          "message": "Expected numeric value but got: ₹628"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹17,996",
+          "productIndex": 20,
+          "message": "Expected numeric value but got: ₹17,996"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹4,694",
+          "productIndex": 21,
+          "message": "Expected numeric value but got: ₹4,694"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹2,426",
+          "productIndex": 22,
+          "message": "Expected numeric value but got: ₹2,426"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹13,856",
+          "productIndex": 23,
+          "message": "Expected numeric value but got: ₹13,856"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹5,777",
+          "productIndex": 24,
+          "message": "Expected numeric value but got: ₹5,777"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹4,418",
+          "productIndex": 25,
+          "message": "Expected numeric value but got: ₹4,418"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹8,507",
+          "productIndex": 26,
+          "message": "Expected numeric value but got: ₹8,507"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹5,083",
+          "productIndex": 27,
+          "message": "Expected numeric value but got: ₹5,083"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹14,033",
+          "productIndex": 28,
+          "message": "Expected numeric value but got: ₹14,033"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹14,033",
+          "productIndex": 29,
+          "message": "Expected numeric value but got: ₹14,033"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹28,900",
+          "productIndex": 30,
+          "message": "Expected numeric value but got: ₹28,900"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹17,820",
+          "productIndex": 31,
+          "message": "Expected numeric value but got: ₹17,820"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹3,270",
+          "productIndex": 32,
+          "message": "Expected numeric value but got: ₹3,270"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹31,435",
+          "productIndex": 33,
+          "message": "Expected numeric value but got: ₹31,435"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹31,181",
+          "productIndex": 34,
+          "message": "Expected numeric value but got: ₹31,181"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹7,677",
+          "productIndex": 35,
+          "message": "Expected numeric value but got: ₹7,677"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹32,901",
+          "productIndex": 36,
+          "message": "Expected numeric value but got: ₹32,901"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹5,407",
+          "productIndex": 37,
+          "message": "Expected numeric value but got: ₹5,407"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹2,426",
+          "productIndex": 38,
+          "message": "Expected numeric value but got: ₹2,426"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹18,400",
+          "productIndex": 39,
+          "message": "Expected numeric value but got: ₹18,400"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹2,549",
+          "productIndex": 40,
+          "message": "Expected numeric value but got: ₹2,549"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹26,730",
+          "productIndex": 41,
+          "message": "Expected numeric value but got: ₹26,730"
+        },
+        {
+          "type": "non_numeric_price",
+          "value": "₹28,649",
+          "productIndex": 42,
+          "message": "Expected numeric value but got: ₹28,649"
+        }
+      ]
+    }
+  ]
+}

@@ -38,19 +38,17 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
   try {
 
     const date = new Date();
-    if (len == 0 || data == {}) {
-      data, len = await firebaseget();
-    }
+    // Remove multiple firebaseget() calls - data should be passed from caller
+    // if (len == 0 || data == {}) {
+    //   data, len = await firebaseget();
+    // }
 
     const currentTime = Date.now();
-    if (todayData == {}) {
-    // if (todayData == {} || (currentTime - lastFetchTime > FETCH_INTERVAL) || productCounter >= PRODUCT_LIMIT) {
-    // if (todayData == {} || productCounter >= PRODUCT_LIMIT) {
-      logger.info("Fetching today's data on product counter", { functionName: 'getProductDetails' });
-      todayData, len = await firebaseget(true);
-      // lastFetchTime = currentTime;
-      // productCounter = 0;
-    }
+    // Remove multiple firebaseget() calls - todayData should be passed from caller
+    // if (todayData == {}) {
+    //   logger.info("Fetching today's data on product counter", { functionName: 'getProductDetails' });
+    //   todayData, len = await firebaseget(true);
+    // }
     const todayDate = getformattedDate();
     // await driver.get(link);
     // link = await driver.getCurrentUrl();
@@ -100,6 +98,8 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     product.isOffer = false
     product.isDisplay = postProduct;
     product.productType = "Affiliate";
+    // Mark source type for downstream consumers
+    product.sourceType = (username ? 'telegram' : 'website');
     product.shortText = shortenProductText(product?.urltext);
     
     // Handle out-of-stock products
@@ -154,11 +154,18 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
 ) {
     // if (product?.price > 0 && (product.storeType != "Amazon" (product?.links?.avinashbmv != "" || product?.links?.avinashbmvINR != "")) ) {
       // postflag = await firebasepost(product, access_token, env);
-      postflag = await updateProduct(product?.productCode || product?.id, product, access_token, env);
+      // Telegram flow -> deals node
+      postflag = await updateProduct(
+        product?.productCode || product?.id,
+        product,
+        access_token,
+        env,
+        'deals'
+      );
       console.log("Postflag is ", postflag)
       // postflag = await firebasePut(product, access_token, env);
       if (postflag.status == 201) {
-        // id+=1;
+        // Increment count locally instead of calling firebaseget()
         len += 1;
         postStatus = productStatus.PRODUCT_CREATED;
         // i--;
@@ -176,7 +183,7 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
         console.log("Regenerating access token");
         postflag = await firebasepost(product, access_token, env);
         if (postflag) {
-          // id+=1;
+          // Increment count locally instead of calling firebaseget()
           len += 1;
         } else {
           // console.log("Need to skip channel deals");

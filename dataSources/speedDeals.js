@@ -9,16 +9,12 @@ const { productStatus } = require("../config/const");
 const { exit } = require("process");
 const fs = require("fs").promises;
 
-async function getSpeedDeals(driver) {
+async function getSpeedDeals(driver, len = 0, data = {}) {
   try {
-    let data,len = await firebaseget();
+    // Data is now passed as parameters instead of calling firebaseget() multiple times
     if(len==0){
-        
-      data,len = await firebaseget();
-        if(len==0){
-            console.log("Unable to fetch the length of DB")
-            exit();
-        }
+        console.log("Unable to fetch the length of DB")
+        exit();
     }
     let env = constants.env;
 

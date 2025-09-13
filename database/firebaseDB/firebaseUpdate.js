@@ -6,6 +6,7 @@ const constants = require('../../config/constants.js');
 const config = require('../../config/config.js');
 const { productStatus } = require('../../config/const.js');
 const { getModuleLogger } = require("../../logger/logger.js");
+const { detectChanges, areChangesSignificant, logChanges } = require("../../utils/changeDetection.js");
 
 env=constants.env
 
@@ -18,27 +19,40 @@ const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
+if (!admin.apps.length) {
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
+  databaseURL: `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
 });
+}
 
 const db = admin.database();
 
-
 const firebaseConfig = {
-
-    apiKey: constants.FirebaseApiKey,
-    authDomain: `${DB_Name}.firebaseapp.com`,
-    databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`,
-    projectId: `${DB_Name}`,
-    storageBucket: `${DB_Name}.appspot.com`,
-    messagingSenderId: "848061960225",
-    appId: "1:848061960225:web:30d1b2fbd6c6243b2e1360",
-    measurementId: "G-HJNCM2MN6Q"
-        
-  // Your Firebase configuration
+  apiKey: "AIzaSyDkzAygBCeRWGYzDnNvH6LFvNUP6mEI2ao",
+  authDomain: "dealsglobalhub.firebaseapp.com",
+  databaseURL: "https://dealsglobalhub-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "dealsglobalhub",
+  storageBucket: "dealsglobalhub.firebasestorage.app",
+  messagingSenderId: "356883597738",
+  appId: "1:356883597738:web:18937d5011695306e0c3d3",
+  measurementId: "G-21BS748YMG"
 };
+
+// const firebaseConfig = {
+
+//     apiKey: constants.FirebaseApiKey,
+//     authDomain: `${DB_Name}.firebaseapp.com`,
+//     databaseURL: `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`,
+//     // databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`,
+//     projectId: `${DB_Name}`,
+//     storageBucket: `${DB_Name}.appspot.com`,
+//     messagingSenderId: "848061960225",
+//     appId: "1:848061960225:web:30d1b2fbd6c6243b2e1360",
+//     measurementId: "G-HJNCM2MN6Q"
+        
+//   // Your Firebase configuration
+// };
 const app = firebase.initializeApp(firebaseConfig);
 // const db = database.getDatabase(app);
 
@@ -59,17 +73,51 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
     if (productSnapshot.exists()) {
       const existingProductData = productSnapshot.val();
 
-      // Create an object to hold the merged data
-      const mergedData = {
-        ...existingProductData, // Preserve existing fields
-        ...updatedData, // Merge with updated data
-      };
+      // Enhanced change detection using the new utility
+      const changeResult = detectChanges(existingProductData, updatedData);
+      
+      // Log the changes for monitoring
+      logChanges(productCode, changeResult, { 
+        logLevel: 'info', 
+        includeDetails: changeResult.hasCriticalChanges 
+      });
+
+      // Check if changes are significant enough to warrant an update
+      const significantChanges = areChangesSignificant(changeResult, {
+        requireCriticalChanges: false, // Allow secondary changes too
+        minChangeThreshold: 1,
+        ignorePriceFluctuations: true,
+        priceFluctuationThreshold: 0.02 // 2% threshold for price changes
+      });
+
+      if (!significantChanges) {
+        logger.info('Changes not significant; skipping update', { 
+          functionName: 'updateProduct', 
+          productCode,
+          changeType: changeResult.changeType,
+          changeCount: changeResult.changeCount
+        });
+        return { status: 304, message: 'NO_SIGNIFICANT_CHANGES' };
+      }
+
+      // Prepare update data with only changed fields
+      const nowIso = new Date().toISOString();
+      const nowMs = Date.now();
+      
+      const diff = {};
+      changeResult.allChanges.forEach(change => {
+        diff[change.field] = change.newValue;
+      });
+
+      // Ensure timestamps when we do update
+      diff.updateTimestamp = nowIso;
+      diff.updatedatetime = nowMs;
 
       // Ensure fields like createdAt, productId, productCode are preserved
-      mergedData.createdAt = existingProductData.createdAt;
-      mergedData.productId = existingProductData.productId;
-      mergedData.productCode = existingProductData.productCode;
-      if(mergedData.date == existingProductData.date){
+      diff.createdAt = existingProductData.createdAt;
+      diff.productId = existingProductData.productId;
+      diff.productCode = existingProductData.productCode;
+      if(diff.date == existingProductData.date){
         if(!constants.updateTodayDeals) {
           logger.info("DB Found : Updated Product today hence not posting !" , { functionName: 'updateProduct' });
           return { status: 301, message: productStatus.PRODUCT_POSTED_TODAY };
@@ -92,25 +140,23 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
         // Update the items array in the database
         await productRef.child('items').set(newItems);
 
-        // Update other fields
+        // Update other fields using diff - ensure no undefined values
+        const sanitizedDiff = sanitizeForFirebase(diff);
         await productRef.update({
-          ...updatedData,
+          ...sanitizedDiff,
           items: newItems // Ensure items are updated with the combined array
         });
       } else {
-        // Update only the specified fields
-        const fieldsToUpdate = Object.keys(updatedData);
-        const updateData = {};
-        fieldsToUpdate.forEach(field => {
-          updateData[field] = updatedData[field];
-        });
-        await productRef.update(updateData);
+        // Update only the changed fields - ensure no undefined values
+        const sanitizedDiff = sanitizeForFirebase(diff);
+        await productRef.update(sanitizedDiff);
       }
       console.log('Product updated successfully!');
       return { status: 200, message: productStatus.PRODUCT_UPDATED_SUCCESSFULLY }; // Return success status
     } else {
-        // Create a new product
-        await productRef.set(updatedData); // Use .set() directly on the reference
+        // Create a new product - ensure no undefined values
+        const sanitizedData = sanitizeForFirebase(updatedData);
+        await productRef.set(sanitizedData); // Use .set() directly on the reference
       console.log('New product created!');
       return { status: 201, message: productStatus.PRODUCT_CREATED }; // Return success status for creation
     }

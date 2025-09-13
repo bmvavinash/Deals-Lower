@@ -1,5 +1,5 @@
 const { EnhancedBannerExtractor } = require('../dataSources/enhancedBannerExtractor');
-const { testBannerDB } = require('../database/firebaseDB/testBannerDB');
+const { testBannerDB } = require('../database/firebaseDB/bannerDB');
 const { getModuleLogger } = require('../logger/logger');
 
 const logger = getModuleLogger('testEnhancedBannerExtraction');
