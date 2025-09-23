@@ -127,9 +127,32 @@ class ProductDealsDB {
 						c5: "",
 						mainCategory: ""
 					},
+					// Hierarchical category fields
+					hierarchicalCategory: product.hierarchicalCategory || {
+						mainCategory: "",
+						subcategory: "",
+						style: "",
+						hierarchicalKey: ""
+					},
+					// Separate category attributes for API queries
+					categoryLevel1: product.categoryLevel1 || "",
+					categoryLevel2: product.categoryLevel2 || "",
+					categoryLevel3: product.categoryLevel3 || "",
+					subcategory1: product.subcategory1 || "",
+					subcategory2: product.subcategory2 || "",
+					productCategory: product.productCategory || "",
+					productSubcategory: product.productSubcategory || "",
+					productStyle: product.productStyle || "",
+					categoryPath: product.categoryPath || [],
+					categoryDepth: product.categoryDepth || 0,
 					// Bulk-category keys
 					categoryKey: product.categoryKey || "",
-					categoryGroup: product.categoryGroup || ((product.categoryKey && String(product.categoryKey).includes("_")) ? String(product.categoryKey).split("_")[1] : (product.category?.mainCategory || "")),
+					// Prefer new hierarchical fields to derive grouping to avoid misclassification
+					categoryGroup: (product.categoryGroup
+						|| product.productCategory
+						|| product.categoryLevel1
+						|| product.hierarchicalCategory?.mainCategory
+						|| ((product.categoryKey && String(product.categoryKey).includes("_")) ? String(product.categoryKey).split("_")[1] : (product.category?.mainCategory || ""))),
 					productType: product.productType || "Website",
 					
 					// Product details

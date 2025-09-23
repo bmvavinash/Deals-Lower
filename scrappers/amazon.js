@@ -4,7 +4,7 @@ const { amazonLinkGenerator } = require("../affiliate/amazonLinkGenerator");
 // const { getExtrapeUrl } = require("../affiliate/extrapeUrlGenerator");
 const { By, Key, Builder, Button, until } = require("selenium-webdriver");
 const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode, decodeHtmlEntities } = require("../utils/commonUtils");
-const { getExtrapeUrl } = require("../affiliate/extrape");
+// const { getExtrapeUrl } = require("../affiliate/extrape"); // Replaced with amazonLinkGenerator
 const ajioConfig = require("../config/ajioConfig");
 const myntraConfig = require("../config/myntraConfig");
 const { decode } = require('html-entities');
@@ -329,16 +329,16 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
               try {
                 product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
                 if (generateLink) {
-                  product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
+                  product.links.avinashbmv = await amazonLinkGenerator(driver) || "";
                 } else {
-                  product.links.avinashbmv = shortUrl || await getExtrapeUrl(driver, url);
+                  product.links.avinashbmv = shortUrl || await amazonLinkGenerator(driver);
                 }
-          } catch (e) { logger.error(`[${platform}] Generic link generation error:`, { error: e.message, stack: e.stack }); }
+          } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
             }
           } else {
             product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
             product.links[username] = shortUrl || "";
-        try { product.links.avinashbmv = await getExtrapeUrl(driver, url) || ""; } catch (e) { logger.error(`[${platform}] getExtrapeUrl error:`, { error: e.message, stack: e.stack }); }
+        try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
       }
     } catch (e) { logger.error(`[${platform}] Error in link generation:`, { error: e.message, stack: e.stack }); }
 

@@ -2,6 +2,8 @@ const { getModuleLogger } = require('../logger/logger');
 const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
 const { handleProductProcessing } = require('../dataSources/handleProductProcessing');
 const { comprehensiveLoggingService } = require('./comprehensiveLoggingService');
+const { missingDetailsTracker } = require('../utils/missingDetailsTracker');
+const { hierarchicalEnrichmentService } = require('./hierarchicalEnrichmentService');
 const constants = require('../config/constants');
 
 const logger = getModuleLogger('idleProcessingService');
@@ -24,10 +26,13 @@ class IdleProcessingService {
       this.isProcessing = true;
       logger.info('Starting idle time processing');
 
-      // 1. Process productdeals.json first
+      // 1. NEW: Hierarchical enrichment for products with missing category data
+      await hierarchicalEnrichmentService.enrichProductsWithMissingHierarchy(driver);
+
+      // 2. Process productdeals.json for missing critical fields
       await this.processDatabaseProducts(driver, 'productdeals');
 
-      // 2. If still idle, process deals.json
+      // 3. If still idle, process deals.json
       await this.processDatabaseProducts(driver, 'deals');
 
       logger.info('Idle time processing completed');
@@ -45,8 +50,26 @@ class IdleProcessingService {
     try {
       logger.info(`⏳ Processing products from ${targetDb} database`);
 
-      // Get products that need enrichment
-      const productsNeedingUpdate = await productDealsDB.getProductsForIdleProcessing(targetDb, 5);
+      // First, try to get products with missing details from our tracker
+      const productsWithMissingDetails = missingDetailsTracker.getProductsWithMissingDetails(10);
+      let productsNeedingUpdate = [];
+
+      if (productsWithMissingDetails.length > 0) {
+        logger.info(`🎯 Found ${productsWithMissingDetails.length} products with missing details to prioritize`);
+        
+        // Convert missing details products to the format expected by enrichment
+        productsNeedingUpdate = productsWithMissingDetails.map(product => [
+          product.productCode,
+          {
+            ...product,
+            productUrl: product.productUrl,
+            missingFields: product.missingFields
+          }
+        ]);
+      } else {
+        // Fallback to regular idle processing
+        productsNeedingUpdate = await productDealsDB.getProductsForIdleProcessing(targetDb, 5);
+      }
       
       if (productsNeedingUpdate.length === 0) {
         logger.info(`No products need updating in ${targetDb}`);
@@ -54,7 +77,9 @@ class IdleProcessingService {
         return;
       }
 
-      logger.info(`Found ${productsNeedingUpdate.length} products needing update in ${targetDb}`);
+      logger.info(`Found ${productsNeedingUpdate.length} products needing update in ${targetDb}`, {
+        prioritizedMissingDetails: productsWithMissingDetails.length > 0
+      });
 
       let successCount = 0;
       let failedCount = 0;
@@ -106,7 +131,18 @@ class IdleProcessingService {
       if (enrichedData) {
         // Update the product with enriched data
         await productDealsDB.updateIndividualProduct(productKey, enrichedData, targetDb);
-        logger.info(`Successfully enriched product ${productKey} in ${targetDb}`);
+        
+        // Check which fields were fixed and update the missing details tracker
+        const fixedFields = this.getFixedFields(product, enrichedData);
+        if (fixedFields.length > 0) {
+          missingDetailsTracker.markProductAsFixed(productKey, fixedFields);
+          logger.info(`Successfully enriched product ${productKey} in ${targetDb}`, {
+            fixedFields,
+            remainingMissingFields: product.missingFields?.filter(field => !fixedFields.includes(field)) || []
+          });
+        } else {
+          logger.info(`Successfully enriched product ${productKey} in ${targetDb} (no missing fields fixed)`);
+        }
       }
 
     } catch (error) {
@@ -184,6 +220,25 @@ class IdleProcessingService {
     }
 
     return missingFields;
+  }
+
+  // Get list of fields that were fixed during enrichment
+  getFixedFields(originalProduct, enrichedData) {
+    const fixedFields = [];
+    const criticalFields = ['title', 'brand', 'price', 'originalPrice', 'discountPercentage'];
+    
+    criticalFields.forEach(field => {
+      const originalValue = originalProduct[field];
+      const enrichedValue = enrichedData[field];
+      
+      // Check if field was missing in original but now has a value
+      if ((!originalValue || originalValue === '' || originalValue === 'undefined' || originalValue === 'NA') 
+          && enrichedValue && enrichedValue !== '' && enrichedValue !== 'undefined' && enrichedValue !== 'NA') {
+        fixedFields.push(field);
+      }
+    });
+
+    return fixedFields;
   }
 
   // Process deal expiry tracking during idle time

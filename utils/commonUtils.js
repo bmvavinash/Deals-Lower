@@ -340,9 +340,9 @@ function formatProductInfo(product, tag = "", username = "dealsglobalhub", link 
             // if(product?.productCode!="" && product?.storeType == "Amazon"){
             if (product?.productCode != "") {
 
-                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.productCode}\n\n`;
+                message += `\n\n🛒 Buy Here : https://lowerdeal.com/p/${product?.productCode}\n\n`;
             } else {
-                message += `\n\n🛒 Buy Here : https://dealshubglobal.com/p/${product?.id}\n\n`;
+                message += `\n\n🛒 Buy Here : https://lowerdeal.com/p/${product?.id}\n\n`;
 
             }
         } else if (product?.storeType == "Amazon" && product?.productCode != "" && tag != "") {

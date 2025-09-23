@@ -1,8 +1,11 @@
 const { runBatch } = require('../dataSources/batchProductExtractor');
 const { getModuleLogger } = require('../logger/logger');
 const { comprehensiveLoggingService } = require('../services/comprehensiveLoggingService');
+const { CategoryHierarchyDB } = require('../database/firebaseDB/categoryHierarchyDB');
+const { getAllCategories } = require('../config/categoryHierarchy');
 
 const logger = getModuleLogger('bulkUpdateAllPlatforms');
+const categoryHierarchyDB = new CategoryHierarchyDB();
 
 // Comprehensive seed URLs for all platforms and categories
 const PLATFORM_SEEDS = {
@@ -83,6 +86,20 @@ async function runBulkUpdateForCategory(platform, category, urls, sourceType = '
     const categoryKey = `${platform}_${category}`;
     const result = await runBatch(urls, sourceType, categoryKey, targetDb);
     
+    // Get hierarchical category statistics
+    let hierarchyStats = null;
+    try {
+      const stats = await categoryHierarchyDB.getCategoryStats();
+      hierarchyStats = {
+        totalProducts: stats.totalProducts,
+        categories: Object.keys(stats.categories).length,
+        subcategories: Object.keys(stats.subcategories).length,
+        styles: Object.keys(stats.styles).length
+      };
+    } catch (error) {
+      logger.warn('Failed to get hierarchy stats', { error: error.message });
+    }
+    
     const categorySummary = {
       platform,
       category,
@@ -95,7 +112,8 @@ async function runBulkUpdateForCategory(platform, category, urls, sourceType = '
       createdCount: result.created || 0,
       updatedCount: result.updated || 0,
       pages: result.pages || 0,
-      successRate: result.totalExtracted > 0 ? ((result.totalStored / result.totalExtracted) * 100).toFixed(2) : '0.00'
+      successRate: result.totalExtracted > 0 ? ((result.totalStored / result.totalExtracted) * 100).toFixed(2) : '0.00',
+      hierarchyStats
     };
     
     logger.info(`✅ Bulk update completed for ${platform} - ${category}`, categorySummary);
@@ -217,19 +235,127 @@ async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals') {
   }
 }
 
+/**
+ * Initialize category hierarchy in database
+ */
+async function initializeCategoryHierarchy() {
+  try {
+    logger.info('Initializing category hierarchy...');
+    await categoryHierarchyDB.initializeHierarchy();
+    logger.info('✅ Category hierarchy initialized successfully');
+    return true;
+  } catch (error) {
+    logger.error('❌ Failed to initialize category hierarchy', { error: error.message });
+    return false;
+  }
+}
+
+/**
+ * Migrate existing products to hierarchical categories
+ */
+async function migrateToHierarchical() {
+  try {
+    logger.info('Starting migration to hierarchical categories...');
+    const result = await categoryHierarchyDB.migrateToHierarchical();
+    logger.info('✅ Migration completed', { migratedCount: result.migratedCount });
+    return result;
+  } catch (error) {
+    logger.error('❌ Migration failed', { error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Get category statistics
+ */
+async function getCategoryStats() {
+  try {
+    const stats = await categoryHierarchyDB.getCategoryStats();
+    logger.info('Category statistics retrieved', {
+      totalProducts: stats.totalProducts,
+      uniqueCategories: Object.keys(stats.categories).length,
+      uniqueSubcategories: Object.keys(stats.subcategories).length,
+      uniqueStyles: Object.keys(stats.styles).length
+    });
+    return stats;
+  } catch (error) {
+    logger.error('Failed to get category statistics', { error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * Search products by hierarchical category
+ */
+async function searchProductsByHierarchy(searchCriteria) {
+  try {
+    const products = await categoryHierarchyDB.searchProducts(searchCriteria);
+    logger.info('Products found', { 
+      searchCriteria, 
+      count: products.length 
+    });
+    return products;
+  } catch (error) {
+    logger.error('Failed to search products', { 
+      error: error.message, 
+      searchCriteria 
+    });
+    throw error;
+  }
+}
+
 function parseArgs() {
   const args = process.argv.slice(2);
-  const sourceType = (args[0] || 'website').toLowerCase();
-  const platform = args[1] || '';
-  const category = args[2] || '';
+  const command = args[0] || 'bulk';
+  const sourceType = (args[1] || 'website').toLowerCase();
+  const platform = args[2] || '';
+  const category = args[3] || '';
   
-  return { sourceType, platform, category };
+  return { command, sourceType, platform, category };
 }
 
 async function main() {
   try {
-    const { sourceType, platform, category } = parseArgs();
+    const { command, sourceType, platform, category } = parseArgs();
     
+    switch (command) {
+      case 'init':
+        // Initialize category hierarchy
+        await initializeCategoryHierarchy();
+        break;
+        
+      case 'migrate':
+        // Migrate existing products to hierarchical categories
+        await migrateToHierarchical();
+        break;
+        
+      case 'stats':
+        // Get category statistics
+        const stats = await getCategoryStats();
+        console.log('\n📊 Category Statistics:');
+        console.log(`Total Products: ${stats.totalProducts}`);
+        console.log(`Unique Categories: ${Object.keys(stats.categories).length}`);
+        console.log(`Unique Subcategories: ${Object.keys(stats.subcategories).length}`);
+        console.log(`Unique Styles: ${Object.keys(stats.styles).length}`);
+        break;
+        
+      case 'search':
+        // Search products by hierarchical category
+        const searchCriteria = {
+          mainCategory: platform || 'electronics',
+          subcategory: category || null,
+          limit: 50
+        };
+        const products = await searchProductsByHierarchy(searchCriteria);
+        console.log(`\n🔍 Found ${products.length} products`);
+        products.slice(0, 10).forEach((product, index) => {
+          console.log(`${index + 1}. ${product.title} - ${product.hierarchicalCategory?.hierarchicalKey || 'No hierarchy'}`);
+        });
+        break;
+        
+      case 'bulk':
+      default:
+        // Original bulk update functionality
     if (platform && category) {
       // Run for specific platform and category
       const urls = PLATFORM_SEEDS[platform]?.[category];
@@ -243,6 +369,9 @@ async function main() {
       console.log(`📦 Pages processed: ${result.pages}`);
       console.log(`📊 Products extracted: ${result.totalExtracted}`);
       console.log(`💾 Products stored: ${result.totalStored}`);
+          if (result.hierarchyStats) {
+            console.log(`🏷️  Hierarchy Stats: ${result.hierarchyStats.categories} categories, ${result.hierarchyStats.subcategories} subcategories, ${result.hierarchyStats.styles} styles`);
+          }
       
     } else if (platform) {
       // Run for specific platform
@@ -257,10 +386,12 @@ async function main() {
       console.log(`🌐 Total platforms: ${result.totalPlatforms}`);
       console.log(`✅ Successful: ${result.successfulPlatforms}`);
       console.log(`❌ Failed: ${result.failedPlatforms}`);
+        }
+        break;
     }
     
   } catch (error) {
-    console.error('❌ Bulk update failed:', error.message);
+    console.error('❌ Operation failed:', error.message);
     process.exit(1);
   }
 }

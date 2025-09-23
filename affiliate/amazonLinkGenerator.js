@@ -4,11 +4,42 @@ const { By, Key, Builder, Button, until } = require("selenium-webdriver");
 async function amazonLinkGenerator( driver) {
     let l=1
     try{
-        await driver.findElement(By.id("amzn-ss-get-link-button")).click();
-        // await driver.findElement(By.id("amzn-ss-text-link")).click(); // old
+        // First check if user is logged in by looking for the Get Link button
+        try {
+          await driver.findElement(By.id("amzn-ss-get-link-button")).click();
+          console.log("Get Link button clicked successfully");
+        } catch (getLinkError) {
+          console.log("Get Link button not found - checking if user is logged in");
+          
+          // Check if this is an excluded product
+          try {
+            const excludedProductAlert = await driver.findElement(By.css(".amzn-ss-asin-alert-text-content"));
+            if (excludedProductAlert) {
+              console.log("Excluded Product detected - this product is not eligible for Amazon Associates Program");
+              return ""; // Return empty string for excluded products
+            }
+          } catch (excludedCheckError) {
+            console.log("No excluded product alert found");
+          }
+          
+          // Check if user needs to login
+          try {
+            const loginPrompt = await driver.findElement(By.css("[data-action='sign-in']"));
+            if (loginPrompt) {
+              console.log("User not logged in - Amazon Associates requires authentication");
+              return ""; // Return empty string if not logged in
+            }
+          } catch (loginCheckError) {
+            console.log("No login prompt found");
+          }
+          
+          // If we reach here, the product might be excluded or there's an authentication issue
+          console.log("Unable to generate Amazon affiliate link - product may be excluded or authentication required");
+          return "";
+        }
       }
       catch(e) {
-        console.log(e);
+        console.log("Error in Amazon link generation:", e.message);
         
         // Check if this is an excluded product
         try {

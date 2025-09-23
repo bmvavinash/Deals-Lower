@@ -14,19 +14,85 @@ class HourlyScheduler {
         this.DEFAULT_SEEDS = [
             'https://www.amazon.in',
             'https://www.amazon.in/deals',
-            'https://www.amazon.in/s?k=mobile+phones',
-            'https://www.amazon.in/gp/browse.html?node=1389401031', // Mobiles & Accessories
+            
+            // Electronics
             'https://www.amazon.in/gp/browse.html?node=976419031',  // Electronics
-            'https://www.amazon.in/gp/browse.html?node=976442031',  // Home & Kitchen
+            'https://www.amazon.in/gp/browse.html?node=1389401031', // Mobiles & Accessories
             'https://www.amazon.in/gp/browse.html?node=976392031',  // Computers & Accessories
-            'https://www.amazon.in/gp/browse.html?node=1380365031', // Large Appliances
-            'https://www.amazon.in/gp/browse.html?node=1355016031', // Beauty & Personal Care
+            'https://www.amazon.in/s?k=mobile+phones',
+            'https://www.amazon.in/s?k=laptops',
+            'https://www.amazon.in/s?k=headphones',
+            'https://www.amazon.in/s?k=smartwatches',
+            'https://www.amazon.in/s?k=cameras',
+            
+            // Fashion
             'https://www.amazon.in/gp/browse.html?node=1968024031', // Fashion (Men)
             'https://www.amazon.in/gp/browse.html?node=1968253031', // Fashion (Women)
-            'https://www.amazon.in/gp/browse.html?node=976389031',  // Books
-            'https://www.amazon.in/gp/browse.html?node=1350380031', // Toys & Games
+            'https://www.amazon.in/s?k=mens+clothing',
+            'https://www.amazon.in/s?k=womens+clothing',
+            'https://www.amazon.in/s?k=shoes',
+            'https://www.amazon.in/s?k=accessories',
+            
+            // Home & Kitchen
+            'https://www.amazon.in/gp/browse.html?node=976442031',  // Home & Kitchen
+            'https://www.amazon.in/gp/browse.html?node=1380365031', // Large Appliances
+            'https://www.amazon.in/s?k=furniture',
+            'https://www.amazon.in/s?k=kitchen+appliances',
+            'https://www.amazon.in/s?k=home+decor',
+            'https://www.amazon.in/s?k=cookware',
+            
+            // Sports & Fitness
             'https://www.amazon.in/gp/browse.html?node=1984443031', // Sports & Outdoors
-            'https://www.amazon.in/gp/browse.html?node=4859480031'  // Grocery & Gourmet Foods
+            'https://www.amazon.in/s?k=fitness+equipment',
+            'https://www.amazon.in/s?k=sports+gear',
+            'https://www.amazon.in/s?k=outdoor+recreation',
+            
+            // Beauty & Personal Care
+            'https://www.amazon.in/gp/browse.html?node=1355016031', // Beauty & Personal Care
+            'https://www.amazon.in/s?k=skincare',
+            'https://www.amazon.in/s?k=makeup',
+            'https://www.amazon.in/s?k=hair+care',
+            'https://www.amazon.in/s?k=personal+care',
+            
+            // Automotive
+            'https://www.amazon.in/gp/browse.html?node=1571272031', // Automotive
+            'https://www.amazon.in/s?k=car+care',
+            'https://www.amazon.in/s?k=car+parts',
+            'https://www.amazon.in/s?k=car+electronics',
+            'https://www.amazon.in/s?k=motorcycle',
+            
+            // Baby & Kids
+            'https://www.amazon.in/gp/browse.html?node=1350380031', // Toys & Games
+            'https://www.amazon.in/s?k=baby+clothing',
+            'https://www.amazon.in/s?k=kids+clothing',
+            'https://www.amazon.in/s?k=toys+games',
+            'https://www.amazon.in/s?k=baby+care',
+            
+            // Grocery
+            'https://www.amazon.in/gp/browse.html?node=4859480031', // Grocery & Gourmet Foods
+            'https://www.amazon.in/s?k=food+beverages',
+            'https://www.amazon.in/s?k=fresh+produce',
+            'https://www.amazon.in/s?k=dairy+eggs',
+            'https://www.amazon.in/s?k=frozen+foods',
+            
+            // Tools & Hardware
+            'https://www.amazon.in/s?k=hand+tools',
+            'https://www.amazon.in/s?k=power+tools',
+            'https://www.amazon.in/s?k=hardware',
+            'https://www.amazon.in/s?k=safety+equipment',
+            
+            // Music & Entertainment
+            'https://www.amazon.in/gp/browse.html?node=976389031',  // Books
+            'https://www.amazon.in/s?k=musical+instruments',
+            'https://www.amazon.in/s?k=audio+equipment',
+            'https://www.amazon.in/s?k=gaming',
+            'https://www.amazon.in/s?k=books',
+            
+            // Pet Supplies
+            'https://www.amazon.in/gp/browse.html?node=4772060031', // Pet Supplies
+            'https://www.amazon.in/s?k=dog+supplies',
+            'https://www.amazon.in/s?k=cat+supplies',
+            'https://www.amazon.in/s?k=pet+supplies'
         ];
     }
 

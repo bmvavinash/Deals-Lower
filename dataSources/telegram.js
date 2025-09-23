@@ -210,7 +210,12 @@ async function initializeState() {
   try {
     // Load current state
     state = await loadState();
-    lastBulkRunAt = state.lastBulkRun ? new Date(state.lastBulkRun).getTime() : 0;
+    lastBulkRunAt = state.lastBulkRun ? new Date(state.lastBulkRun).getTime() : Date.now();
+    // If there was no prior bulk run, set it to now so we don't block other steps immediately
+    if (!state.lastBulkRun) {
+      await saveState({ ...state, lastBulkRun: new Date(lastBulkRunAt).toISOString() });
+      logger.info('Initialized lastBulkRun to now to allow later steps to proceed');
+    }
     
     // Load previous state for comparison
     const previousState = await loadPreviousState();
@@ -425,14 +430,14 @@ async function processBotMessages(driver, len, accessToken, jsonData, todayJsonD
     console.log(`[bot] fetched ${messagesToProcess.length} messages from bot queue`);
 
     const now = Date.now();
-    const dueForBulk = (now - lastBulkRunAt) >= EFFECTIVE_INTERVAL;
-    const scheduledBulk = isTimeForScheduledBulk();
+    const dueForBulk = constants.enableBulkProcessing && ((now - lastBulkRunAt) >= EFFECTIVE_INTERVAL);
+    const scheduledBulk = constants.enableBulkProcessing && isTimeForScheduledBulk();
     
     const maybeRunBulk = async (isIdle) => {
       if (isBulkRunning) return;
       
       // Check if it's time for scheduled bulk OR if idle and due for regular bulk
-      const shouldRun = scheduledBulk || (isIdle && dueForBulk);
+      const shouldRun = constants.enableBulkProcessing && (scheduledBulk || (isIdle && dueForBulk));
       if (!shouldRun) return;
       
       isBulkRunning = true;
@@ -631,8 +636,17 @@ async function continuouslyProcessBotMessages(driver, len, accessToken, jsonData
     }
     let loop = 0;
 
+    // Check if we should run in continuous mode or finite mode
+    const isContinuousMode = constants.telegramMode === 'continuous' || !constants.telegramMode;
     let shouldContinue = true;
-    while (shouldContinue) {
+    const maxLoops = isContinuousMode ? Infinity : 5; // Run 5 loops in finite mode
+    
+    logger.info(`Running in ${isContinuousMode ? 'continuous' : 'finite'} mode`, { 
+      functionName: 'continuouslyProcessBotMessages',
+      maxLoops: isContinuousMode ? 'unlimited' : maxLoops
+    });
+    
+    while (shouldContinue && loop < maxLoops) {
       loop += 1;
       try {
         await processBotMessages(driver, len, accessToken, jsonData, todayJsonData);

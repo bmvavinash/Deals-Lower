@@ -12,23 +12,34 @@ const {
 } = require('../utils/commonUtils');
 const { getModuleLogger } = require('../logger/logger');
 const { bannerDB } = require('../database/firebaseDB/bannerDB');
+const { bannerUrlFixer } = require('../services/bannerUrlFixer');
 
 const logger = getModuleLogger('bannerExtractor');
 
 class BannerExtractor {
-    constructor() {
+    constructor(options = {}) {
         this.driver = null;
         this.extractedBanners = [];
+        this.useExistingChrome = options.useExistingChrome || process.env.USE_EXISTING_CHROME === '1';
+        this.debuggerAddress = options.debuggerAddress || process.env.DEBUGGER_ADDRESS || '127.0.0.1:9222';
     }
 
     async initializeDriver() {
         try {
             const options = new chrome.Options();
-            options.addArguments('--headless');
             options.addArguments('--no-sandbox');
             options.addArguments('--disable-dev-shm-usage');
             options.addArguments('--disable-gpu');
             options.addArguments('--window-size=1920,1080');
+
+            if (this.useExistingChrome) {
+                // Attach to an already running Chrome with remote debugging
+                // selenium-webdriver chrome supports debuggerAddress via options_.
+                options.options_.debuggerAddress = this.debuggerAddress;
+                logger.info('Attaching to existing Chrome via debugger', { debuggerAddress: this.debuggerAddress });
+            } else {
+                options.addArguments('--headless');
+            }
 
             this.driver = await new Builder()
                 .forBrowser('chrome')
@@ -39,6 +50,39 @@ class BannerExtractor {
         } catch (error) {
             logger.error('Failed to initialize driver:', { error: error.message });
             throw error;
+        }
+    }
+
+    isLikelyFlipkartProductImage(imageUrl, altText) {
+        try {
+            if (!imageUrl) return true;
+            const lowerUrl = imageUrl.toLowerCase();
+            const lowerAlt = (altText || '').toLowerCase();
+            // Common Flipkart product thumbnail patterns and sizes
+            const thumbnailPatterns = [
+                '/image/150/150/',
+                '/image/170/170/',
+                '/image/128/128/',
+                '/image/200/200/',
+                '/image/250/250/',
+                '/image/312/312/',
+                '/image/416/416/',
+                'q=70',
+                'xif0q'
+            ];
+            if (thumbnailPatterns.some(p => lowerUrl.includes(p))) return true;
+            // Likely catalog product words in alt
+            const productWords = [
+                'men ', 'women ', 'boys ', 'girls ', 'shirt', 't-shirt', 'jeans', 'trouser', 'track pant',
+                'shoe', 'sandal', 'watch', 'dress', 'saree', 'lehenga', 'kurta', 'mobile', 'phone', 'case',
+                'back cover', 'headphone', 'earbud', 'camera', 'laptop', 'router', 'mixer', 'refrigerator'
+            ];
+            if (productWords.some(w => lowerAlt.includes(w))) return true;
+            // Image host for product images
+            if (lowerUrl.includes('rukminim2.flixcart.com/image/')) return true;
+            return false;
+        } catch (_) {
+            return false;
         }
     }
 
@@ -189,7 +233,13 @@ class BannerExtractor {
                     }
                     
                     logger.debug(`Found direct image: ${imageUrl}, alt: ${altText}`);
-                    
+
+                    // Early filter for Flipkart product thumbnails
+                    if (platformKey === 'flipkart' && this.isLikelyFlipkartProductImage(imageUrl, altText)) {
+                        logger.debug('Skipping likely product image (Flipkart direct)', { imageUrl, altText });
+                        continue;
+                    }
+
                     // Validate banner URL
                     const urlValidation = validateBannerUrl(imageUrl, validation.allowedDomains);
                     if (!urlValidation.isValid) {
@@ -279,7 +329,13 @@ class BannerExtractor {
             const imageUrl = await imageElement.getAttribute('src');
             const altText = await imageElement.getAttribute('alt');
             logger.debug(`Found image: ${imageUrl}, alt: ${altText}`);
-            
+
+            // Early filter for Flipkart product thumbnails
+            if (platformKey === 'flipkart' && this.isLikelyFlipkartProductImage(imageUrl, altText)) {
+                logger.debug('Skipping likely product image (Flipkart link)', { imageUrl, altText });
+                return null;
+            }
+
             // Validate banner URL
             const urlValidation = validateBannerUrl(imageUrl, validation.allowedDomains);
             if (!urlValidation.isValid) {
@@ -425,8 +481,23 @@ class BannerExtractor {
             
             logger.info(`Extracted ${extractedBanners.length} banners total`);
             
+            // Fix URLs for banners if enabled
+            let processedBanners = extractedBanners;
+            if (extractedBanners.length > 0) {
+                logger.info('Starting banner URL verification and fixing...');
+                processedBanners = await bannerUrlFixer.fixBannerUrls(extractedBanners);
+                
+                const urlFixStats = bannerUrlFixer.getStatistics();
+                logger.info('Banner URL fixing completed', {
+                    total: urlFixStats.total,
+                    fixed: urlFixStats.fixed,
+                    errors: urlFixStats.errors,
+                    skipped: urlFixStats.skipped
+                });
+            }
+            
             // Store banners in Firebase
-            const storedBanners = await this.storeBannersInFirebase(extractedBanners);
+            const storedBanners = await this.storeBannersInFirebase(processedBanners);
             
             logger.info(`Successfully stored ${storedBanners.length} banners in Firebase`);
             

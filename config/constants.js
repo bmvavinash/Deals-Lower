@@ -51,10 +51,12 @@ const bulkUpdateIntervalMs = 2 * 60 * 60 * 1000; // 2 hours
 // Execution toggles
 const enableTelegramProcessing = true; // Gate to start Telegram bot processing
 const enableBulkProcessing = true;     // Gate to start bulk website processing
+const telegramMode = 'finite';         // 'continuous' for infinite loop, 'finite' for limited loops
+const enableProductUrlFix = true;      // Gate to enable product URL verification and fixing
 
 // Global timeouts and watchdogs
 const maxPageTimeoutMs = 2 * 60 * 1000;        // 2 minutes per webpage scrape
-const maxPlatformTimeoutMs = 15 * 60 * 1000;   // 15 minutes per platform/category batch
+const maxPlatformTimeoutMs = 10 * 60 * 1000;   // 10 minutes per platform/category batch
 const maxIdleGlobalMs = 5 * 60 * 1000;         // 5 minutes idle watchdog
 
 // TELEGRAM BOT WITH BULK UPDATES CONFIGURATION
@@ -141,6 +143,8 @@ module.exports = {
   bulkUpdateIntervalMs,
   enableTelegramProcessing,
   enableBulkProcessing,
+  telegramMode,
+  enableProductUrlFix,
   maxPageTimeoutMs,
   maxPlatformTimeoutMs,
   maxIdleGlobalMs,
@@ -164,7 +168,7 @@ module.exports = {
     respectDoNotDisturb: true,
     // Favorites processing intervals (in milliseconds)
     favoritesProcessingIntervalMs: 60 * 60 * 1000, // 1 hour - full favorites processing
-    favoritesUrgentCheckIntervalMs: 15 * 60 * 1000, // 15 minutes - urgent notifications check
+    favoritesUrgentCheckIntervalMs: 10 * 60 * 1000, // 10 minutes - urgent notifications check
     // Maximum notifications per cycle to prevent spam
     maxNotificationsPerCycle: 200,
     // Price drop threshold for notifications (percentage)

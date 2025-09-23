@@ -4,6 +4,7 @@ const bannerConfig = require('../config/bannerConfig');
 const EnhancedBannerUtils = require('../utils/enhancedBannerUtils');
 const { getModuleLogger } = require('../logger/logger');
 const { testBannerDB } = require('../database/firebaseDB/bannerDB');
+const { bannerUrlFixer } = require('../services/bannerUrlFixer');
 
 const logger = getModuleLogger('enhancedBannerExtractor');
 
@@ -495,15 +496,30 @@ class EnhancedBannerExtractor {
                 }
             }
             
-            // Store in Firebase
+            // Fix URLs for banners if enabled
+            let processedBanners = allBanners;
             if (allBanners.length > 0) {
-                const storeResult = await testBannerDB.storeMultipleTestBanners(allBanners);
-                logger.info(`Stored ${allBanners.length} Amazon website banners in test-banners node`);
+                logger.info('Starting banner URL verification and fixing...');
+                processedBanners = await bannerUrlFixer.fixBannerUrls(allBanners);
+                
+                const urlFixStats = bannerUrlFixer.getStatistics();
+                logger.info('Banner URL fixing completed', {
+                    total: urlFixStats.total,
+                    fixed: urlFixStats.fixed,
+                    errors: urlFixStats.errors,
+                    skipped: urlFixStats.skipped
+                });
+            }
+            
+            // Store in Firebase
+            if (processedBanners.length > 0) {
+                const storeResult = await testBannerDB.storeMultipleTestBanners(processedBanners);
+                logger.info(`Stored ${processedBanners.length} Amazon website banners in test-banners node`);
                 
                 return {
                     extracted: allBanners.length,
                     stored: storeResult.filter(r => r.status === 200 || r.status === 201).length,
-                    banners: allBanners,
+                    banners: processedBanners,
                     storeResults: storeResult
                 };
             } else {

@@ -24,6 +24,11 @@ const { initializeBot, continuousProcess } = require("./dataSources/autoTelegram
 const extractFacebookToken = require("./socialMedia/extractFacebookToken");
 const { bannerScheduler } = require("./scheduler/bannerScheduler");
 const ProcessLock = require("./utils/processLock");
+const { systemHealthMonitor } = require("./services/systemHealthMonitor");
+const { idleProcessingService } = require("./services/idleProcessingService");
+const { hierarchicalEnrichmentService } = require("./services/hierarchicalEnrichmentService");
+const { productUrlFixer } = require("./services/productUrlFixer");
+const { getModuleLogger } = require("./logger/logger");
 
 require("events").EventEmitter.defaultMaxListeners = 20;
 
@@ -31,25 +36,49 @@ require("events").EventEmitter.defaultMaxListeners = 20;
 let driver = null;
 let isShuttingDown = false;
 let processLock = null;
+const logger = getModuleLogger('main');
 
 // Graceful shutdown handlers
 process.on('SIGINT', async () => {
-  console.log('\nReceived SIGINT. Shutting down gracefully...');
+  logger.info('🛑 Received SIGINT. Shutting down gracefully...');
   await gracefulShutdown();
 });
 
 process.on('SIGTERM', async () => {
-  console.log('\nReceived SIGTERM. Shutting down gracefully...');
+  logger.info('🛑 Received SIGTERM. Shutting down gracefully...');
   await gracefulShutdown();
 });
 
 process.on('uncaughtException', async (error) => {
-  console.error('Uncaught Exception:', error);
+  logger.error('💥 Uncaught Exception:', { 
+    error: error.message, 
+    stack: error.stack,
+    fixSteps: systemHealthMonitor.getFixSteps('unknown_error').steps
+  });
+  
+  // Record the critical failure
+  systemHealthMonitor.recordFailure('main', error, {
+    phase: 'uncaught_exception',
+    timestamp: new Date().toISOString()
+  });
+  
   await gracefulShutdown();
 });
 
 process.on('unhandledRejection', async (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  logger.error('💥 Unhandled Rejection:', { 
+    reason: reason?.message || reason,
+    stack: reason?.stack,
+    promise: promise.toString(),
+    fixSteps: systemHealthMonitor.getFixSteps('unknown_error').steps
+  });
+  
+  // Record the critical failure
+  systemHealthMonitor.recordFailure('main', new Error(reason), {
+    phase: 'unhandled_rejection',
+    timestamp: new Date().toISOString()
+  });
+  
   await gracefulShutdown();
 });
 
@@ -57,22 +86,47 @@ async function gracefulShutdown() {
   if (isShuttingDown) return;
   isShuttingDown = true;
   
-  console.log("Performing graceful shutdown...");
+  const shutdownStartTime = Date.now();
+  logger.info("🔄 Performing graceful shutdown...");
+  
   try {
+    // Close browser driver
     if (driver) {
+      logger.info("🔒 Closing browser driver...");
       await driver.quit();
-      console.log("Browser driver closed");
+      logger.info("✅ Browser driver closed successfully");
     }
   } catch (error) {
-    console.log("Error closing driver:", error.message);
+    logger.error("❌ Error closing driver:", { 
+      error: error.message,
+      fixSteps: systemHealthMonitor.getFixSteps('selenium_driver_failed').steps
+    });
   }
   
   // Release process lock
   if (processLock) {
-    processLock.release();
+    try {
+      processLock.release();
+      logger.info("🔓 Process lock released");
+    } catch (error) {
+      logger.error("❌ Error releasing process lock:", { error: error.message });
+    }
   }
   
-  console.log("Shutdown complete");
+  // Perform final system health check
+  try {
+    logger.info("🏥 Performing final system health check...");
+    const finalHealthReport = await systemHealthMonitor.performHealthCheck();
+    logger.info("📊 Final system status:", { 
+      overallStatus: finalHealthReport.overallStatus,
+      criticalIssues: finalHealthReport.criticalIssues.length
+    });
+  } catch (error) {
+    logger.error("❌ Error during final health check:", { error: error.message });
+  }
+  
+  const shutdownDuration = Date.now() - shutdownStartTime;
+  logger.info("✅ Shutdown complete", { duration: `${shutdownDuration}ms` });
   process.exit(0);
 }
 
@@ -84,63 +138,148 @@ let postflag = false;
 
 // async function openAmazonWebsite(link) {
 async function openAmazonWebsite() {
-  // Check for process lock to prevent multiple instances
-  processLock = new ProcessLock();
-  const lockAcquired = await processLock.acquire();
-  if (!lockAcquired) {
-    console.log("Another instance is already running. Exiting...");
-    process.exit(1);
-  }
-  processLock.setupCleanup();
+  const appStartTime = Date.now();
+  const sessionId = `session_${Date.now()}`;
+  
+  logger.info('🚀 Starting DealsOptimised Application', {
+    sessionId,
+    type: constants.type,
+    source: constants.source,
+    env: constants.env,
+    timestamp: new Date().toISOString()
+  });
 
-  require("chromedriver");
+  try {
+    // Perform initial system health check
+    logger.info('🏥 Performing initial system health check...');
+    const initialHealthReport = await systemHealthMonitor.performHealthCheck();
+    
+    if (initialHealthReport.overallStatus === 'critical') {
+      logger.error('🚨 Critical system issues detected. Aborting startup.', {
+        sessionId,
+        criticalIssues: initialHealthReport.criticalIssues.length,
+        fixSteps: initialHealthReport.criticalIssues.map(issue => issue.fixSteps?.steps || [])
+      });
+      process.exit(1);
+    }
 
-  var chrome = require("selenium-webdriver/chrome");
+    // Check for process lock to prevent multiple instances
+    logger.info('🔒 Acquiring process lock...');
+    processLock = new ProcessLock();
+    const lockAcquired = await processLock.acquire();
+    if (!lockAcquired) {
+      logger.warn('⚠️ Another instance is already running. Exiting...', { sessionId });
+      process.exit(1);
+    }
+    processLock.setupCleanup();
+    logger.info('✅ Process lock acquired successfully');
 
-  let options = await new chrome.Options();
+    // Initialize Chrome driver
+    logger.info('🌐 Initializing Chrome WebDriver...');
+    require("chromedriver");
+    var chrome = require("selenium-webdriver/chrome");
+    let options = await new chrome.Options();
+    let product = {}
 
-  let product = {}
+    // Add headless mode
+    // options.addArguments("--headless"); // Enable headless mode
+    // options.addArguments("--disable-gpu"); // Recommended for Windows
+    // // options.addArguments("--no-sandbox"); // Recommended for Linux
+    // options.addArguments("--disable-dev-shm-usage"); // Prevent resource issues in some systems
 
+    options.debuggerAddress("localhost:9222"); // Connect to existing Chrome instance with login session
 
-  // Add headless mode
-  // options.addArguments("--headless"); // Enable headless mode
-  // options.addArguments("--disable-gpu"); // Recommended for Windows
-  // // options.addArguments("--no-sandbox"); // Recommended for Linux
-  // options.addArguments("--disable-dev-shm-usage"); // Prevent resource issues in some systems
-
-
-
-  options.debuggerAddress("localhost:9222");
-
-  //CHROME
-  driver = await chrome.Driver.createSession(options);
-  let env = constants.env
+    //CHROME
+    driver = await chrome.Driver.createSession(options);
+    global.driver = driver; // Make driver globally available
+    let env = constants.env;
+    
+    logger.info('✅ Chrome WebDriver initialized successfully', {
+      sessionId,
+      debuggerAddress: 'localhost:9222',
+      env
+    });
 
 
   if (source == "deals") {
+    logger.info('📊 Processing deals source', { sessionId, type });
 
     switch (type) {
       case "general":
+        logger.info('🔄 Processing general type', { sessionId, generalType: constants.generaltype });
+        
         switch (constants.generaltype) {
           case "telegramFile":
+            logger.info('📱 Starting Telegram file processing', { sessionId });
+            
             // Get initial data once
             let len = 0;
             let jsonData = {};
             let todayJsonData = {};
+            
             try {
+              logger.info('📥 Fetching initial data from Firebase...', { sessionId });
               const result = await firebaseget();
               jsonData = result.data || {};
               len = result.len || 0;
+              logger.info('✅ Initial data fetched successfully', { 
+                sessionId, 
+                dataLength: len,
+                recordsCount: Object.keys(jsonData).length 
+              });
             } catch (error) {
-              console.log("Error getting initial data:", error);
+              logger.error('❌ Error getting initial data:', { 
+                sessionId,
+                error: error.message,
+                stack: error.stack,
+                fixSteps: systemHealthMonitor.getFixSteps('database_connection_failed').steps
+              });
+              
+              systemHealthMonitor.recordFailure('main', error, {
+                sessionId,
+                phase: 'fetch_initial_data'
+              });
             }
+            
             try {
+              logger.info('📥 Fetching today\'s data from Firebase...', { sessionId });
               const todayResult = await firebaseget(true);
               todayJsonData = todayResult.data || {};
+              logger.info('✅ Today\'s data fetched successfully', { 
+                sessionId,
+                recordsCount: Object.keys(todayJsonData).length 
+              });
             } catch (error) {
-              console.log("Error getting today's data:", error);
+              logger.error('❌ Error getting today\'s data:', { 
+                sessionId,
+                error: error.message,
+                stack: error.stack,
+                fixSteps: systemHealthMonitor.getFixSteps('database_connection_failed').steps
+              });
+              
+              systemHealthMonitor.recordFailure('main', error, {
+                sessionId,
+                phase: 'fetch_todays_data'
+              });
             }
-            await getTelegramDealLink(driver, len, jsonData, todayJsonData);
+            
+            try {
+              logger.info('🚀 Starting Telegram deal link processing...', { sessionId });
+              await getTelegramDealLink(driver, len, jsonData, todayJsonData);
+              logger.info('✅ Telegram deal link processing completed', { sessionId });
+            } catch (error) {
+              logger.error('❌ Error in Telegram deal link processing:', { 
+                sessionId,
+                error: error.message,
+                stack: error.stack,
+                fixSteps: systemHealthMonitor.getFixSteps('product_extraction_failed').steps
+              });
+              
+              systemHealthMonitor.recordFailure('main', error, {
+                sessionId,
+                phase: 'telegram_deal_processing'
+              });
+            }
             break;
           case "urlsFile":
             // Get initial data once
@@ -187,11 +326,87 @@ async function openAmazonWebsite() {
             
             console.log("Starting Telegram bot processing with driver and data...");
             await continuouslyProcessBotMessages(driver, botLen, accessToken, botJsonData, botTodayJsonData);
+            logger.info("Telegram bot processing completed, continuing to other scenarios...", { sessionId });
             // await continuousProcess(driver);
             // await initializeBot(driver);
             break;
         }
-        console.log("returning in general")
+        
+        // Continue to other processing scenarios after general processing
+        logger.info("General processing completed, continuing to other scenarios...", { sessionId });
+        
+        // Run product URL verification and fixing if enabled
+        if (constants.enableProductUrlFix) {
+          try {
+            logger.info("Starting product URL verification and fixing...", { sessionId });
+            const urlFixResult = await productUrlFixer.fixAllProductUrls();
+            if (urlFixResult.success) {
+              logger.info("Product URL fixing completed successfully", { 
+                sessionId,
+                summary: urlFixResult.summary
+              });
+            } else {
+              logger.error("Product URL fixing failed", { 
+                sessionId,
+                error: urlFixResult.error || urlFixResult.reason
+              });
+            }
+          } catch (error) {
+            logger.error("Error in product URL fixing:", { 
+              sessionId,
+              error: error.message,
+              stack: error.stack
+            });
+          }
+        } else {
+          logger.info("Product URL fixing is disabled via flag", { sessionId });
+        }
+        
+        // Run idle processing service
+        try {
+          logger.info("Starting idle processing service...", { sessionId });
+          await idleProcessingService.runOnce(driver);
+          logger.info("Idle processing service completed", { sessionId });
+        } catch (error) {
+          logger.error("Error in idle processing service:", { 
+            sessionId,
+            error: error.message,
+            stack: error.stack
+          });
+        }
+        
+        // Run hierarchical enrichment service
+        try {
+          logger.info("Starting hierarchical enrichment service...", { sessionId });
+          await hierarchicalEnrichmentService.runOnce();
+          logger.info("Hierarchical enrichment service completed", { sessionId });
+        } catch (error) {
+          logger.error("Error in hierarchical enrichment service:", { 
+            sessionId,
+            error: error.message,
+            stack: error.stack
+          });
+        }
+        
+        // Run favorites notification service if enabled
+        if (constants.notifications?.enableFavoritesService) {
+          try {
+            logger.info("Starting favorites notification service...", { sessionId });
+            const favoritesResult = await require("./services/favoritesNotificationService").favoritesNotificationService.runOnce();
+            logger.info("Favorites notification service completed", { 
+              sessionId,
+              result: favoritesResult
+            });
+          } catch (error) {
+            logger.error("Error in favorites notification service:", { 
+              sessionId,
+              error: error.message,
+              stack: error.stack
+            });
+          }
+        }
+        
+        logger.info("All processing scenarios completed successfully", { sessionId });
         break;
       case "productlinks":
         await runExcelFunction();
@@ -261,22 +476,83 @@ async function openAmazonWebsite() {
 
   //   }
   //   whatsapp("Kzl4DB4yCXzJaaCP0Lrf1G",text);
-  // }
-  console.log("returning in index")
-  
-  // Graceful shutdown
-  console.log("Shutting down gracefully...");
-  try {
-    if (driver) {
-      await driver.quit();
-      console.log("Browser driver closed");
-    }
-  } catch (error) {
-    console.log("Error closing driver:", error.message);
-  }
-  
-  process.exit(0);
+  //   }
 
+  // Log successful completion
+  const appDuration = Date.now() - appStartTime;
+  logger.info('✅ Application completed successfully', {
+    sessionId,
+    duration: `${appDuration}ms`,
+    type,
+    source
+  });
+
+  } catch (error) {
+    const appDuration = Date.now() - appStartTime;
+    logger.error('💥 Critical error in main application', {
+      sessionId,
+      duration: `${appDuration}ms`,
+      error: error.message,
+      stack: error.stack,
+      type,
+      source,
+      fixSteps: systemHealthMonitor.getFixSteps('unknown_error').steps
+    });
+    
+    // Record the critical failure
+    systemHealthMonitor.recordFailure('main', error, {
+      sessionId,
+      phase: 'main_application_loop',
+      duration: appDuration
+    });
+    
+    // Perform emergency health check
+    try {
+      const emergencyHealthReport = await systemHealthMonitor.performHealthCheck();
+      logger.error('🚨 Emergency health check results:', {
+        sessionId,
+        overallStatus: emergencyHealthReport.overallStatus,
+        criticalIssues: emergencyHealthReport.criticalIssues.length
+      });
+    } catch (healthError) {
+      logger.error('❌ Emergency health check failed:', { 
+        sessionId,
+        error: healthError.message 
+      });
+    }
+    
+  } finally {
+    // Graceful shutdown
+    logger.info("🔄 Shutting down gracefully...", { sessionId });
+    try {
+      if (driver) {
+        await driver.quit();
+        logger.info("✅ Browser driver closed successfully", { sessionId });
+      }
+    } catch (error) {
+      logger.error("❌ Error closing driver:", { 
+        sessionId,
+        error: error.message,
+        fixSteps: systemHealthMonitor.getFixSteps('selenium_driver_failed').steps
+      });
+    }
+    
+    // Release process lock
+    if (processLock) {
+      try {
+        processLock.release();
+        logger.info("🔓 Process lock released", { sessionId });
+      } catch (error) {
+        logger.error("❌ Error releasing process lock:", { 
+          sessionId,
+          error: error.message 
+        });
+      }
+    }
+    
+    logger.info("✅ Shutdown complete", { sessionId });
+    process.exit(0);
+  }
 }
 
 // link = "https://amzn.eu/d/8309kez"
