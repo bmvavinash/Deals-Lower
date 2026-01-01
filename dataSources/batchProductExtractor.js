@@ -600,7 +600,17 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 	const isoNow = now.toISOString();
 	const dateOnly = isoNow.slice(0, 10);
 	const links = raw.links || {};
-	links.avinashbmvINR = `https://inrdeals.com/avi646476329/+${productUrl}`;
+	// Generate affiliate links based on platform
+	// Amazon: Use clean Amazon affiliate tag format (amazon.in/dp/ASIN?tag=xxx)
+	// Non-Amazon: Use INR Deals URL
+	if (/amazon\./i.test(hostname)) {
+		// Amazon affiliate link - clean format with tag
+		const amazonTag = 'dealshubglo0c-21';
+		links.avinashbmvINR = `https://www.amazon.in/dp/${productCode}?tag=${amazonTag}`;
+	} else {
+		// Non-Amazon: Use INR Deals affiliate URL
+		links.avinashbmvINR = `https://inrdeals.com/avi646476329/+${productUrl}`;
+	}
 
 	// Process hierarchical categories using dynamic extraction
 	const categoryData = raw.category || {};
@@ -664,8 +674,11 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		});
 	}
 
-	// Console log for every product
-	console.log(`🏷️  Category Chain for ${productCode}:`, {
+	// Console log for every product - Include Product ID and Product Code
+	const productId = raw.id || raw.productId || 'N/A';
+	console.log(`🏷️  Product ID: ${productId} | Product Code: ${productCode} | Category Chain:`, {
+		productId: productId,
+		productCode: productCode,
 		source: categorySource,
 		mainCategory: hierarchy.mainCategory,
 		subcategory: hierarchy.subcategory,
@@ -831,7 +844,7 @@ async function withTimeout(promise, ms, label) {
 	]);
 }
 
-async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categoryKey = '', ctx = null, targetDb = 'deals') {
+async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categoryKey = '', ctx = null, targetDb = 'deals', platform = null, category = null, pageIndex = null) {
 	try {
 		logger.info('Batch extracting page', { url, sourceType, categoryKey });
 		const config = await loadConfig('./PageConfig/amazonPageConfig.js');
@@ -843,7 +856,7 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 		if (products.length === 0) {
 			logger.warn('No products extracted', { url });
 			if (ctx) ctx.noProductUrls.push(url);
-			return { extracted: 0, stored: 0 };
+			return { extracted: 0, stored: 0, products: [] };
 		}
 
 		// Deduplicate by productCode for accurate counts
@@ -886,11 +899,18 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 			ctx.skippedUnchangedCount += (uniqueProducts.length - storedCount);
 		}
 
-		return { extracted: beforeCount, stored: storedCount, created: createdCount, updated: updatedCount };
+		// Return products for tracking
+		return { 
+			extracted: beforeCount, 
+			stored: storedCount, 
+			created: createdCount, 
+			updated: updatedCount,
+			products: uniqueProducts.map(p => ({ productCode: p.productCode, productId: p.id || p.productId || '' }))
+		};
 	} catch (error) {
 		logger.error('extractAndStoreFromUrl error', { url, error: error.message });
 		if (ctx) ctx.errors.push({ url, error: error.message });
-		return { extracted: 0, stored: 0, created: 0, updated: 0 };
+		return { extracted: 0, stored: 0, created: 0, updated: 0, products: [] };
 	}
 }
 
@@ -929,18 +949,61 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 	let driver;
 	// Context to persist summary details until termination
 	const ctx = { noProductUrls: [], pageTypeHits: {}, missingFieldLogs: [], errors: [], dedupedCount: 0, skippedUnchangedCount: 0, failedCount: 0 };
+	
+	// Extract platform and category from categoryKey (format: platform_category)
+	const [platform, category] = categoryKey.split('_');
+	const { executionTracker } = require('../services/executionTracker');
+	
 	try {
 		driver = await initializeDriver();
 		let totalExtracted = 0, totalStored = 0, createdCount = 0, updatedCount = 0;
-		for (const url of seedUrls) {
+		for (let pageIndex = 0; pageIndex < seedUrls.length; pageIndex++) {
+			const url = seedUrls[pageIndex];
+			
+			// Update page progress
+			if (platform && category) {
+				await executionTracker.updatePageProgress(platform, category, url, pageIndex, {
+					totalProducts: 0,
+					processed: 0,
+					created: 0,
+					updated: 0,
+					errors: 0
+				});
+			}
+			
 			await driver.get(url);
 			await withTimeout(driver.wait(until.elementLocated(By.css('body')), 15000), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE_WAIT');
 			await driver.sleep(2000);
-			const { extracted, stored, created, updated } = await extractAndStoreFromUrl(driver, url, sourceType, categoryKey, ctx, targetDb);
+			const { extracted, stored, created, updated, products } = await extractAndStoreFromUrl(driver, url, sourceType, categoryKey, ctx, targetDb, platform, category, pageIndex);
 			totalExtracted += extracted;
 			totalStored += stored;
 			createdCount += created;
 			updatedCount += updated;
+			
+			// Update page progress with results
+			if (platform && category) {
+				await executionTracker.updatePageProgress(platform, category, url, pageIndex, {
+					totalProducts: extracted,
+					processed: stored,
+					created: created,
+					updated: updated,
+					errors: extracted - stored
+				});
+				
+				// Update product-level progress
+				if (products && Array.isArray(products)) {
+					for (const product of products) {
+						await executionTracker.updateProductProgress(
+							platform,
+							category,
+							pageIndex,
+							product.productCode || '',
+							product.productId || '',
+							stored > 0 ? 'processed' : 'failed'
+						);
+					}
+				}
+			}
 			
 			// Clear memory after each URL to prevent buildup
 			try {

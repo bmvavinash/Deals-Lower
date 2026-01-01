@@ -9,25 +9,41 @@ const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
+console.log(`Initializing Firebase with DB: ${DB_Name}, Token File: ${filePath}`);
+
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
 if (!admin.apps.length) {
 	admin.initializeApp({
 		credential: admin.credential.cert(serviceAccount),
-		// databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
 		databaseURL: `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
 	});
+	console.log(`Firebase initialized successfully for ${DB_Name}`);
+} else {
+	console.log(`Firebase already initialized for ${DB_Name}`);
 }
 
 const db = admin.database();
 
-function generateAmazonAffiliateUrl(url) {
+function generateAmazonAffiliateUrl(url, productCode = null) {
     try {
         if (!url || typeof url !== 'string') return "";
+        
+        // Extract ASIN from URL if productCode not provided
+        if (!productCode) {
+            const asinMatch = url.match(/\/dp\/([A-Z0-9]{10})/i) || url.match(/\/gp\/product\/([A-Z0-9]{10})/i);
+            productCode = asinMatch ? asinMatch[1] : null;
+        }
+        
+        // If we have an ASIN, use the clean format
+        if (productCode && /^[A-Z0-9]{10}$/i.test(productCode)) {
+            return `https://www.amazon.in/dp/${productCode}?tag=dealshubglo0c-21`;
+        }
+        
+        // Fallback: append tag to existing URL (for non-standard URLs)
         const hasQuery = url.includes('?');
         const hasTag = /[?&]tag=/.test(url);
         if (hasTag) {
-            // Replace existing tag with desired one
             return url.replace(/([?&]tag=)[^&]*/i, '$1dealshubglo0c-21');
         }
         return url + (hasQuery ? '&' : '?') + 'tag=dealshubglo0c-21';
