@@ -1,0 +1,38 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Form Location Test</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .section { border: 2px solid #3498db; padding: 15px; margin: 20px 0; }
+        .form-box { background: #f9f9f9; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        input[type="text"] { width: 100%; padding: 10px; margin: 10px 0; }
+        button { padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Dashboard Layout</h1>
+    
+    <div class="section">
+        <h2>Stats Grid (4 cards at top)</h2>
+        <p>System Status | Total Runs | Products Processed | Memory Usage</p>
+    </div>
+    
+    <div class="section">
+        <h2>Process Product â† LOOK HERE!</h2>
+        <div class="form-box">
+            <label><strong>Product URL:</strong></label>
+            <input type="text" placeholder="Enter product URL (e.g., https://www.amazon.in/...)" />
+            <br><br>
+            <input type="checkbox" id="post" /> <label for="post">Post Product to Social Media</label>
+            <br><br>
+            <button>Submit</button>
+        </div>
+    </div>
+    
+    <div class="section">
+        <h2>Quick Actions (buttons at bottom)</h2>
+        <p>View Deals | View Logs | View Analytics</p>
+    </div>
+</body>
+</html>

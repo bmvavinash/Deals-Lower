@@ -3,6 +3,9 @@ const { productStatus, storeMap, searchStatus } = require("../config/const");
 const { loadConfig, scrapePage } = require("../pageScheduler");
 const constants = require("../config/constants");
 const { getModuleLogger } = require("../logger/logger");
+const { getExtrapeUrl } = require("../affiliate/extrape");
+const { amazonLinkGenerator } = require("../affiliate/amazonLinkGenerator");
+const { executionTracker } = require("../services/executionTracker");
 
 const logger = getModuleLogger('handleProductProcessing');
 
@@ -28,23 +31,65 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
   }
 }
 
-async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username = "") {
+async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username = "", generateLink = false) {
   try {
     let shortUrl = link;
-    try { await driver.get(link); } catch (_) {}
-    try { link = (await driver.getCurrentUrl()) || link; } catch (_) {}
+    let resolvedUrl = link;
+    
+    // Always resolve URL in browser first to get final destination
+    try { 
+      await driver.get(link); 
+      resolvedUrl = await driver.getCurrentUrl() || link;
+      logger.info('URL resolved in browser', { original: link, resolved: resolvedUrl });
+    } catch (e) {
+      logger.warn('Failed to resolve URL in browser', { url: link, error: e?.message });
+    }
 
-    const storeKey = Object.keys(storeMap).find(key => link.includes(key));
+    // For user "avi" messages, prepend inrdeals.com URL
+    if (generateLink && username && username.toLowerCase().includes('avi')) {
+      const inrdealsUrl = `https://inrdeals.com/avi646476329/${resolvedUrl}`;
+      logger.info('Prepending inrdeals.com URL for user avi', { original: resolvedUrl, inrdeals: inrdealsUrl });
+      resolvedUrl = inrdealsUrl;
+    }
+
+    const storeKey = Object.keys(storeMap).find(key => resolvedUrl.includes(key));
     if (!storeKey || !storeMap[storeKey]) {
-      logger.warn('Unsupported store', { url: link, storeKey: storeKey || 'unknown' });
+      logger.warn('Unsupported store', { url: resolvedUrl, storeKey: storeKey || 'unknown' });
       return searchStatus.SEARCH_NOT_APPLICABLE;
     }
 
     const { getCode } = storeMap[storeKey];
-    const productCode = getCode(link);
+    const productCode = getCode(resolvedUrl);
+    
+    // Track Telegram bot execution if this is from Telegram
+    const isTelegramSource = username && username !== '';
+    if (isTelegramSource) {
+      // Ensure Telegram execution is started
+      if (!executionTracker.currentExecution || executionTracker.currentExecution.type !== 'telegram_bot') {
+        await executionTracker.startTelegramExecution(username);
+      }
+    }
 
     if (productCode) {
-      await processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, true, username, constants.generateLink, shortUrl);
+      // Generate appropriate shortlink based on store type and generateLink flag
+      let finalShortUrl = shortUrl;
+      if (generateLink) {
+        try {
+          if (storeKey === 'amazon' || resolvedUrl.includes('amazon')) {
+            // Amazon products - use amazonLinkGenerator
+            finalShortUrl = await amazonLinkGenerator(driver);
+            logger.info('Generated Amazon shortlink', { shortlink: finalShortUrl });
+          } else {
+            // Non-Amazon products - use extrape
+            finalShortUrl = await getExtrapeUrl(driver, resolvedUrl);
+            logger.info('Generated non-Amazon shortlink', { shortlink: finalShortUrl });
+          }
+        } catch (e) {
+          logger.error('Failed to generate shortlink', { error: e?.message, store: storeKey });
+        }
+      }
+      
+      await processProduct(driver, resolvedUrl, text, len, accessToken, jsonData, todayJsonData, true, username, generateLink, finalShortUrl);
       return searchStatus.SEARCH_CREATED;
     }
 
@@ -67,7 +112,7 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
         const product = products[i];
         const postProduct = i < 1; // first product: post; next could be enrichment only
         try { await driver.get(product?.productUrl); } catch (_) {}
-        await processProduct(driver, product?.productUrl, product?.name || text, len, accessToken, jsonData, todayJsonData, postProduct, username, true);
+        await processProduct(driver, product?.productUrl, product?.name || text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink);
         if (i >= 2) break; // limit work per message
       }
       return searchStatus.SEARCH_CREATED;

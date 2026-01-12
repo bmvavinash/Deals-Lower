@@ -1,0 +1,453 @@
+.execution-monitor {
+  padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.monitor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 30px;
+}
+
+.monitor-header h1 {
+  margin: 0;
+  color: #333;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.execution-type-tabs {
+  display: flex;
+  gap: 8px;
+  background: #f5f5f5;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.type-tab {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.2s;
+}
+
+.type-tab:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.type-tab.active {
+  background: #0088cc;
+  color: white;
+}
+
+.auto-refresh-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.auto-refresh-toggle input {
+  cursor: pointer;
+}
+
+.current-execution {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.execution-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.execution-header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.status-badge {
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: bold;
+}
+
+.status-badge.running {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+
+.status-badge.completed {
+  background: #e8f5e9;
+  color: #388e3c;
+}
+
+.execution-info {
+  margin-bottom: 20px;
+}
+
+.info-row {
+  display: flex;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.info-row .label {
+  font-weight: 600;
+  color: #666;
+  width: 180px;
+}
+
+.info-row .value {
+  color: #333;
+}
+
+.info-row .value.platform {
+  color: #1976d2;
+  font-weight: 600;
+}
+
+.info-row .value.category {
+  color: #388e3c;
+  font-weight: 600;
+}
+
+.progress-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stat-card {
+  background: #f5f5f5;
+  padding: 16px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: bold;
+  color: #333;
+}
+
+.stat-value.success {
+  color: #388e3c;
+}
+
+.stat-value.created {
+  color: #1976d2;
+}
+
+.stat-value.updated {
+  color: #f57c00;
+}
+
+.platform-breakdown {
+  margin-top: 24px;
+}
+
+.platform-breakdown h3 {
+  margin-bottom: 16px;
+  color: #333;
+}
+
+.platforms-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.platform-card {
+  background: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.platform-name {
+  font-weight: bold;
+  font-size: 16px;
+  color: #1976d2;
+  margin-bottom: 12px;
+  text-transform: capitalize;
+}
+
+.platform-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+}
+
+.stat-item .stat-label {
+  color: #666;
+}
+
+.stat-item .stat-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.categories-list {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.categories-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.category-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.category-name {
+  color: #666;
+  text-transform: capitalize;
+}
+
+.category-count {
+  color: #333;
+  font-weight: 600;
+}
+
+.no-execution {
+  background: white;
+  border-radius: 8px;
+  padding: 40px;
+  text-align: center;
+  color: #999;
+}
+
+.no-execution .subtext {
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.telegram-queue {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.telegram-queue h3 {
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.queue-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 20px;
+}
+
+.queue-stat {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.queue-label {
+  color: #666;
+  font-weight: 600;
+}
+
+.queue-value {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.queue-value.pending {
+  color: #f57c00;
+}
+
+.queue-value.processing {
+  color: #1976d2;
+}
+
+.channels-list {
+  margin-top: 16px;
+}
+
+.channels-list h4 {
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.channel-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid #eee;
+}
+
+.channel-name {
+  font-weight: 600;
+  color: #333;
+}
+
+.channel-stats {
+  color: #666;
+  font-size: 14px;
+}
+
+.analytics-summary {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.analytics-summary h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.analytics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.analytics-card {
+  background: #f5f5f5;
+  padding: 16px;
+  border-radius: 6px;
+  text-align: center;
+}
+
+.analytics-label {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+}
+
+.analytics-value {
+  font-size: 28px;
+  font-weight: bold;
+  color: #333;
+}
+
+.platform-analytics {
+  margin-top: 24px;
+}
+
+.platform-analytics h4 {
+  margin-bottom: 12px;
+  color: #333;
+}
+
+.platform-stats-table {
+  overflow-x: auto;
+}
+
+.platform-stats-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.platform-stats-table th,
+.platform-stats-table td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.platform-stats-table th {
+  background: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.platform-stats-table td {
+  color: #666;
+}
+
+.platform-stats-table tr:hover {
+  background: #f9f9f9;
+}
+
+.telegram-platforms {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.telegram-platforms h3 {
+  margin: 0 0 16px 0;
+  color: #333;
+}
+
+.platform-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.platform-stat-card {
+  background: #f9f9f9;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #e0e0e0;
+}
+
+.platform-stat-card .platform-name {
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.platform-stat-card .platform-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: #666;
+}
+
+
+
+
+

@@ -89,6 +89,14 @@ class ProductDealsDB {
 			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
 			const existingSnapshot = await targetRef.once('value');
 			const existingRecords = existingSnapshot.val() || {};
+			
+			// Load favorites notification service (lazy load to avoid circular deps)
+			let favoritesNotificationService = null;
+			try {
+				favoritesNotificationService = require('../../services/favoritesBasedNotificationService').favoritesNotificationService;
+			} catch (e) {
+				logger.debug('Favorites notification service not available', { error: e.message });
+			}
 
 			for (const product of products) {
 				const key = product.productCode || product.id || product.asin || product.title || Math.random().toString(36).slice(2);
@@ -96,10 +104,30 @@ class ProductDealsDB {
 				
 				// Check if this is a new record or update
 				const isNewRecord = !existingRecords[safeKey];
+				const existingProduct = existingRecords[safeKey];
+				
 				if (isNewRecord) {
 					createdCount++;
 				} else {
 					updatedCount++;
+					
+					// Check for price drops and notify favorited users (async, non-blocking)
+					if (favoritesNotificationService && product.productCode && product.price && existingProduct?.price) {
+						favoritesNotificationService.checkPriceDrops(
+							product.productCode,
+							product.price,
+							existingProduct.price
+						).catch(err => {
+							logger.debug('Price drop check failed (non-fatal)', { productCode: product.productCode, error: err.message });
+						});
+					}
+				}
+				
+				// Check for new deals on favorited products (async, non-blocking)
+				if (favoritesNotificationService && product.productCode && (product.discount || product.isHotDeal)) {
+					favoritesNotificationService.checkNewDeals(product.productCode, product).catch(err => {
+						logger.debug('New deal check failed (non-fatal)', { productCode: product.productCode, error: err.message });
+					});
 				}
 				
 				// Ensure all required attributes are present with defaults
@@ -205,7 +233,34 @@ class ProductDealsDB {
 					links: (() => {
 						const existing = product.links || {};
 						const isAmazon = (product.storeType || '').toLowerCase() === 'amazon' || /amazon\./i.test(product.productUrl || '');
-						const derivedInr = isAmazon ? generateAmazonAffiliateUrl(product.productUrl || existing.avinashbmvINR || '') : (existing.avinashbmvINR || "");
+						
+						let derivedInr = existing.avinashbmvINR || "";
+						
+						// Fix avinashbmvINR based on platform
+						if (isAmazon) {
+							// For Amazon: use clean affiliate URL with productCode
+							if (product.productCode) {
+								derivedInr = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+							} else if (product.productUrl) {
+								// Extract ASIN from URL if productCode not available
+								const asinMatch = product.productUrl.match(/\/dp\/([A-Z0-9]{10})/i) || product.productUrl.match(/\/gp\/product\/([A-Z0-9]{10})/i);
+								if (asinMatch && asinMatch[1]) {
+									derivedInr = `https://www.amazon.in/dp/${asinMatch[1]}?tag=dealshubglo0c-21`;
+								} else {
+									// Fallback to generateAmazonAffiliateUrl
+									derivedInr = generateAmazonAffiliateUrl(product.productUrl);
+								}
+							}
+						} else {
+							// For non-Amazon: use inrdeals.com URL
+							if (product.productUrl && !derivedInr.includes('inrdeals.com')) {
+								derivedInr = `https://inrdeals.com/avi646476329/${product.productUrl}`;
+							} else if (!derivedInr) {
+								// If no URL available, keep empty
+								derivedInr = "";
+							}
+						}
+						
 						return {
 							avinashbmv: existing.avinashbmv || "",
 							avinashbmvINR: derivedInr

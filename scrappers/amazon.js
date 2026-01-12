@@ -312,34 +312,105 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
                       product.links.avinashbmvINR = "";
                       product.isExcluded = true; // Add flag to indicate excluded product
                     } else {
-                      product.links.avinashbmv = amazonLink || "";
-                      product.links.avinashbmvINR = "";
+                      // Link generation failed but not excluded - use fallback with productCode
+                      if (product.productCode) {
+                        const fallbackLink = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+                        product.links.avinashbmv = "";
+                        product.links.avinashbmvINR = fallbackLink;
+                        logger.info(`[${platform}] Using fallback Amazon URL with productCode: ${product.productCode}`);
+                      } else {
+                        product.links.avinashbmv = "";
+                        product.links.avinashbmvINR = "";
+                      }
                     }
                   } catch (excludedCheckError) {
-                    // No excluded product alert, treat as normal empty link
-                    product.links.avinashbmv = amazonLink || "";
-                    product.links.avinashbmvINR = "";
+                    // No excluded product alert, use fallback with productCode if available
+                    if (product.productCode) {
+                      const fallbackLink = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+                      product.links.avinashbmv = "";
+                      product.links.avinashbmvINR = fallbackLink;
+                      logger.info(`[${platform}] Using fallback Amazon URL with productCode: ${product.productCode}`);
+                    } else {
+                      product.links.avinashbmv = "";
+                      product.links.avinashbmvINR = "";
+                    }
                   }
                 } else {
                   product.links.avinashbmv = amazonLink || "";
-                product.links.avinashbmvINR = "";
+                  product.links.avinashbmvINR = "";
                 }
-          } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
+              } catch (e) { 
+                logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack });
+                // On error, try fallback with productCode
+                if (product.productCode) {
+                  const fallbackLink = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+                  product.links.avinashbmv = "";
+                  product.links.avinashbmvINR = fallbackLink;
+                  logger.info(`[${platform}] Using fallback Amazon URL after error: ${product.productCode}`);
+                }
+              }
             } else {
               try {
-                product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
+                // Non-Amazon products: store inrdeals.com link in avinashbmvINR
+                product.links.avinashbmvINR = "https://inrdeals.com/avi646476329/" + url;
                 if (generateLink) {
-                  product.links.avinashbmv = await amazonLinkGenerator(driver) || "";
+                  // Generate shortlink using extrape for non-Amazon
+                  const { getExtrapeUrl } = require("../affiliate/extrape");
+                  product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
                 } else {
-                  product.links.avinashbmv = shortUrl || await amazonLinkGenerator(driver);
+                  product.links.avinashbmv = shortUrl || "";
                 }
-          } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
+              } catch (e) { logger.error(`[${platform}] Non-Amazon link generation error:`, { error: e.message, stack: e.stack }); }
             }
           } else {
-            product.links.avinashbmvINR = "inrdeals.com/avi646476329/" + url;
+            // For non-dealsglobalhub users, use username-based storage
             product.links[username] = shortUrl || "";
-        try { product.links.avinashbmv = await amazonLinkGenerator(driver) || ""; } catch (e) { logger.error(`[${platform}] Amazon link generation error:`, { error: e.message, stack: e.stack }); }
-      }
+            try { 
+              if (platform === "amazon") {
+                // For Amazon: set avinashbmvINR to clean affiliate URL
+                if (product.productCode) {
+                  product.links.avinashbmvINR = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+                }
+                const amazonLink = await amazonLinkGenerator(driver);
+                if (amazonLink) {
+                  product.links.avinashbmv = amazonLink;
+                } else {
+                  product.links.avinashbmv = "";
+                }
+                logger.info(`[${platform}] Set Amazon affiliate URL for non-dealsglobalhub user: ${product.productCode}`);
+              } else {
+                // For non-Amazon: set avinashbmvINR to inrdeals.com URL
+                product.links.avinashbmvINR = "https://inrdeals.com/avi646476329/" + url;
+                // Make Extrape URL generation non-blocking with timeout
+                const { getExtrapeUrl } = require("../affiliate/extrape");
+                try {
+                  const extrapePromise = getExtrapeUrl(driver, url, 25000); // 25 second timeout
+                  product.links.avinashbmv = await Promise.race([
+                    extrapePromise,
+                    new Promise((resolve) => setTimeout(() => resolve(""), 25000))
+                  ]) || "";
+                  if (!product.links.avinashbmv) {
+                    logger.warn(`[${platform}] Extrape URL generation timed out or failed - continuing without it`);
+                  }
+                } catch (extrapeError) {
+                  logger.warn(`[${platform}] Extrape URL generation error:`, { error: extrapeError.message });
+                  product.links.avinashbmv = "";
+                }
+              }
+            } catch (e) { 
+              logger.error(`[${platform}] Link generation error:`, { error: e.message, stack: e.stack });
+              // Fallback for Amazon on error
+              if (platform === "amazon" && product.productCode) {
+                const fallbackLink = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+                product.links.avinashbmv = "";
+                product.links.avinashbmvINR = fallbackLink;
+                logger.info(`[${platform}] Using fallback Amazon URL after error: ${product.productCode}`);
+              } else if (platform !== "amazon") {
+                // For non-Amazon: set inrdeals.com URL
+                product.links.avinashbmvINR = "https://inrdeals.com/avi646476329/" + url;
+              }
+            }
+          }
     } catch (e) { logger.error(`[${platform}] Error in link generation:`, { error: e.message, stack: e.stack }); }
 
     logger.info(`[${platform}] Product scraping completed successfully`, { 

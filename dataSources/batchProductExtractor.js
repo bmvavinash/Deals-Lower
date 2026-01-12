@@ -8,6 +8,18 @@ const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require('.
 const { findMatchingHierarchy, generateHierarchicalKey } = require('../config/categoryHierarchy');
 const { DynamicCategoryExtractor } = require('../utils/dynamicCategoryExtractor');
 const { missingDetailsTracker } = require('../utils/missingDetailsTracker');
+const { storeMap } = require('../config/const');
+// #region agent log
+fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:11',message:'storeMap import check',data:{storeMap_type:typeof storeMap,storeMap_isUndefined:storeMap===undefined,storeMap_keys:storeMap?Object.keys(storeMap).join(','):'N/A'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+// #endregion
+
+// Validate storeMap at module load time
+if (!storeMap || typeof storeMap !== 'object') {
+    const constModule = require('../config/const');
+    const errorMsg = `CRITICAL: storeMap is not available in batchProductExtractor.js. constModule: ${JSON.stringify(Object.keys(constModule || {}))}, storeMap type: ${typeof storeMap}`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+}
 
 const logger = getModuleLogger('batchProductExtractor');
 const dynamicCategoryExtractor = new DynamicCategoryExtractor();
@@ -600,16 +612,15 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 	const isoNow = now.toISOString();
 	const dateOnly = isoNow.slice(0, 10);
 	const links = raw.links || {};
-	// Generate affiliate links based on platform
-	// Amazon: Use clean Amazon affiliate tag format (amazon.in/dp/ASIN?tag=xxx)
-	// Non-Amazon: Use INR Deals URL
-	if (/amazon\./i.test(hostname)) {
-		// Amazon affiliate link - clean format with tag
-		const amazonTag = 'dealshubglo0c-21';
-		links.avinashbmvINR = `https://www.amazon.in/dp/${productCode}?tag=${amazonTag}`;
+	
+	// Set avinashbmvINR based on platform
+	const isAmazon = /amazon\./i.test(hostname) || (raw.storeType || '').toLowerCase() === 'amazon';
+	if (isAmazon && productCode) {
+		// For Amazon: use clean affiliate URL with tag
+		links.avinashbmvINR = `https://www.amazon.in/dp/${productCode}?tag=dealshubglo0c-21`;
 	} else {
-		// Non-Amazon: Use INR Deals affiliate URL
-		links.avinashbmvINR = `https://inrdeals.com/avi646476329/+${productUrl}`;
+		// For non-Amazon: prepend with inrdeals.com (remove the + sign)
+		links.avinashbmvINR = `https://inrdeals.com/avi646476329/${productUrl}`;
 	}
 
 	// Process hierarchical categories using dynamic extraction
@@ -771,6 +782,9 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		updateTimestamp: isoNow,
 		date: dateOnly,
 		datetime: isoNow,
+		// Source listing page URL (where this product was discovered)
+		// This is required later to fix selectors or debug missing prices/details
+		sourceUrl: url,
 		dealName: deriveDealName(raw),
 		sectionName: deriveSectionName(productUrl || url, usedPageType || '')
 	};
@@ -806,6 +820,7 @@ async function tryConfigs(url, driver, config) {
 	const pageTypes = ['searchPage', 'dealsGridPage', 'carouselPage', 'bestCarouselPage'];
 	for (const pageType of pageTypes) {
 		try {
+			logger.debug(`Attempting ${pageType} for ${url}`, { pageType, url });
 			const rawProducts = await scrapePage(url, driver, config, pageType);
 			if (Array.isArray(rawProducts) && rawProducts.length > 0) {
 				logger.info(`Extracted products using ${pageType}`, { count: rawProducts.length, url });
@@ -818,11 +833,19 @@ async function tryConfigs(url, driver, config) {
 				await driver.executeScript('if (window.gc) window.gc();');
 			} catch {}
 		} catch (error) {
-			logger.error(`Error with ${pageType}`, { error: error.message, url });
+			logger.error(`❌ [ERROR] Error with ${pageType}`, { 
+				error: error.message, 
+				errorStack: error.stack,
+				errorName: error.name,
+				url,
+				pageType
+			});
 			// Clear memory on error
 			try {
 				await driver.executeScript('if (window.gc) window.gc();');
 			} catch {}
+			// Re-throw to propagate the error up
+			throw error;
 		}
 	}
 	return { rawProducts: [], usedPageType: null };
@@ -846,9 +869,76 @@ async function withTimeout(promise, ms, label) {
 
 async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categoryKey = '', ctx = null, targetDb = 'deals', platform = null, category = null, pageIndex = null) {
 	try {
-		logger.info('Batch extracting page', { url, sourceType, categoryKey });
-		const config = await loadConfig('./PageConfig/amazonPageConfig.js');
-		const { rawProducts, usedPageType } = await withTimeout(tryConfigs(url, driver, config), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE');
+		logger.info('Batch extracting page', { url, sourceType, categoryKey, platform, category });
+		
+		// Import storeMap to detect platform dynamically
+		const { storeMap } = require('../config/const');
+		
+		// Validate storeMap
+		if (!storeMap || typeof storeMap !== 'object') {
+			logger.error('❌ [CRITICAL] storeMap is undefined or invalid in extractAndStoreFromUrl', {
+				storeMapType: typeof storeMap,
+				storeMapValue: storeMap,
+				url
+			});
+			throw new Error('storeMap configuration is not available');
+		}
+		
+		// Use provided platform or detect from URL
+		let detectedPlatform = platform;
+		if (!detectedPlatform) {
+			const storeKey = Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase()));
+			if (!storeKey) {
+				logger.warn('Could not detect platform from URL, defaulting to amazon', { url, availablePlatforms: Object.keys(storeMap) });
+				detectedPlatform = 'amazon';
+			} else {
+				detectedPlatform = storeKey;
+				logger.info('Platform detected from URL', { url, detectedPlatform });
+			}
+		}
+		
+		// Load platform-specific config dynamically
+		const configPath = `./PageConfig/${detectedPlatform}PageConfig.js`;
+		logger.info('📦 Loading platform config', { 
+			platform: detectedPlatform, 
+			configPath, 
+			url,
+			categoryKey,
+			availablePlatforms: Object.keys(storeMap)
+		});
+		
+		let config;
+		try {
+			config = await loadConfig(configPath);
+			logger.debug('✅ Config loaded successfully', { platform: detectedPlatform, hasConfig: !!config });
+		} catch (configError) {
+			logger.error('❌ [ERROR] Failed to load config', { 
+				platform: detectedPlatform, 
+				configPath, 
+				error: configError.message,
+				stack: configError.stack,
+				url
+			});
+			throw configError;
+		}
+		
+		let rawProducts, usedPageType;
+		try {
+			const result = await withTimeout(tryConfigs(url, driver, config), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE');
+			rawProducts = result.rawProducts;
+			usedPageType = result.usedPageType;
+		} catch (scrapeError) {
+			logger.error('❌ [ERROR] tryConfigs failed in extractAndStoreFromUrl', {
+				error: scrapeError.message,
+				errorStack: scrapeError.stack,
+				errorName: scrapeError.name,
+				url,
+				categoryKey,
+				platform: detectedPlatform,
+				configPath
+			});
+			throw scrapeError;
+		}
 		if (ctx) {
 			ctx.pageTypeHits[usedPageType || 'none'] = (ctx.pageTypeHits[usedPageType || 'none'] || 0) + 1;
 		}
@@ -899,6 +989,20 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 			ctx.skippedUnchangedCount += (uniqueProducts.length - storedCount);
 		}
 
+		// Check for category deals and notify favorited users (async, non-blocking)
+		if (category && uniqueProducts.length > 0) {
+			try {
+				const { favoritesNotificationService } = require('../services/favoritesBasedNotificationService');
+				// Use first product as sample for category notification
+				const sampleProduct = uniqueProducts[0];
+				favoritesNotificationService.checkCategoryDeals(category, sampleProduct).catch(err => {
+					logger.debug('Category deal check failed (non-fatal)', { category, error: err.message });
+				});
+			} catch (e) {
+				// Service not available, skip
+			}
+		}
+
 		// Return products for tracking
 		return { 
 			extracted: beforeCount, 
@@ -908,7 +1012,16 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 			products: uniqueProducts.map(p => ({ productCode: p.productCode, productId: p.id || p.productId || '' }))
 		};
 	} catch (error) {
-		logger.error('extractAndStoreFromUrl error', { url, error: error.message });
+		logger.error('❌ [ERROR] extractAndStoreFromUrl error', { 
+			url, 
+			error: error.message,
+			stack: error.stack,
+			categoryKey,
+			sourceType,
+			targetDb,
+			errorName: error.name,
+			errorType: typeof error
+		});
 		if (ctx) ctx.errors.push({ url, error: error.message });
 		return { extracted: 0, stored: 0, created: 0, updated: 0, products: [] };
 	}
@@ -946,62 +1059,127 @@ async function closeDriver(driver) {
 }
 
 async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '', targetDb = 'deals') {
+	// #region agent log
+	fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:952',message:'runBatch entry',data:{seedUrlsCount:seedUrls.length,sourceType,categoryKey,targetDb,storeMap_type:typeof storeMap,storeMap_isUndefined:storeMap===undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+	// #endregion
+	logger.info('🚀 [ENTRY] runBatch called', { 
+		seedUrlsCount: seedUrls.length,
+		sourceType,
+		categoryKey,
+		targetDb,
+		firstUrl: seedUrls[0] || 'N/A'
+	});
+	
 	let driver;
 	// Context to persist summary details until termination
 	const ctx = { noProductUrls: [], pageTypeHits: {}, missingFieldLogs: [], errors: [], dedupedCount: 0, skippedUnchangedCount: 0, failedCount: 0 };
 	
 	// Extract platform and category from categoryKey (format: platform_category)
 	const [platform, category] = categoryKey.split('_');
+	// #region agent log
+	fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:961',message:'Platform extracted',data:{platform,category,categoryKey,storeMap_type:typeof storeMap,storeMap_isUndefined:storeMap===undefined,storeMap_hasPlatform:storeMap?!!storeMap[platform]:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+	// #endregion
+	logger.info('📦 Platform extracted from categoryKey', { platform, category, categoryKey });
+	
+	// Validate storeMap is available before proceeding
+	if (!storeMap || typeof storeMap !== 'object') {
+		// #region agent log
+		fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:965',message:'storeMap validation failed',data:{storeMap_type:typeof storeMap,storeMap_value:storeMap,categoryKey,platform},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+		// #endregion
+		logger.error('❌ [ERROR] storeMap is not available in runBatch', {
+			storeMapType: typeof storeMap,
+			storeMapValue: storeMap,
+			categoryKey,
+			platform
+		});
+		throw new Error('storeMap configuration is not available in runBatch');
+	}
+	
+	// #region agent log
+	fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:976',message:'storeMap validated',data:{availablePlatforms:Object.keys(storeMap).join(','),hasPlatform:!!storeMap[platform],platform},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+	// #endregion
+	logger.info('✅ storeMap validated', { 
+		availablePlatforms: Object.keys(storeMap),
+		hasPlatform: !!storeMap[platform]
+	});
+	
 	const { executionTracker } = require('../services/executionTracker');
 	
 	try {
+		logger.info('🚗 Initializing driver...');
 		driver = await initializeDriver();
+		logger.info('✅ Driver initialized successfully');
 		let totalExtracted = 0, totalStored = 0, createdCount = 0, updatedCount = 0;
 		for (let pageIndex = 0; pageIndex < seedUrls.length; pageIndex++) {
 			const url = seedUrls[pageIndex];
 			
-			// Update page progress
-			if (platform && category) {
-				await executionTracker.updatePageProgress(platform, category, url, pageIndex, {
-					totalProducts: 0,
-					processed: 0,
-					created: 0,
-					updated: 0,
-					errors: 0
-				});
-			}
+			// Don't initialize with 0 - wait for actual extraction results
+			// This prevents showing 0/0 when extraction hasn't completed yet
 			
 			await driver.get(url);
 			await withTimeout(driver.wait(until.elementLocated(By.css('body')), 15000), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE_WAIT');
 			await driver.sleep(2000);
-			const { extracted, stored, created, updated, products } = await extractAndStoreFromUrl(driver, url, sourceType, categoryKey, ctx, targetDb, platform, category, pageIndex);
+			
+			let extracted = 0, stored = 0, created = 0, updated = 0, products = [];
+			try {
+				const result = await extractAndStoreFromUrl(driver, url, sourceType, categoryKey, ctx, targetDb, platform, category, pageIndex);
+				extracted = result.extracted || 0;
+				stored = result.stored || 0;
+				created = result.created || 0;
+				updated = result.updated || 0;
+				products = result.products || [];
+			} catch (extractError) {
+				logger.error('Error extracting from URL', { 
+					url, 
+					error: extractError.message,
+					platform,
+					category,
+					pageIndex
+				});
+				// Still update tracker with error count
+				extracted = 0;
+				stored = 0;
+			}
+			
 			totalExtracted += extracted;
 			totalStored += stored;
 			createdCount += created;
 			updatedCount += updated;
 			
-			// Update page progress with results
+			// Update page progress with actual results (only after extraction)
 			if (platform && category) {
-				await executionTracker.updatePageProgress(platform, category, url, pageIndex, {
-					totalProducts: extracted,
-					processed: stored,
-					created: created,
-					updated: updated,
-					errors: extracted - stored
-				});
-				
-				// Update product-level progress
-				if (products && Array.isArray(products)) {
-					for (const product of products) {
-						await executionTracker.updateProductProgress(
-							platform,
-							category,
-							pageIndex,
-							product.productCode || '',
-							product.productId || '',
-							stored > 0 ? 'processed' : 'failed'
-						);
+				try {
+					await executionTracker.updatePageProgress(platform, category, url, pageIndex, {
+						totalProducts: extracted,
+						processed: stored,
+						created: created,
+						updated: updated,
+						errors: Math.max(0, extracted - stored)
+					});
+					
+					// Update individual product progress
+					if (products && products.length > 0) {
+						for (const product of products) {
+							if (product.productCode) {
+								await executionTracker.updateProductProgress(
+									platform,
+									category,
+									pageIndex,
+									product.productCode,
+									product.productId || product.productCode,
+									'processed'
+								);
+							}
+						}
 					}
+				} catch (trackerError) {
+					// Silently continue - tracker is optional
+					logger.debug('Page progress update failed (non-fatal)', { 
+						platform, 
+						category, 
+						pageIndex,
+						error: trackerError.message
+					});
 				}
 			}
 			

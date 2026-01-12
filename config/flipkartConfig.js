@@ -23,6 +23,11 @@ module.exports = {
   discount: [
     { type: 'css', selector: '.hl05eU .UkUFwK.WW8yVX span', validator: validateDiscount },
     { type: 'css', selector: '.UkUFwK.WW8yVX span', validator: validateDiscount },
+    { type: 'css', selector: '.UkUFwK span', validator: validateDiscount },
+    { type: 'css', selector: '.WW8yVX span', validator: validateDiscount },
+    { type: 'css', selector: '[class*="UkUFwK"] span', validator: validateDiscount },
+    { type: 'css', selector: '[class*="WW8yVX"] span', validator: validateDiscount },
+    { type: 'css', selector: '.hl05eU span:contains("%")', validator: validateDiscount },
   ],
   image: [
     { type: 'css', selector: '.C7fEHH img', attribute: 'src' },

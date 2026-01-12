@@ -28,15 +28,51 @@ admin.initializeApp({
 
 const db = admin.database();
 
+/**
+ * Sanitize data for Firebase by removing undefined values and null values
+ * @param {Object} data - Data to sanitize
+ * @returns {Object} Sanitized data
+ */
+function sanitizeForFirebase(data) {
+  if (data === null || data === undefined) {
+    return {};
+  }
+  
+  if (typeof data !== 'object') {
+    return data;
+  }
+  
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeForFirebase(item));
+  }
+  
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value !== undefined && value !== null) {
+      if (typeof value === 'object') {
+        const sanitizedValue = sanitizeForFirebase(value);
+        if (Object.keys(sanitizedValue).length > 0) {
+          sanitized[key] = sanitizedValue;
+        }
+      } else {
+        sanitized[key] = value;
+      }
+    }
+  }
+  
+  return sanitized;
+}
+
+// Dynamic Firebase config based on environment
 const firebaseConfig = {
-  apiKey: "AIzaSyDkzAygBCeRWGYzDnNvH6LFvNUP6mEI2ao",
-  authDomain: "dealsglobalhub.firebaseapp.com",
-  databaseURL: "https://dealsglobalhub-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "dealsglobalhub",
-  storageBucket: "dealsglobalhub.firebasestorage.app",
-  messagingSenderId: "356883597738",
-  appId: "1:356883597738:web:18937d5011695306e0c3d3",
-  measurementId: "G-21BS748YMG"
+  apiKey: "AIzaSyAPxlbkX6b52v9I0u4cdwq3zZBPNIPZeQk",
+  authDomain: "lowerdealhub.firebaseapp.com",
+  databaseURL: "https://lowerdealhub-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "lowerdealhub",
+  storageBucket: "lowerdealhub.firebasestorage.app",
+  messagingSenderId: "598732188394",
+  appId: "1:598732188394:web:a9d61b5847b84e12a68593",
+  measurementId: "G-6CFDE4LJZT"
 };
 
 // const firebaseConfig = {

@@ -12,7 +12,51 @@ async function scrapeFlipkartProduct(url, text, driver) {
         let product = {};
         // console.log(flipkartConfig.price)
         try {product.price = String(await extractAttribute(driver, flipkartConfig.price)); } catch(e) { console.log("Error in price",e);}
-        try {product.discount = String(await extractAttribute(driver, flipkartConfig.discount)); } catch(e) { console.log("Error in discount",e);}
+        
+        // Extract MRP before discount for fallback calculation
+        let mrp = null;
+        try { mrp = String(await extractAttribute(driver, flipkartConfig.mrp)); } catch(e) { console.log("Error in MRP",e);}
+        
+        // Try to extract discount with better logging
+        try {
+            product.discount = String(await extractAttribute(driver, flipkartConfig.discount));
+            if (!product.discount || product.discount === 'null' || product.discount === '') {
+                // Fallback: Calculate discount from price and MRP
+                if (product.price && mrp) {
+                    try {
+                        const priceNum = parseFloat(product.price.replace(/[^\d.]/g, ''));
+                        const mrpNum = parseFloat(mrp.replace(/[^\d.]/g, ''));
+                        if (mrpNum > 0 && priceNum < mrpNum) {
+                            const discountPercent = Math.round(((mrpNum - priceNum) / mrpNum) * 100);
+                            product.discount = `${discountPercent}%`;
+                            console.log(`[flipkart] Calculated discount from price/MRP: ${product.discount}`);
+                        }
+                    } catch (calcError) {
+                        console.log("[flipkart] Error calculating discount from price/MRP:", calcError.message);
+                    }
+                }
+                if (!product.discount || product.discount === 'null' || product.discount === '') {
+                    console.log("[flipkart] Discount missing or invalid - all selectors failed");
+                }
+            }
+        } catch(e) { 
+            console.log("[flipkart] Error in discount extraction:", e.message);
+            // Try fallback calculation
+            if (product.price && mrp) {
+                try {
+                    const priceNum = parseFloat(product.price.replace(/[^\d.]/g, ''));
+                    const mrpNum = parseFloat(mrp.replace(/[^\d.]/g, ''));
+                    if (mrpNum > 0 && priceNum < mrpNum) {
+                        const discountPercent = Math.round(((mrpNum - priceNum) / mrpNum) * 100);
+                        product.discount = `${discountPercent}%`;
+                        console.log(`[flipkart] Calculated discount from price/MRP (fallback): ${product.discount}`);
+                    }
+                } catch (calcError) {
+                    console.log("[flipkart] Error calculating discount:", calcError.message);
+                }
+            }
+        }
+        
         try {product.photo = await extractAttribute(driver, flipkartConfig.photo); } catch(e) { console.log("Error in photo",e);}
         try { product.urltext = text } catch (e) { console.log("url Text error") }
         // product.asin = await extractAttribute(driver, flipkartConfig.asin);
@@ -43,11 +87,23 @@ async function scrapeFlipkartProduct(url, text, driver) {
 
         product.links = {};
       if(product?.photo != ""){
-
-        try { product.links.avinashbmv = await getExtrapeUrl(driver,url) || ""; } catch (e) { console.log("link generation error") }
+        // Make Extrape URL generation non-blocking with timeout
+        try { 
+            const extrapePromise = getExtrapeUrl(driver, url, 25000); // 25 second timeout
+            product.links.avinashbmv = await Promise.race([
+                extrapePromise,
+                new Promise((resolve) => setTimeout(() => resolve(""), 25000))
+            ]) || "";
+            if (!product.links.avinashbmv) {
+                console.log("[flipkart] Extrape URL generation timed out or failed - continuing without it");
+            }
+        } catch (e) { 
+            console.log("[flipkart] Link generation error:", e.message);
+            product.links.avinashbmv = "";
+        }
       }
       else {
-        console.log("No Photo hence skipping the link generation")
+        console.log("[flipkart] No Photo hence skipping the link generation")
       }
 
         // product.brand = await extractAttribute(driver, flipkartConfig.brand);
@@ -69,7 +125,11 @@ async function extractAttribute(driver, attributeConfig) {
                 element = await driver.findElement(By.id(config.selector));
             } else if (config.type === 'className') {
                 element = await driver.findElement(By.className(config.selector));
+            } else if (config.type === 'css') {
+                element = await driver.findElement(By.css(config.selector));
             }
+            if (!element) continue;
+            
             const attributeToExtract = config.attribute || "innerHTML";
             let rawValue = await element.getAttribute(attributeToExtract);
 

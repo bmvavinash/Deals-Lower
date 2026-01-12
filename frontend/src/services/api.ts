@@ -1,4 +1,4 @@
-import axios from 'axios';
+﻿import axios from 'axios';
 
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
 
@@ -22,7 +22,9 @@ export const dealsAPI = {
   triggerTelegramBot: () =>
     api.post('/deals/trigger-telegram-bot'),
   retriggerProduct: (productCode: string, db?: string) =>
-    api.post(`/deals/${productCode}/retrigger`, {}, { params: { db } })
+    api.post(`/deals/${productCode}/retrigger`, {}, { params: { db } }),
+  retriggerToday: (fields: string[], priority?: string) =>
+    api.post('/deals/retrigger-today', { fields, priority })
 };
 
 // Stocks API
@@ -41,6 +43,20 @@ export const logsAPI = {
     api.get('/logs/stats', { params }),
   clear: (params?: { startDate?: string; endDate?: string; level?: string; module?: string }) =>
     api.delete('/logs', { data: params })
+};
+
+// News API
+export const newsAPI = {
+  getAll: (params?: { limit?: number; offset?: number; category?: string; sortBy?: string; order?: string }) =>
+    api.get('/news', { params }),
+  getById: (id: string) => api.get(`/news/${id}`),
+  getReviews: (params?: { limit?: number; offset?: number; productName?: string; minRating?: number; sortBy?: string; order?: string }) =>
+    api.get('/news/reviews', { params }),
+  getReviewById: (id: string) => api.get(`/news/reviews/${id}`),
+  triggerScrape: (params?: { scrapeNews?: boolean; scrapeReviews?: boolean; maxPages?: number; maxArticles?: number }) =>
+    api.post('/news/trigger-scrape', params),
+  addNews: (data: any) => api.post('/news/manual-add', data),
+  addReview: (data: any) => api.post('/news/reviews/manual-add', data)
 };
 
 // Scheduler API
@@ -74,7 +90,8 @@ export const analyticsAPI = {
 
 // Execution API
 export const executionAPI = {
-  getStatus: () => api.get('/execution/status'),
+  getStatus: (type?: 'bulk_update' | 'telegram_bot' | 'all') => 
+    api.get('/execution/status', { params: { type: type || 'all' } }),
   getAnalytics: () => api.get('/execution/analytics'),
   getHistory: (limit?: number) => api.get('/execution/history', { params: { limit } }),
   getProductDetails: (productCode: string) => api.get(`/execution/product/${productCode}`)

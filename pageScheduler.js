@@ -1,10 +1,27 @@
 const puppeteer = require('puppeteer');
 const { getModuleLogger } = require('./logger/logger');
-const { storeMap } = require('./config/const');
+const constModule = require('./config/const');
+const storeMap = constModule.storeMap;
 // const { extractText } = require('./helper/helperFunction');
 const { By } = require('selenium-webdriver');
 const fs = require('fs').promises;
 const logger = getModuleLogger('pageScheduler');
+
+// Validate storeMap at module load time
+if (!storeMap || typeof storeMap !== 'object') {
+    const errorMsg = `CRITICAL: storeMap is not available in pageScheduler.js. constModule: ${JSON.stringify(constModule)}, storeMap type: ${typeof storeMap}`;
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+}
+
+// Validate storeMap at module load time
+if (!storeMap || typeof storeMap !== 'object') {
+    logger.error('CRITICAL: storeMap is not available at module load time', { 
+        storeMapType: typeof storeMap,
+        storeMapValue: storeMap,
+        constModuleKeys: Object.keys(constModule || {})
+    });
+}
 
 // Load configuration for a specific platform
 async function loadConfigJson(configPath) {
@@ -22,13 +39,50 @@ async function scrapePage(url, driver, config, pageType) {
     try {
         logger.info('Starting page scraping', { url, pageType });
         
+        // Validate storeMap is available
+        if (!storeMap || typeof storeMap !== 'object') {
+            logger.error('storeMap is not available or invalid', { 
+                storeMapType: typeof storeMap, 
+                storeMapValue: storeMap,
+                url 
+            });
+            throw new Error("storeMap configuration is not available");
+        }
+        
         const storeKey = Object.keys(storeMap).find(key => url.includes(key.toLowerCase()));
-        if (!storeKey) throw new Error("Platform not supported or URL is invalid.");
+        if (!storeKey) {
+            logger.error('Platform not detected from URL', { 
+                url, 
+                availablePlatforms: Object.keys(storeMap),
+                storeMapKeys: Object.keys(storeMap || {})
+            });
+            throw new Error("Platform not supported or URL is invalid.");
+        }
 
-        logger.info('Platform detected', { storeKey, url });
+        logger.info('Platform detected', { storeKey, url, availablePlatforms: Object.keys(storeMap) });
+
+        // Validate storeMap[storeKey] exists
+        if (!storeMap[storeKey]) {
+            logger.error('Platform configuration not found in storeMap', { 
+                storeKey, 
+                availableKeys: Object.keys(storeMap),
+                url 
+            });
+            throw new Error(`Platform configuration not found for: ${storeKey}`);
+        }
 
         // Extract platform configuration
         const { getCode, storeType } = storeMap[storeKey];
+        if (!getCode || !storeType) {
+            logger.error('Invalid platform configuration', { 
+                storeKey, 
+                hasGetCode: !!getCode, 
+                hasStoreType: !!storeType,
+                config: storeMap[storeKey]
+            });
+            throw new Error(`Invalid platform configuration for: ${storeKey}`);
+        }
+        
         const platformConfig = { getCode, storeType };
 
         logger.info("Platform Config loaded", { platformConfig });
@@ -151,6 +205,15 @@ async function extractFlipkartProduct(driver, selectors, row, col, storeKey) {
     // Extract productCode from URL using getCode function
     if (productData.productUrl && productData.productUrl !== "N/A") {
         try {
+            // Validate storeMap and storeKey before accessing
+            if (!storeMap || !storeMap[storeKey]) {
+                logger.warn('storeMap or platform config not available for productCode extraction', { 
+                    storeKey, 
+                    hasStoreMap: !!storeMap,
+                    storeMapKeys: storeMap ? Object.keys(storeMap) : []
+                });
+                return productData;
+            }
             const { getCode } = storeMap[storeKey];
             if (getCode) {
                 const extractedCode = getCode(productData.productUrl);

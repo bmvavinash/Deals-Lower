@@ -21,6 +21,8 @@ const updateProduct = require("./database/firebaseDB/firebaseUpdate.js");
 const { productStatus, storeMap } = require("./config/const.js");
 const { getModuleLogger } = require("./logger/logger.js");
 const fs = require("fs").promises;
+const missingDataRecoveryService = require("./services/missingDataRecoveryService");
+const { executionTracker } = require("./services/executionTracker");
 
 
 const logger = getModuleLogger('scheduler');
@@ -85,6 +87,11 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       return productStatus.PRODUCT_EXCLUDED;
     }
     
+    // Ensure productUrl is set to the resolved URL if not already set
+    if (!product.productUrl) {
+      product.productUrl = link;
+    }
+    
     product.storeType = storeType;
     product.date = String(todayDate);
     product.updatedatetime = Date.now();
@@ -115,6 +122,34 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       product.category.mainCategory = product?.category?.c1;
     }
 
+    // Check for missing critical data and attempt recovery
+    if (missingDataRecoveryService.isMissingCriticalData(product)) {
+      logger.info('Product missing critical data, attempting recovery', {
+        productCode: product.productCode || product.id,
+        missingFields: {
+          title: !product.title,
+          brand: !product.brand,
+          price: !product.price,
+          photo: !product.photo
+        }
+      });
+      
+      try {
+        product = await missingDataRecoveryService.recoverMissingData(product, driver);
+        
+        if (product.dataRecovered) {
+          logger.info('Successfully recovered missing data', {
+            productCode: product.productCode || product.id,
+            recoverySource: product.recoverySource
+          });
+        }
+      } catch (error) {
+        logger.error('Failed to recover missing data', {
+          productCode: product.productCode || product.id,
+          error: error.message
+        });
+      }
+    }
 
     let env = constants.env
 
@@ -129,6 +164,26 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
   //             (product?.links?.avinashbmv && product?.productCode))
   //     )
   // ) {
+
+  // Generate fallback affiliate link for Amazon if both links are empty
+  if (product.storeType === "Amazon" && product?.productCode) {
+    if (!product.links) product.links = {};
+    
+    // If both avinashbmv and avinashbmvINR are empty, generate fallback
+    const hasAvinashbmv = product.links.avinashbmv && product.links.avinashbmv.trim() !== "";
+    const hasAvinashbmvINR = product.links.avinashbmvINR && product.links.avinashbmvINR.trim() !== "";
+    
+    if (!hasAvinashbmv && !hasAvinashbmvINR) {
+      // Create fallback affiliate link using productCode
+      const fallbackLink = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+      product.links.avinashbmv = "";
+      product.links.avinashbmvINR = fallbackLink;
+      logger.info(`Generated fallback Amazon affiliate link for ${product.productCode} (both links were empty) - assigned to avinashbmvINR`, { 
+        functionName: 'getProductDetails',
+        productCode: product.productCode
+      });
+    }
+  }
 
   if (
     (product?.price > 0 || (product?.stockStatus && product?.stockStatus.includes("OUT OF STOCK"))) &&
@@ -148,7 +203,7 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
         ) ||
         (
             product.storeType === "Amazon" &&
-            (product?.links?.avinashbmv && product?.productCode)
+            (product?.productCode && (product?.links?.avinashbmv || product?.productUrl))
         )
     )
 ) {
@@ -168,9 +223,17 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
         // Increment count locally instead of calling firebaseget()
         len += 1;
         postStatus = productStatus.PRODUCT_CREATED;
+        // Track Telegram execution if from Telegram
+        if (product.sourceType === 'telegram' && product.storeType) {
+          await executionTracker.updateTelegramProductProgress(product.storeType, 'created', product.productCode);
+        }
         // i--;
       } else if (postflag.status == 200) {
         postStatus = productStatus.PRODUCT_UPDATED_SUCCESSFULLY;
+        // Track Telegram execution if from Telegram
+        if (product.sourceType === 'telegram' && product.storeType) {
+          await executionTracker.updateTelegramProductProgress(product.storeType, 'updated', product.productCode);
+        }
       } else if (postflag.status == 301) {
         if(!constants.updateTodayDeals) {
           postflag = false;
@@ -199,7 +262,23 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       }
     }
     else {
-      logger.warn(`\nFirebase Post Invalid details: ${link}`, { functionName: 'getProductDetails' })
+      logger.warn(`\nFirebase Post Invalid details: ${link}`, { 
+        functionName: 'getProductDetails',
+        productCode: product?.productCode,
+        storeType: product?.storeType,
+        price: product?.price,
+        hasAffiliateLink: !!(product?.links?.avinashbmv),
+        hasAffiliateLinkINR: !!(product?.links?.avinashbmvINR),
+        hasProductUrl: !!product?.productUrl,
+        username: username,
+        validationReason: !(product?.price > 0 || (product?.stockStatus && product?.stockStatus.includes("OUT OF STOCK"))) 
+          ? 'Missing price or invalid stock status' 
+          : product.storeType === "Amazon" 
+            ? (!product?.productCode ? 'Missing productCode' : (!product?.links?.avinashbmv && !product?.productUrl ? 'Missing affiliate link and productUrl' : 'Other Amazon validation issue'))
+            : product.storeType !== "Amazon"
+              ? (username === "dealsglobalhub" ? (!product?.links?.avinashbmv && !product?.links?.avinashbmvINR ? 'Missing affiliate links' : 'Other non-Amazon validation issue') : (!link && !shortUrl ? 'Missing link or shortUrl' : 'Other validation issue'))
+              : 'Unknown validation failure'
+      })
 
     }
 
@@ -209,6 +288,10 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
   }
   catch (e) {
     logger.info("error in scheduler: ", e)
+    // Track Telegram execution error if from Telegram
+    if (product && product.sourceType === 'telegram' && product.storeType) {
+      await executionTracker.updateTelegramProductProgress(product.storeType, 'failed', product.productCode);
+    }
     return productStatus.PRODUCT_ERROR
   }
   // finally {

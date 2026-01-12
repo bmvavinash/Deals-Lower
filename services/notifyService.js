@@ -2,9 +2,21 @@ const constants = require('../config/constants.js');
 const { getModuleLogger } = require('../logger/logger');
 const logger = getModuleLogger('notifyService');
 
-async function notifyTelegram(telegramChatId, message) {
+// Optional notification tracking (backward compatible)
+let notificationTrackingDB = null;
+try {
+  notificationTrackingDB = require('../database/firebaseDB/notificationTrackingDB').notificationTrackingDB;
+} catch (error) {
+  // Tracking is optional, continue without it
+  logger.debug('Notification tracking not available (optional feature)');
+}
+
+async function notifyTelegram(telegramChatId, message, productCode = null, dealType = 'productDeal') {
   if (!constants.notifications.enableTelegram) return false;
   if (!telegramChatId) return false;
+  
+  let success = false;
+  let error = null;
   
   try {
     // Import Telegram bot from existing implementation
@@ -13,18 +25,43 @@ async function notifyTelegram(telegramChatId, message) {
     // Send message using existing Telegram implementation
     await telegram(null, telegramChatId, message);
     
+    success = true;
     logger.info('Telegram notification sent', { telegramChatId, preview: message?.slice?.(0, 120) });
+    
+    // Track notification if productCode provided and tracking available
+    if (productCode && notificationTrackingDB) {
+      try {
+        await notificationTrackingDB.trackNotification(productCode, 'telegram', success, dealType, error);
+      } catch (trackError) {
+        logger.warn('Failed to track Telegram notification', { error: trackError.message });
+      }
+    }
+    
     return true;
     
-  } catch (error) {
-    logger.error('Telegram notification failed', { telegramChatId, error: error.message });
+  } catch (err) {
+    error = err.message;
+    logger.error('Telegram notification failed', { telegramChatId, error: error });
+    
+    // Track failed notification
+    if (productCode && notificationTrackingDB) {
+      try {
+        await notificationTrackingDB.trackNotification(productCode, 'telegram', false, dealType, error);
+      } catch (trackError) {
+        logger.warn('Failed to track Telegram notification failure', { error: trackError.message });
+      }
+    }
+    
     return false;
   }
 }
 
-async function notifyWhatsapp(phone, message) {
+async function notifyWhatsapp(phone, message, productCode = null, dealType = 'productDeal') {
   if (!constants.notifications.enableWhatsapp) return false;
   if (!phone) return false;
+  
+  let success = false;
+  let error = null;
   
   try {
     // Use existing Chrome instance on port 9222 for WhatsApp Web
@@ -74,16 +111,49 @@ async function notifyWhatsapp(phone, message) {
       await driver.actions().sendKeys(Key.RETURN).perform();
       await driver.sleep(2000);
       
+      success = true;
       logger.info('WhatsApp notification sent', { phone, preview: message?.slice?.(0, 120) });
+      
+      // Track notification if productCode provided
+      if (productCode && notificationTrackingDB) {
+        try {
+          await notificationTrackingDB.trackNotification(productCode, 'whatsapp', success, dealType, error);
+        } catch (trackError) {
+          logger.warn('Failed to track WhatsApp notification', { error: trackError.message });
+        }
+      }
+      
       return true;
       
-    } catch (error) {
-      logger.error('WhatsApp message input failed', { phone, error: error.message });
+    } catch (err) {
+      error = err.message;
+      logger.error('WhatsApp message input failed', { phone, error: error });
+      
+      // Track failed notification
+      if (productCode && notificationTrackingDB) {
+        try {
+          await notificationTrackingDB.trackNotification(productCode, 'whatsapp', false, dealType, error);
+        } catch (trackError) {
+          logger.warn('Failed to track WhatsApp notification failure', { error: trackError.message });
+        }
+      }
+      
       return false;
     }
     
-  } catch (error) {
-    logger.error('WhatsApp notification failed', { phone, error: error.message });
+  } catch (err) {
+    error = err.message;
+    logger.error('WhatsApp notification failed', { phone, error: error });
+    
+    // Track failed notification
+    if (productCode && notificationTrackingDB) {
+      try {
+        await notificationTrackingDB.trackNotification(productCode, 'whatsapp', false, dealType, error);
+      } catch (trackError) {
+        logger.warn('Failed to track WhatsApp notification failure', { error: trackError.message });
+      }
+    }
+    
     return false;
   }
 }

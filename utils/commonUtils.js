@@ -64,12 +64,12 @@ function validateDiscount(value) {
 function extractAsin(value) {
     if (!value) return { isValid: false, value: "" };
     
-    console.log("Extracting ASIN from:", value); // Debug log
+    logger.debug("Extracting ASIN from:", value);
     
     // Extract ASIN from format like "amzn1.asin.1.B0F4DG9ZH5"
     const asinMatch = value.match(/amzn1\.asin\.\d+\.([A-Z0-9]{10})/);
     if (asinMatch) {
-        console.log("ASIN extracted:", asinMatch[1]); // Debug log
+        logger.debug("ASIN extracted:", asinMatch[1]);
         return {
             isValid: true,
             value: asinMatch[1]
@@ -79,14 +79,14 @@ function extractAsin(value) {
     // Try alternative format if the first one doesn't work
     const altMatch = value.match(/([A-Z0-9]{10})/);
     if (altMatch) {
-        console.log("ASIN extracted (alternative):", altMatch[1]); // Debug log
+        logger.debug("ASIN extracted (alternative):", altMatch[1]);
         return {
             isValid: true,
             value: altMatch[1]
         };
     }
     
-    console.log("No ASIN found in:", value); // Debug log
+    logger.debug("No ASIN found in:", value);
     return { isValid: false, value: "" };
 }
 
@@ -94,7 +94,7 @@ function extractAsin(value) {
 function extractProductUrl(value) {
     if (!value) return { isValid: false, value: "" };
     
-    console.log("Extracting product URL from:", value); // Debug log
+    logger.debug("Extracting product URL from:", value);
     
     // If it's already a direct product URL
     if (value.includes('/dp/') && !value.includes('/sspa/')) {
@@ -109,7 +109,7 @@ function extractProductUrl(value) {
     if (urlMatch) {
         try {
             const decodedUrl = decodeURIComponent(urlMatch[1]);
-            console.log("Decoded URL:", decodedUrl); // Debug log
+            logger.debug("Decoded URL:", decodedUrl);
             
             if (decodedUrl.includes('/dp/')) {
                 const fullUrl = decodedUrl.startsWith('http') ? decodedUrl : `https://www.amazon.in${decodedUrl}`;
@@ -119,11 +119,11 @@ function extractProductUrl(value) {
                 };
             }
         } catch (error) {
-            console.log("Error decoding URL:", error); // Debug log
+            logger.warn("Error decoding URL:", { error: String(error) });
         }
     }
     
-    console.log("No product URL found in:", value); // Debug log
+    logger.debug("No product URL found in:", value);
     return { isValid: false, value: "" };
 }
 
@@ -131,20 +131,20 @@ function extractProductUrl(value) {
 function extractBrand(value) {
     if (!value) return { isValid: false, value: "" };
     
-    console.log("Extracting brand from:", value); // Debug log
+    logger.debug("Extracting brand from:", value);
     
     // Common brand patterns - extract the first word before any special characters or spaces
     const brandMatch = value.match(/^([A-Za-z]+)/);
     if (brandMatch) {
         const brand = brandMatch[1];
-        console.log("Brand extracted:", brand); // Debug log
+        logger.debug("Brand extracted:", brand);
         return {
             isValid: true,
             value: brand
         };
     }
     
-    console.log("No brand found in:", value); // Debug log
+    logger.debug("No brand found in:", value);
     return { isValid: false, value: "" };
 }
 
@@ -186,20 +186,20 @@ function validateRatingsCount(value) {
 function validateDiscountPercentage(value) {
     if (!value) return { isValid: false, value: "" };
     
-    console.log("Extracting discount from:", value); // Debug log
+    logger.debug("Extracting discount from:", value);
     
     // Extract percentage from text like "(35% off)"
     const discountMatch = value.match(/\((\d+)%\s*off\)/);
     if (discountMatch) {
         const discount = parseInt(discountMatch[1], 10);
-        console.log("Discount extracted:", discount); // Debug log
+        logger.debug("Discount extracted:", discount);
         return {
             isValid: true,
             value: discount
         };
     }
     
-    console.log("No discount found in:", value); // Debug log
+    logger.debug("No discount found in:", value);
     return { isValid: false, value: "" };
 }
 
@@ -207,11 +207,11 @@ function validateDiscountPercentage(value) {
 function validateBoughtInPastMonth(value) {
     if (!value) return { isValid: false, value: "" };
     
-    console.log("Validating bought in past month:", value); // Debug log
+    logger.debug("Validating bought in past month:", value);
     
     // Check if it contains "bought in past month" pattern
     if (value.includes("bought in past month")) {
-        console.log("Valid bought in past month text:", value); // Debug log
+        logger.debug("Valid bought in past month text:", value);
         return {
             isValid: true,
             value: value
@@ -219,7 +219,7 @@ function validateBoughtInPastMonth(value) {
     }
     
     // If it's M.R.P or other text, return empty string
-    console.log("Not a bought in past month text:", value); // Debug log
+    logger.debug("Not a bought in past month text:", value);
     return { isValid: false, value: "" };
 }
 
@@ -227,11 +227,11 @@ function validateBoughtInPastMonth(value) {
 function validateOriginalPrice(value) {
     if (!value) return { isValid: false, value: "" };
     
-    console.log("Validating original price:", value); // Debug log
+    logger.debug("Validating original price:", value);
     
     // Use the existing validatePrice function but with debug logging
     const result = validatePrice(value);
-    console.log("Original price validation result:", result); // Debug log
+    logger.debug("Original price validation result:", result);
     
     return result;
 }
@@ -672,34 +672,50 @@ function getAsin(url) {
     let start;
     let asin;
 
-    // Check for "/gp/product/"
-
     // Check for "/dp/"
     start = url.indexOf("/dp/");
     if (start !== -1) {
         start += 4; // Length of "/dp/" is 4
         asin = url.substr(start, 10);
-        // Ensure there's a "?" or the end of the URL after the ASIN
-        if (url.charAt(start + 10) === '?' || start + 10 === url.length || url.charAt(start + 10) === '/') { // asin.length == 10 => check it
-            console.log("ASIN from /dp/:", asin);
+        // Ensure a delimiter or end after the ASIN
+        if (
+            url.charAt(start + 10) === '?' ||
+            url.charAt(start + 10) === '/' ||
+            url.charAt(start + 10) === '#' ||
+            start + 10 === url.length
+        ) {
+            logger.debug("ASIN from /dp/:", asin);
             return asin;
-        } else if (asin.length == 10) {
-            console.log("ASIN URL Error but product key exists => Bug to be fixed => Immediate Check", url);
+        } else if (asin.length === 10) {
+            logger.warn("ASIN URL Error but product key exists => Bug to be fixed => Immediate Check", { url });
             return "";
         }
     }
 
+    // Check for "/gp/product/"
     start = url.indexOf("/gp/product/");
     if (start !== -1) {
         start += 13; // Length of "/gp/product/" is 13
         asin = url.substr(start, 10);
-        // Ensure there's a "?" or the end of the URL after the ASIN
-        if (url.charAt(start + 10) === '?' || start + 10 === url.length) {
-            console.log("ASIN from /gp/product/:", asin);
+        // Ensure a delimiter or end after the ASIN
+        if (
+            url.charAt(start + 10) === '?' ||
+            url.charAt(start + 10) === '/' ||
+            url.charAt(start + 10) === '#' ||
+            start + 10 === url.length
+        ) {
+            logger.debug("ASIN from /gp/product/:", asin);
             return asin;
         }
     }
-    console.log("ASIN URL Error", url);
+
+    // Fallback: robust regex extraction for typical Amazon product URLs
+    const match = url.match(/\/(?:dp|gp\/product)\/([A-Z0-9]{10})(?:[\/?#]|$)/i);
+    if (match) {
+        logger.debug("ASIN extracted via regex:", match[1]);
+        return match[1].toUpperCase();
+    }
+    logger.warn("ASIN URL Error", { url });
     return "";
 }
 

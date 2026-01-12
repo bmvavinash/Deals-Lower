@@ -50,38 +50,96 @@ async function postDeals(driver, product, link, shortUrl, username) {
 
 
         // text=text+product?.productText + `\n\nhttps://dealshubglobal.com/p/${product?.id}` + " \n#"+product?.storeType + " #"+product?.category
-        user = getUserDetails(username)
+        const user = getUserDetails(username) || null;
 
-        if (username.includes("dealsglobalhub")) {
+        if (username && username.includes("dealsglobalhub")) {
             text = formatProductInfo(product);
-        } else {
+        } else if (user && user.amazonTagId) {
             text = formatProductInfo(product, user.amazonTagId, username, link, shortUrl);
+        } else {
+            // Fallback when user not found or tag is missing
+            text = formatProductInfo(product);
         }
         // othertext = formatProductInfo(product,"dealshubworld-21",link);
         // othertext = formatProductInfo(product,"RamTechTelugu-21");
 
         // console.log("Text in Telegram is ",text)
 
+        // Optional notification tracking (backward compatible)
+        let notificationTrackingDB = null;
+        try {
+            notificationTrackingDB = require('./database/firebaseDB/notificationTrackingDB').notificationTrackingDB;
+        } catch (error) {
+            // Tracking is optional
+        }
+
+        const productCode = product?.productCode || product?.asin || product?.id || null;
+        const dealType = product?.isDeal ? 'hotDeal' : 'productDeal';
+
         if (constantsData.postTo.telegram) {
+            let telegramSuccess = false;
+            let telegramError = null;
+            
             if (product?.photo != "") {
-                if (username.includes("dealsglobalhub")) {
-                    await telegram(product?.photo, telegramId, text)
-                } else {
-                    // await telegram(product?.photo,telegramId,text)
-                    await telegram(product?.photo, user.telegramId, text, user.telegramToken)
+                try {
+                    if (username && username.includes("dealsglobalhub")) {
+                        await telegram(product?.photo, telegramId, text);
+                        telegramSuccess = true;
+                    } else if (user && user.telegramId && user.telegramToken) {
+                        // await telegram(product?.photo,telegramId,text)
+                        await telegram(product?.photo, user.telegramId, text, user.telegramToken);
+                        telegramSuccess = true;
+                    } else {
+                        console.log('User not found or missing Telegram credentials; skipping telegram post.');
+                        telegramError = 'Missing credentials';
+                    }
+                    // await telegram(product?.photo,"@DealsHubWorld",othertext)
+                    // await telegram(product?.photo,"@RamTechTelugu",othertext)
+                } catch (error) {
+                    telegramError = error.message;
+                    console.error('Telegram post error:', error);
                 }
-                // await telegram(product?.photo,"@DealsHubWorld",othertext)
-                // await telegram(product?.photo,"@RamTechTelugu",othertext)
             }
             else if (!isPhotoRequired) {
-                await telegram(product?.photo, telegramId, text)
+                try {
+                    await telegram(product?.photo, telegramId, text);
+                    telegramSuccess = true;
+                } catch (error) {
+                    telegramError = error.message;
+                }
                 // https://t.me/RamTechTelugu
                 // nivea check asin - no /dp/ - 
                 // await telegram(product?.photo,"@RamTechTelugu",othertext)
             }
+
+            // Track notification if tracking available
+            if (productCode && notificationTrackingDB) {
+                try {
+                    await notificationTrackingDB.trackNotification(productCode, 'telegram', telegramSuccess, dealType, telegramError);
+                } catch (trackError) {
+                    // Silent fail for tracking
+                }
+            }
         }
         if (constantsData.postTo.whatsapp && username.includes("dealsglobalhub")) {
-            whatsapp(product?.photo, whatsappId, text);
+            let whatsappSuccess = false;
+            let whatsappError = null;
+            
+            try {
+                await whatsapp(product?.photo, whatsappId, text);
+                whatsappSuccess = true;
+            } catch (error) {
+                whatsappError = error.message;
+            }
+
+            // Track notification if tracking available
+            if (productCode && notificationTrackingDB) {
+                try {
+                    await notificationTrackingDB.trackNotification(productCode, 'whatsapp', whatsappSuccess, dealType, whatsappError);
+                } catch (trackError) {
+                    // Silent fail for tracking
+                }
+            }
         }
         // if (constantsData.postTo.facebook && product?.discount >= 75 && username.includes("dealsglobalhub")) {
         //     console.log("Facebook ID is ", facebookId);
@@ -100,29 +158,50 @@ async function postDeals(driver, product, link, shortUrl, username) {
 
         if (constantsData.postTo.facebook && product?.discount >= 75 && username.includes("dealsglobalhub")) {
             console.log("Facebook ID is ", facebookId);
-            let response = await facebook(product, facebookId, text);
-        
-            // Check if response is a string and try to parse it
-            if (typeof response === 'string' && response.includes('expired')) {
+            let facebookSuccess = false;
+            let facebookError = null;
+            
+            try {
+                let response = await facebook(product, facebookId, text);
+            
+                // Check if response is a string and try to parse it
+                if (typeof response === 'string' && response.includes('expired')) {
+                    try {
+                        response = JSON.parse(response);
+                    } catch (e) {
+                        console.error('Failed to parse response:', e);
+                    }
+                }
+            
+                if (response?.error?.message?.includes('Session has expired') || 
+                    response?.error?.message?.includes('An active access token')) {
+                    console.log('Session expired. Refreshing token...');
+            
+                    // Refresh the token
+                    const newToken = await extractFacebookToken(driver);
+                    console.log('New Token:', newToken);
+                    facebookId = newToken;
+                    constants.facebookId = newToken;
+                    response = await facebook(product, facebookId, text);
+                }
+
+                if (!response?.error) {
+                    facebookSuccess = true;
+                } else {
+                    facebookError = response.error.message || 'Unknown error';
+                }
+            } catch (error) {
+                facebookError = error.message;
+            }
+
+            // Track notification if tracking available
+            if (productCode && notificationTrackingDB) {
                 try {
-                    response = JSON.parse(response);
-                } catch (e) {
-                    console.error('Failed to parse response:', e);
+                    await notificationTrackingDB.trackNotification(productCode, 'facebook', facebookSuccess, dealType, facebookError);
+                } catch (trackError) {
+                    // Silent fail for tracking
                 }
             }
-        
-            if (response?.error?.message?.includes('Session has expired') || 
-                response?.error?.message?.includes('An active access token')) {
-                console.log('Session expired. Refreshing token...');
-        
-                // Refresh the token
-                const newToken = await extractFacebookToken(driver);
-                console.log('New Token:', newToken);
-                facebookId = newToken;
-                constants.facebookId = newToken;
-                response = await facebook(product, facebookId, text);
-            }
-            
         }
         
     } catch (e) {

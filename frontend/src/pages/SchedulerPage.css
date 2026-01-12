@@ -1,0 +1,167 @@
+.scheduler-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.scheduler-status-card {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.scheduler-status-card h2 {
+  margin: 0 0 20px 0;
+  color: #2c3e50;
+}
+
+.status-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.status-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.status-label {
+  font-size: 12px;
+  color: #7f8c8d;
+  text-transform: uppercase;
+}
+
+.status-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.status-value.active {
+  color: #27ae60;
+}
+
+.status-value.running {
+  color: #3498db;
+}
+
+.status-value.paused {
+  color: #e74c3c;
+}
+
+.scheduler-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.action-button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.action-button.resume {
+  background-color: #27ae60;
+  color: white;
+}
+
+.action-button.resume:hover:not(:disabled) {
+  background-color: #229954;
+}
+
+.action-button.pause {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.action-button.pause:hover:not(:disabled) {
+  background-color: #c0392b;
+}
+
+.action-button.trigger {
+  background-color: #3498db;
+  color: white;
+}
+
+.action-button.trigger:hover:not(:disabled) {
+  background-color: #2980b9;
+}
+
+.action-button:disabled {
+  background-color: #bdc3c7;
+  cursor: not-allowed;
+}
+
+.execution-history {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.execution-history h2 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+}
+
+.history-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.history-item {
+  padding: 12px;
+  border-bottom: 1px solid #ecf0f1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.history-item.success {
+  border-left: 3px solid #27ae60;
+}
+
+.history-item.failed {
+  border-left: 3px solid #e74c3c;
+}
+
+.history-time {
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
+.history-status {
+  font-weight: 600;
+}
+
+.history-error {
+  font-size: 12px;
+  color: #e74c3c;
+  font-family: monospace;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

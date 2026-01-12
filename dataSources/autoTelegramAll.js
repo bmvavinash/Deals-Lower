@@ -17,6 +17,7 @@ const messagesQueue = []; // Global array to store messages with links and text
 let processing = false;
 const MAX_CONCURRENT = 2;
 let globalDriver = null; // Global driver instance for queue processing
+const channelStats = {}; // Track stats per channel
 
 // Function to set the driver for queue processing
 function setDriver(driverInstance) {
@@ -120,9 +121,16 @@ async function processBotMessage(post) {
     console.log("[TELEGRAM] Username found:", username);
 
     // Store each message as an object in the queue
+    const channelName = post.chat?.title || username || 'unknown';
     links.forEach(link => {
-        messagesQueue.push({ link, plainText, username });
+        messagesQueue.push({ link, plainText, username, channel: channelName });
         console.log(`[TELEGRAM] Added to queue: ${link} (Queue size: ${messagesQueue.length})`);
+        
+        // Update channel stats
+        if (!channelStats[channelName]) {
+          channelStats[channelName] = { pending: 0, processing: 0, processed: 0 };
+        }
+        channelStats[channelName].pending++;
     });
 
     // Trigger processing immediately if enabled
@@ -174,20 +182,39 @@ async function kickOffQueueProcessing() {
         return;
     }
     processing = true;
-    console.log(`[TELEGRAM] Starting queue processing with ${messagesQueue.length} messages`);
+    
+    // Get current queue and clear it
+    // For LIFO (stack) behavior: reverse the queue so newest items are processed first
+    const messagesToProcess = [...messagesQueue].reverse();
+    messagesQueue.length = 0;
+    
+    console.log(`[TELEGRAM] Starting queue processing with ${messagesToProcess.length} messages (LIFO/Stack mode - newest first)`);
     try {
-        while (messagesQueue.length > 0) {
-            const batch = messagesQueue.splice(0, MAX_CONCURRENT);
-            console.log(`[TELEGRAM] Processing batch of ${batch.length} messages`);
-            await Promise.all(batch.map(async ({ link, plainText, username }) => {
+        while (messagesToProcess.length > 0) {
+            // Process from the beginning (which is now the newest items after reverse)
+            const batch = messagesToProcess.splice(0, MAX_CONCURRENT);
+            console.log(`[TELEGRAM] Processing batch of ${batch.length} messages (newest first)`);
+            await Promise.all(batch.map(async ({ link, plainText, username, generateLink }) => {
                 try {
                     console.log(`[TELEGRAM] Processing message: ${link}`);
                     console.log(`[TELEGRAM] Driver available: ${!!globalDriver}`);
-                    const result = await handleProductProcessing(globalDriver || {}, link, plainText, 0, '', {}, {}, username || '');
+                    console.log(`[TELEGRAM] Generate link: ${generateLink || 'N/A'}`);
+                    const result = await handleProductProcessing(globalDriver || {}, link, plainText, 0, '', {}, {}, username || '', generateLink || false);
                     console.log(`[TELEGRAM] Processing result for ${link}:`, result);
+                    
+                    // Track message progress
+                    const { executionTracker } = require('../services/executionTracker');
+                    const { searchStatus } = require('../config/const');
+                    if (result === searchStatus.SEARCH_CREATED || result === productStatus.PRODUCT_CREATED || result === productStatus.PRODUCT_UPDATED_SUCCESSFULLY) {
+                        await executionTracker.updateTelegramMessageProgress('processed');
+                    } else {
+                        await executionTracker.updateTelegramMessageProgress('failed');
+                    }
                 } catch (e) {
                     console.error(`[TELEGRAM] handleProductProcessing failed for ${link}:`, e?.message);
                     logger.error('handleProductProcessing failed', { link, error: e?.message });
+                    const { executionTracker } = require('../services/executionTracker');
+                    await executionTracker.updateTelegramMessageProgress('failed');
                 }
             }));
         }
@@ -232,6 +259,29 @@ async function continuousProcess(driver) {
 //     }
 // }
 
-module.exports = { initializeBot, continuousProcess, getNewBotMessages, processBotMessage, processMessagesQueue, setDriver };
+// Get queue status for API
+function getQueueStatus() {
+  const channelStatus = {};
+  Object.keys(channelStats).forEach(channel => {
+    channelStatus[channel] = { ...channelStats[channel] };
+  });
+  
+  // Count current queue by channel
+  messagesQueue.forEach(msg => {
+    const channel = msg.channel || 'unknown';
+    if (!channelStatus[channel]) {
+      channelStatus[channel] = { pending: 0, processing: 0, processed: 0 };
+    }
+    channelStatus[channel].pending++;
+  });
+  
+  return {
+    pending: messagesQueue.length,
+    processing: processing ? MAX_CONCURRENT : 0,
+    channels: channelStatus
+  };
+}
+
+module.exports = { initializeBot, continuousProcess, getNewBotMessages, processBotMessage, processMessagesQueue, setDriver, getQueueStatus };
 
 // module.exports = { initializeBot, processPost };

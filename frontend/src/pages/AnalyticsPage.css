@@ -1,0 +1,163 @@
+.analytics-page {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.analytics-section {
+  background: white;
+  padding: 20px;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+.analytics-section h2 {
+  margin: 0 0 20px 0;
+  color: #2c3e50;
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 20px;
+}
+
+.chart-card {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.chart-card h3 {
+  margin: 0 0 15px 0;
+  font-size: 16px;
+  color: #2c3e50;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 15px;
+}
+
+.stat-card {
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.stat-card h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #7f8c8d;
+  text-transform: uppercase;
+}
+
+.stat-card p {
+  margin: 5px 0;
+  font-size: 16px;
+  color: #2c3e50;
+}
+
+.performance-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 15px;
+}
+
+.perf-card {
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.perf-card h3 {
+  margin: 0 0 10px 0;
+  font-size: 14px;
+  color: #7f8c8d;
+  text-transform: uppercase;
+}
+
+.perf-card p {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+.stats-summary {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  padding: 15px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  min-width: 150px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #7f8c8d;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+.loading {
+  padding: 20px;
+  text-align: center;
+  color: #7f8c8d;
+}
+
+.error {
+  padding: 20px;
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 4px;
+  color: #c33;
+  margin-bottom: 20px;
+}
+
+.favorites-notifications-section {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 2px solid #e0e0e0;
+}
+
+.favorites-notifications-section h3 {
+  margin-bottom: 20px;
+  color: #2c3e50;
+}
+
+.favorites-notifications-section h4 {
+  margin: 15px 0 10px 0;
+  color: #34495e;
+  font-size: 16px;
+}
+
+.favorites-notifications-section h5 {
+  margin: 10px 0 5px 0;
+  color: #7f8c8d;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.notification-types,
+.notification-channels {
+  margin-top: 20px;
+}
+
+
+
+

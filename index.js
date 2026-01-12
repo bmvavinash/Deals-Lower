@@ -29,6 +29,7 @@ const { idleProcessingService } = require("./services/idleProcessingService");
 const { hierarchicalEnrichmentService } = require("./services/hierarchicalEnrichmentService");
 const { productUrlFixer } = require("./services/productUrlFixer");
 const { getModuleLogger } = require("./logger/logger");
+const { runBulkUpdateAll } = require("./scripts/bulkUpdateAllPlatforms");
 
 require("events").EventEmitter.defaultMaxListeners = 20;
 
@@ -209,6 +210,33 @@ async function openAmazonWebsite() {
         logger.info('🔄 Processing general type', { sessionId, generalType: constants.generaltype });
         
         switch (constants.generaltype) {
+          case "bulkUpdate":
+            logger.info('📦 Starting Bulk Update processing', { sessionId });
+            
+            try {
+              logger.info('🚀 Starting bulk updates (all platforms)...', { sessionId });
+              const result = await runBulkUpdateAll('website', 'productdeals');
+              logger.info('✅ Bulk updates completed successfully', { 
+                sessionId,
+                totalPlatforms: result.totalPlatforms,
+                successfulPlatforms: result.successfulPlatforms,
+                totalProducts: result.totalProducts,
+                successRate: result.successRate
+              });
+            } catch (error) {
+              logger.error('❌ Error in bulk updates:', { 
+                sessionId,
+                error: error.message,
+                stack: error.stack,
+                fixSteps: systemHealthMonitor.getFixSteps('bulk_update_failed').steps
+              });
+              
+              systemHealthMonitor.recordFailure('main', error, {
+                sessionId,
+                phase: 'bulk_update_processing'
+              });
+            }
+            break;
           case "telegramFile":
             logger.info('📱 Starting Telegram file processing', { sessionId });
             
@@ -332,6 +360,21 @@ async function openAmazonWebsite() {
             break;
         }
         
+        // If bulk updates are enabled, run them now (sequentially to avoid driver contention)
+        if (constants.enableBulkProcessing) {
+          try {
+            logger.info("Starting bulk updates (all platforms) as part of general flow...", { sessionId });
+            await runBulkUpdateAll('website', 'productdeals');
+            logger.info("Bulk updates completed", { sessionId });
+          } catch (error) {
+            logger.error("Bulk updates failed", {
+              sessionId,
+              error: error.message,
+              stack: error.stack
+            });
+          }
+        }
+
         // Continue to other processing scenarios after general processing
         logger.info("General processing completed, continuing to other scenarios...", { sessionId });
         

@@ -173,5 +173,12 @@ module.exports = {
     maxNotificationsPerCycle: 200,
     // Price drop threshold for notifications (percentage)
     priceDropThreshold: 0.1 // 10% default
+  },
+
+  // Frontend API configuration
+  frontend: {
+    apiPort: 3001,
+    enableWebSocket: true,
+    logRetentionDays: 30
   }
 };

@@ -76,6 +76,29 @@ class ComprehensiveLoggingService {
   logBulkUpdateComplete(platform, category, targetDb, sourceType, startTime, productsCount, successCount, errorCount, createdCount = 0, updatedCount = 0) {
     const duration = Date.now() - startTime;
     
+    // Ensure stats objects exist (defensive programming)
+    if (!this.stats || !this.stats.bulkUpdates) {
+      logger.warn('Stats object not initialized, reinitializing', { platform, category });
+      this.stats = {
+        bulkUpdates: {
+          totalProducts: 0,
+          created: 0,
+          updated: 0,
+          failed: 0,
+          platforms: {},
+          categories: {},
+          databases: {},
+          timings: []
+        }
+      };
+    }
+    
+    // Ensure nested objects exist
+    if (!this.stats.bulkUpdates.platforms) this.stats.bulkUpdates.platforms = {};
+    if (!this.stats.bulkUpdates.categories) this.stats.bulkUpdates.categories = {};
+    if (!this.stats.bulkUpdates.databases) this.stats.bulkUpdates.databases = {};
+    if (!this.stats.bulkUpdates.timings) this.stats.bulkUpdates.timings = [];
+    
     // Update stats
     this.stats.bulkUpdates.totalProducts += productsCount;
     this.stats.bulkUpdates.created += createdCount;
