@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
 const { notificationTrackingDB } = require('../../../database/firebaseDB/notificationTrackingDB');
@@ -176,7 +176,7 @@ router.get('/notifications/:productCode', async (req, res, next) => {
       success: true,
       data: status
     });
-  } catch (error) {
+    } catch (error) {
     logger.error('Error fetching notification status', { error: error.message, stack: error.stack });
     next(error);
   }
