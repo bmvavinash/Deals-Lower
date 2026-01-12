@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const router = express.Router();
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
 const { notificationTrackingDB } = require('../../../database/firebaseDB/notificationTrackingDB');
@@ -164,7 +164,6 @@ router.get('/notifications/:productCode', async (req, res, next) => {
     const { productCode } = req.params;
     const status = await notificationTrackingDB.getNotificationStatus(productCode);
     
-    if (!status) {
     if (!status) {
       return res.status(404).json({
         success: false,
