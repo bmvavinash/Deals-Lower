@@ -346,18 +346,40 @@ async function runBulkUpdateForCategory(platform, category, urls, sourceType = '
     
     // Update progress in execution tracker (with error handling to prevent crashes)
     try {
-      await executionTracker.updateCategoryProgress(platform, category, {
+      const progressData = {
         totalProducts: result.totalExtracted || 0,
         processed: result.totalStored || 0,
         created: result.created || 0,
         updated: result.updated || 0,
         errors: (result.totalExtracted || 0) - (result.totalStored || 0)
+      };
+      
+      logger.info('📊 Updating execution tracker with progress', {
+        platform,
+        category,
+        progress: progressData,
+        resultTotalExtracted: result.totalExtracted,
+        resultTotalStored: result.totalStored,
+        resultCreated: result.created,
+        resultUpdated: result.updated
+      });
+      
+      await executionTracker.updateCategoryProgress(platform, category, progressData);
+      
+      logger.info('✅ Execution tracker updated successfully', {
+        platform,
+        category,
+        progress: progressData
       });
     } catch (trackerError) {
-      // Silently continue - tracker is optional
-      logger.debug('Category progress update failed (non-fatal)', {
+      // Log error but continue - tracker is optional
+      logger.error('❌ Category progress update failed (non-fatal)', {
         platform,
-        category
+        category,
+        error: trackerError.message,
+        stack: trackerError.stack,
+        resultTotalExtracted: result.totalExtracted,
+        resultTotalStored: result.totalStored
       });
     }
     

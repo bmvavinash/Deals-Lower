@@ -8,6 +8,7 @@ const { getModuleLogger } = require('../logger/logger');
 // const { getTelegramDealLink } = require('./telegram');
 // const { getTelegramDealLink } = require('../scheduler'); // Add other required functions
 const { handleProductProcessing } = require('./handleProductProcessing');
+const { isDriverSessionValid } = require('../utils/seleniumDriver');
 
 
 const logger = getModuleLogger('autoTelegramAll');
@@ -78,8 +79,8 @@ async function initializeBot() {
 
 let pollAttempt = 0;
 async function getNewBotMessages() {
-    // Snapshot current queue and clear for next cycle
-    const messagesToProcess = messagesQueue;
+    // Snapshot current queue (copy) and clear for next cycle
+    const messagesToProcess = [...messagesQueue];
     messagesQueue.length = 0;
 
     pollAttempt += 1;
@@ -122,8 +123,9 @@ async function processBotMessage(post) {
 
     // Store each message as an object in the queue
     const channelName = post.chat?.title || username || 'unknown';
+    const generateLink = constants.generateLink === true;
     links.forEach(link => {
-        messagesQueue.push({ link, plainText, username, channel: channelName });
+        messagesQueue.push({ link, plainText, username, channel: channelName, generateLink });
         console.log(`[TELEGRAM] Added to queue: ${link} (Queue size: ${messagesQueue.length})`);
         
         // Update channel stats
@@ -181,6 +183,13 @@ async function kickOffQueueProcessing() {
         console.log(`[TELEGRAM] Queue processing already in progress, skipping`);
         return;
     }
+
+    const driverReady = await isDriverSessionValid(globalDriver);
+    if (!driverReady) {
+        console.log('[TELEGRAM] WebDriver not ready — messages stay queued until driver is available');
+        return;
+    }
+
     processing = true;
     
     // Get current queue and clear it
@@ -191,15 +200,21 @@ async function kickOffQueueProcessing() {
     console.log(`[TELEGRAM] Starting queue processing with ${messagesToProcess.length} messages (LIFO/Stack mode - newest first)`);
     try {
         while (messagesToProcess.length > 0) {
+            if (!(await isDriverSessionValid(globalDriver))) {
+                console.log('[TELEGRAM] WebDriver became invalid — re-queuing remaining messages');
+                messagesToProcess.forEach((msg) => messagesQueue.push(msg));
+                break;
+            }
+
             // Process from the beginning (which is now the newest items after reverse)
             const batch = messagesToProcess.splice(0, MAX_CONCURRENT);
             console.log(`[TELEGRAM] Processing batch of ${batch.length} messages (newest first)`);
             await Promise.all(batch.map(async ({ link, plainText, username, generateLink }) => {
                 try {
                     console.log(`[TELEGRAM] Processing message: ${link}`);
-                    console.log(`[TELEGRAM] Driver available: ${!!globalDriver}`);
+                    console.log(`[TELEGRAM] Driver available: ${await isDriverSessionValid(globalDriver)}`);
                     console.log(`[TELEGRAM] Generate link: ${generateLink || 'N/A'}`);
-                    const result = await handleProductProcessing(globalDriver || {}, link, plainText, 0, '', {}, {}, username || '', generateLink || false);
+                    const result = await handleProductProcessing(globalDriver, link, plainText, 0, '', {}, {}, username || '', generateLink || false);
                     console.log(`[TELEGRAM] Processing result for ${link}:`, result);
                     
                     // Track message progress
@@ -282,6 +297,6 @@ function getQueueStatus() {
   };
 }
 
-module.exports = { initializeBot, continuousProcess, getNewBotMessages, processBotMessage, processMessagesQueue, setDriver, getQueueStatus };
+module.exports = { initializeBot, continuousProcess, getNewBotMessages, processBotMessage, processMessagesQueue, setDriver, getQueueStatus, kickOffQueueProcessing };
 
 // module.exports = { initializeBot, processPost };

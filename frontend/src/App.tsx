@@ -7,6 +7,7 @@ import LogsPage from './pages/LogsPage';
 import SchedulerPage from './pages/SchedulerPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import ExecutionMonitor from './pages/ExecutionMonitor';
+import DadExpensesPage from './pages/DadExpensesPage';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
           <Route path="/scheduler" element={<SchedulerPage />} />
           <Route path="/analytics" element={<AnalyticsPage />} />
           <Route path="/execution" element={<ExecutionMonitor />} />
+          <Route path="/others/dad-expenses" element={<DadExpensesPage />} />
         </Routes>
       </MainLayout>
     </Router>

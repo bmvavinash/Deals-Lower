@@ -1,6 +1,7 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001/api';
+// Use relative URL to leverage Vite proxy, or fallback to direct backend URL
+const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -21,10 +22,18 @@ export const dealsAPI = {
     api.post('/deals/manual-trigger', { sourceType, targetDb }),
   triggerTelegramBot: () =>
     api.post('/deals/trigger-telegram-bot'),
+  bulkRefreshTimestamps: (options: { source: 'productdeals' | 'deals' | 'both'; limit?: number; order?: 'newest' | 'oldest' }) =>
+    api.post('/deals/bulk-refresh-timestamps', options),
   retriggerProduct: (productCode: string, db?: string) =>
     api.post(`/deals/${productCode}/retrigger`, {}, { params: { db } }),
   retriggerToday: (fields: string[], priority?: string) =>
-    api.post('/deals/retrigger-today', { fields, priority })
+    api.post('/deals/retrigger-today', { fields, priority }),
+  processProduct: (url: string, postProduct: boolean = false) =>
+    api.post('/deals/process-product', { url, postProduct }),
+  updateProduct: (productCode: string, updates: any, db?: string) =>
+    api.put(`/deals/${productCode}`, updates, { params: { db } }),
+  deleteProduct: (productCode: string, db?: string) =>
+    api.delete(`/deals/${productCode}`, { params: { db } })
 };
 
 // Stocks API
@@ -95,6 +104,11 @@ export const executionAPI = {
   getAnalytics: () => api.get('/execution/analytics'),
   getHistory: (limit?: number) => api.get('/execution/history', { params: { limit } }),
   getProductDetails: (productCode: string) => api.get(`/execution/product/${productCode}`)
+};
+
+// Banners API
+export const bannersAPI = {
+  extract: () => api.post('/banners/extract')
 };
 
 export default api;

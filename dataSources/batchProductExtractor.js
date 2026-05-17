@@ -70,6 +70,10 @@ function getManualCategoryFallback(raw, sourceType, categoryKey) {
 	// Extract category from categoryKey (e.g., 'amazon_electronics' -> 'electronics')
 	const categoryFromKey = categoryKey.split('_').pop() || 'general';
 	
+	// Set categoryGroup for database queries (required for frontend filtering)
+	// categoryGroup should be lowercase, hyphenated (e.g., 'home-kitchen', 'beauty-personal-care')
+	const categoryGroup = categoryFromKey.toLowerCase();
+	
 	// Try to extract meaningful categories from product data
 	const extractedCategory = extractCategoryFromProductData(raw, sourceType, categoryFromKey);
 	
@@ -684,6 +688,24 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 			categoryKey
 		});
 	}
+	
+	// Extract categoryGroup from categoryKey (format: platform_category)
+	// categoryGroup should be lowercase, hyphenated (e.g., 'home-kitchen', 'beauty-personal-care')
+	let categoryGroup = '';
+	if (categoryKey && typeof categoryKey === 'string' && categoryKey.includes('_')) {
+		const categoryFromKey = categoryKey.split('_').pop() || '';
+		categoryGroup = categoryFromKey.toLowerCase();
+	} else {
+		// Fallback: try to derive from hierarchy or use default
+		const mainCat = hierarchy?.mainCategory || '';
+		if (mainCat) {
+			// Convert "Home & Kitchen" to "home-kitchen" format
+			categoryGroup = mainCat.toLowerCase().replace(/\s+/g, '-').replace(/&/g, '').replace(/\//g, '-');
+		}
+	}
+	
+	// Log categoryGroup extraction for debugging
+	logger.debug('categoryGroup extracted', { categoryKey, categoryGroup, mainCategory: hierarchy?.mainCategory });
 
 	// Console log for every product - Include Product ID and Product Code
 	const productId = raw.id || raw.productId || 'N/A';
@@ -744,6 +766,9 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		links,
 		categoryKey,
 		categoryPath: raw.categoryPath || [],
+		// categoryGroup: Primary attribute for database queries (REQUIRED)
+		// Must match exact values: electronics, fashion, home-kitchen, sports-fitness, etc.
+		categoryGroup: categoryGroup,
 		// Hierarchical category fields
 		hierarchicalCategory: {
 			mainCategory: hierarchy.mainCategory,
@@ -818,36 +843,38 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 
 async function tryConfigs(url, driver, config) {
 	const pageTypes = ['searchPage', 'dealsGridPage', 'carouselPage', 'bestCarouselPage'];
+	
 	for (const pageType of pageTypes) {
 		try {
-			logger.debug(`Attempting ${pageType} for ${url}`, { pageType, url });
+			logger.info(`🔍 Attempting extraction with ${pageType}`, { pageType, url });
 			const rawProducts = await scrapePage(url, driver, config, pageType);
 			if (Array.isArray(rawProducts) && rawProducts.length > 0) {
-				logger.info(`Extracted products using ${pageType}`, { count: rawProducts.length, url });
+				logger.info(`✅ Extracted products using ${pageType}`, { count: rawProducts.length, url, pageType });
 				return { rawProducts, usedPageType: pageType };
 			}
-			logger.debug(`No results with ${pageType}`);
+			logger.warn(`⚠️ No results with ${pageType}`, { url, pageType, productsFound: rawProducts?.length || 0 });
 			
 			// Clear memory after each attempt
 			try {
 				await driver.executeScript('if (window.gc) window.gc();');
 			} catch {}
 		} catch (error) {
-			logger.error(`❌ [ERROR] Error with ${pageType}`, { 
+			logger.error(`❌ Error with ${pageType}`, { 
 				error: error.message, 
-				errorStack: error.stack,
-				errorName: error.name,
 				url,
-				pageType
+				pageType,
+				stack: error.stack,
+				errorName: error.name
 			});
 			// Clear memory on error
 			try {
 				await driver.executeScript('if (window.gc) window.gc();');
 			} catch {}
-			// Re-throw to propagate the error up
-			throw error;
+			// Don't throw - continue to next pageType to try alternatives
 		}
 	}
+	
+	logger.error('❌ [CRITICAL] All page types failed to extract products', { url, attemptedTypes: pageTypes });
 	return { rawProducts: [], usedPageType: null };
 }
 
@@ -887,7 +914,8 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 		// Use provided platform or detect from URL
 		let detectedPlatform = platform;
 		if (!detectedPlatform) {
-			const storeKey = Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase()));
+			const { resolvePlatformFromUrl } = require('../utils/platformUtils');
+			const storeKey = resolvePlatformFromUrl(url) || Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase()));
 			if (!storeKey) {
 				logger.warn('Could not detect platform from URL, defaulting to amazon', { url, availablePlatforms: Object.keys(storeMap) });
 				detectedPlatform = 'amazon';

@@ -27,6 +27,13 @@ module.exports = {
       'commission', 'fee', 'affiliate', 'associate', 'earn', 'revenue',
       'commission rate', 'earning', 'partner', 'referral', 'cashback'
     ],
+    // Keywords to exclude flight-related banners
+    flightKeywords: [
+      'flight', 'flights', 'airline', 'airlines', 'airport', 'booking',
+      'book flight', 'flight booking', 'air ticket', 'air tickets',
+      'domestic flight', 'international flight', 'cheap flights',
+      'flight deals', 'flight offers', 'travel', 'air travel'
+    ],
     percentagePatterns: [
       /\d+%\s*(?:commission|fee|earning)/i,
       /commission\s*\d+%/i,
@@ -78,7 +85,11 @@ module.exports = {
           'product', 'item', 'goods', 'merchandise', 'inventory',
           'add to cart', 'buy now', 'shop now', 'view details',
           'price', 'discount', 'offer', 'deal', 'reviews', 'ratings',
-          'samsung', 'mi', 'tv', 'mobile', 'phone' // Exclude specific product brands
+          'samsung', 'mi', 'tv', 'mobile', 'phone', // Exclude specific product brands
+          'flight', 'flights', 'airline', 'airlines', 'airport', 'booking',
+          'book flight', 'flight booking', 'air ticket', 'air tickets',
+          'domestic flight', 'international flight', 'cheap flights',
+          'flight deals', 'flight offers', 'travel', 'air travel'
         ],
         // Banner-specific validation
         bannerKeywords: [
@@ -117,7 +128,11 @@ module.exports = {
           'associate', 'commission', 'affiliate', 'whatsapp', 'telegram',
           'product', 'item', 'goods', 'merchandise', 'inventory',
           'add to cart', 'buy now', 'shop now', 'view details',
-          'price', 'discount', 'offer', 'deal', 'reviews', 'ratings'
+          'price', 'discount', 'offer', 'deal', 'reviews', 'ratings',
+          'flight', 'flights', 'airline', 'airlines', 'airport', 'booking',
+          'book flight', 'flight booking', 'air ticket', 'air tickets',
+          'domestic flight', 'international flight', 'cheap flights',
+          'flight deals', 'flight offers', 'travel', 'air travel'
         ],
         bannerKeywords: [
           'banner', 'hero', 'main', 'primary', 'featured',
@@ -156,7 +171,11 @@ module.exports = {
           'associate', 'commission', 'affiliate', 'whatsapp', 'telegram',
           'product', 'item', 'goods', 'merchandise', 'inventory',
           'add to cart', 'buy now', 'shop now', 'view details',
-          'price', 'discount', 'offer', 'deal', 'reviews', 'ratings'
+          'price', 'discount', 'offer', 'deal', 'reviews', 'ratings',
+          'flight', 'flights', 'airline', 'airlines', 'airport', 'booking',
+          'book flight', 'flight booking', 'air ticket', 'air tickets',
+          'domestic flight', 'international flight', 'cheap flights',
+          'flight deals', 'flight offers', 'travel', 'air travel'
         ],
         bannerKeywords: [
           'banner', 'hero', 'main', 'primary', 'featured',
@@ -195,7 +214,11 @@ module.exports = {
           'associate', 'commission', 'affiliate', 'whatsapp', 'telegram',
           'product', 'item', 'goods', 'merchandise', 'inventory',
           'add to cart', 'buy now', 'shop now', 'view details',
-          'price', 'discount', 'offer', 'deal', 'reviews', 'ratings'
+          'price', 'discount', 'offer', 'deal', 'reviews', 'ratings',
+          'flight', 'flights', 'airline', 'airlines', 'airport', 'booking',
+          'book flight', 'flight booking', 'air ticket', 'air tickets',
+          'domestic flight', 'international flight', 'cheap flights',
+          'flight deals', 'flight offers', 'travel', 'air travel'
         ],
         bannerKeywords: [
           'banner', 'hero', 'main', 'primary', 'featured',

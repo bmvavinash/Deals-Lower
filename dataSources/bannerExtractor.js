@@ -20,25 +20,121 @@ class BannerExtractor {
     constructor(options = {}) {
         this.driver = null;
         this.extractedBanners = [];
-        this.useExistingChrome = options.useExistingChrome || process.env.USE_EXISTING_CHROME === '1';
+        // For banner extraction, always use normal headless browser (no login needed)
+        // Only use existing Chrome if explicitly requested AND requires login
+        // Banners don't need login, so default to false
+        this.useExistingChrome = options.useExistingChrome === true && options.requiresLogin === true;
         this.debuggerAddress = options.debuggerAddress || process.env.DEBUGGER_ADDRESS || '127.0.0.1:9222';
+        // Store default visibility setting
+        this.defaultVisibility = options.visibility !== undefined 
+            ? options.visibility 
+            : (bannerConfig.global.defaultVisibility !== undefined 
+                ? bannerConfig.global.defaultVisibility 
+                : false);
+    }
+
+    /**
+     * Start Chrome with remote debugging if needed (for login scenarios)
+     * For banners, this should not be needed as no login is required
+     */
+    async startChromeDebuggerIfNeeded() {
+        if (!this.useExistingChrome) {
+            return false; // Not needed for headless mode
+        }
+
+        const { spawn } = require('child_process');
+        const http = require('http');
+        const fs = require('fs');
+        
+        // Check if Chrome debugger is already running
+        return new Promise((resolve) => {
+            const checkConnection = () => {
+                const req = http.get('http://127.0.0.1:9222/json', { timeout: 1000 }, (res) => {
+                    resolve(true); // Chrome debugger is running
+                });
+                req.on('error', () => {
+                    // Chrome debugger not running, try to start it
+                    logger.info('Chrome debugger not running, attempting to start it...');
+                    const chromePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+                    const userDataDir = process.env.CHROME_USER_DATA || 'C:\\selenum\\ChromeProfile';
+                    
+                    if (fs.existsSync(chromePath)) {
+                        const args = [
+                            '--remote-debugging-port=9222',
+                            `--user-data-dir="${userDataDir}"`,
+                            '--no-first-run',
+                            '--no-default-browser-check'
+                        ];
+                        
+                        spawn(chromePath, args, {
+                            detached: true,
+                            stdio: 'ignore',
+                            shell: false
+                        }).unref();
+                        
+                        logger.info('Chrome started with debugger, waiting for connection...');
+                        setTimeout(() => {
+                            const retryReq = http.get('http://127.0.0.1:9222/json', { timeout: 2000 }, () => {
+                                logger.info('Chrome debugger is now accessible');
+                                resolve(true);
+                            });
+                            retryReq.on('error', () => {
+                                logger.warn('Chrome debugger still not accessible, falling back to headless mode');
+                                this.useExistingChrome = false; // Fallback to headless
+                                resolve(false);
+                            });
+                        }, 3000);
+                    } else {
+                        logger.warn('Chrome not found, falling back to headless mode');
+                        this.useExistingChrome = false;
+                        resolve(false);
+                    }
+                });
+                req.on('timeout', () => {
+                    req.destroy();
+                    resolve(false);
+                });
+            };
+            checkConnection();
+        });
     }
 
     async initializeDriver() {
         try {
+            // For banners, always use headless mode (no login needed)
+            // Only try Chrome debugger if explicitly required for login scenarios
+            if (this.useExistingChrome) {
+                // Try to start Chrome debugger if not running
+                const chromeReady = await this.startChromeDebuggerIfNeeded();
+                if (!chromeReady) {
+                    logger.info('Falling back to headless mode for banner extraction');
+                    this.useExistingChrome = false;
+                }
+            }
+
             const options = new chrome.Options();
             options.addArguments('--no-sandbox');
             options.addArguments('--disable-dev-shm-usage');
             options.addArguments('--disable-gpu');
             options.addArguments('--window-size=1920,1080');
+            // Add User-Agent to avoid headless browser detection
+            options.addArguments('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
             if (this.useExistingChrome) {
-                // Attach to an already running Chrome with remote debugging
-                // selenium-webdriver chrome supports debuggerAddress via options_.
-                options.options_.debuggerAddress = this.debuggerAddress;
-                logger.info('Attaching to existing Chrome via debugger', { debuggerAddress: this.debuggerAddress });
-            } else {
-                options.addArguments('--headless');
+                // Attach to an already running Chrome with remote debugging (only for login scenarios)
+                try {
+                    options.options_.debuggerAddress = this.debuggerAddress;
+                    logger.info('Attaching to existing Chrome via debugger', { debuggerAddress: this.debuggerAddress });
+                } catch (debugError) {
+                    logger.warn('Failed to set debugger address, falling back to headless', { error: debugError.message });
+                    this.useExistingChrome = false;
+                }
+            }
+            
+            // Always use headless for banner extraction (no login needed)
+            if (!this.useExistingChrome) {
+                options.addArguments('--headless=new'); // Use new headless mode
+                logger.info('Using headless browser for banner extraction (no login required)');
             }
 
             this.driver = await new Builder()
@@ -46,9 +142,17 @@ class BannerExtractor {
                 .setChromeOptions(options)
                 .build();
 
-            logger.info('Banner extractor driver initialized successfully');
+            logger.info('Banner extractor driver initialized successfully', { 
+                mode: this.useExistingChrome ? 'existing-chrome' : 'headless' 
+            });
         } catch (error) {
             logger.error('Failed to initialize driver:', { error: error.message });
+            // If connection to existing Chrome fails, retry with headless
+            if (this.useExistingChrome && error.message.includes('cannot connect to chrome')) {
+                logger.info('Retrying with headless mode instead of existing Chrome');
+                this.useExistingChrome = false;
+                return await this.initializeDriver(); // Retry with headless
+            }
             throw error;
         }
     }
@@ -80,6 +184,93 @@ class BannerExtractor {
             if (productWords.some(w => lowerAlt.includes(w))) return true;
             // Image host for product images
             if (lowerUrl.includes('rukminim2.flixcart.com/image/')) return true;
+            return false;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    // Enhanced product image detection for all platforms
+    isLikelyProductImage(imageUrl, altText, platformKey) {
+        try {
+            if (!imageUrl) return true;
+            const lowerUrl = imageUrl.toLowerCase();
+            const lowerAlt = (altText || '').toLowerCase();
+            
+            // Platform-specific product image patterns
+            if (platformKey === 'flipkart') {
+                return this.isLikelyFlipkartProductImage(imageUrl, altText);
+            }
+            
+            // Amazon product image patterns
+            if (platformKey === 'amazon') {
+                // Amazon product image patterns
+                const amazonProductPatterns = [
+                    '/images/i/', // Amazon product images
+                    '/images/g/', // Amazon product gallery
+                    '._ac_', // Amazon product image format
+                    '/media/images/', // Amazon media images
+                ];
+                // Product keywords in alt text
+                const productKeywords = [
+                    'product', 'item', 'buy now', 'add to cart', 'price', '₹', 'rs.',
+                    'mobile', 'phone', 'laptop', 'watch', 'shirt', 'shoes', 'bag'
+                ];
+                if (amazonProductPatterns.some(p => lowerUrl.includes(p)) && 
+                    productKeywords.some(k => lowerAlt.includes(k))) {
+                    return true;
+                }
+            }
+            
+            // Myntra product image patterns
+            if (platformKey === 'myntra') {
+                const myntraProductPatterns = [
+                    '/images/', // Myntra product images
+                    '/product/', // Product image paths
+                ];
+                const productKeywords = [
+                    'men', 'women', 'boys', 'girls', 'shirt', 'dress', 'jeans', 'shoes',
+                    'price', '₹', 'buy', 'add to bag'
+                ];
+                if (myntraProductPatterns.some(p => lowerUrl.includes(p)) && 
+                    productKeywords.some(k => lowerAlt.includes(k))) {
+                    return true;
+                }
+            }
+            
+            // Ajio product image patterns
+            if (platformKey === 'ajio') {
+                const ajioProductPatterns = [
+                    '/medias/', // Ajio product images
+                    '/product/', // Product image paths
+                ];
+                const productKeywords = [
+                    'men', 'women', 'boys', 'girls', 'shirt', 'dress', 'jeans', 'shoes',
+                    'price', '₹', 'buy', 'add to bag'
+                ];
+                if (ajioProductPatterns.some(p => lowerUrl.includes(p)) && 
+                    productKeywords.some(k => lowerAlt.includes(k))) {
+                    return true;
+                }
+            }
+            
+            // Generic product image detection (small square images are usually products)
+            const smallImagePatterns = [
+                '/150x150', '/200x200', '/250x250', '/300x300',
+                'w=150', 'h=150', 'w=200', 'h=200',
+                'thumbnail', 'thumb', 'small'
+            ];
+            if (smallImagePatterns.some(p => lowerUrl.includes(p))) {
+                // Check if alt text contains product-related words
+                const productIndicators = [
+                    'product', 'item', 'buy', 'price', '₹', 'rs.', 'add to cart',
+                    'mobile', 'phone', 'laptop', 'watch', 'shirt', 'shoes'
+                ];
+                if (productIndicators.some(indicator => lowerAlt.includes(indicator))) {
+                    return true;
+                }
+            }
+            
             return false;
         } catch (_) {
             return false;
@@ -234,9 +425,9 @@ class BannerExtractor {
                     
                     logger.debug(`Found direct image: ${imageUrl}, alt: ${altText}`);
 
-                    // Early filter for Flipkart product thumbnails
-                    if (platformKey === 'flipkart' && this.isLikelyFlipkartProductImage(imageUrl, altText)) {
-                        logger.debug('Skipping likely product image (Flipkart direct)', { imageUrl, altText });
+                    // Early filter for product images (all platforms)
+                    if (this.isLikelyProductImage(imageUrl, altText, platformKey)) {
+                        logger.debug('Skipping likely product image', { platform: platformKey, imageUrl: imageUrl.substring(0, 100), altText });
                         continue;
                     }
 
@@ -260,6 +451,15 @@ class BannerExtractor {
                         continue;
                     }
                     
+                    // Additional check for flight-related content
+                    const bannerConfig = require('../config/bannerConfig');
+                    const flightKeywords = bannerConfig.global.flightKeywords || [];
+                    const searchText = (altText || '').toLowerCase();
+                    if (flightKeywords.some(keyword => searchText.includes(keyword.toLowerCase()))) {
+                        logger.debug('Skipping flight-related banner', { altText });
+                        continue;
+                    }
+                    
                     // Categorize the banner
                     const categorization = categorizeBanner(altText, null, imageUrl, platformKey);
                     
@@ -271,7 +471,7 @@ class BannerExtractor {
                         id: bannerId,
                         url: imageUrl,
                         clickRedirectUrl: `https://www.${platformKey}.com`, // Default redirect
-                        isActive: true,
+                        isActive: this.defaultVisibility,
                         order: 0,
                         creationTimestamp: timestamp,
                         updateTimestamp: timestamp,
@@ -330,9 +530,9 @@ class BannerExtractor {
             const altText = await imageElement.getAttribute('alt');
             logger.debug(`Found image: ${imageUrl}, alt: ${altText}`);
 
-            // Early filter for Flipkart product thumbnails
-            if (platformKey === 'flipkart' && this.isLikelyFlipkartProductImage(imageUrl, altText)) {
-                logger.debug('Skipping likely product image (Flipkart link)', { imageUrl, altText });
+            // Early filter for product images (all platforms)
+            if (this.isLikelyProductImage(imageUrl, altText, platformKey)) {
+                logger.debug('Skipping likely product image', { platform: platformKey, imageUrl: imageUrl.substring(0, 100), altText });
                 return null;
             }
 
@@ -353,6 +553,15 @@ class BannerExtractor {
                     reason: contentValidation.reason, 
                     altText: altText 
                 });
+                return null;
+            }
+            
+            // Additional check for flight-related content
+            const bannerConfig = require('../config/bannerConfig');
+            const flightKeywords = bannerConfig.global.flightKeywords || [];
+            const searchText = (altText || '').toLowerCase();
+            if (flightKeywords.some(keyword => searchText.includes(keyword.toLowerCase()))) {
+                logger.debug('Skipping flight-related banner', { altText });
                 return null;
             }
             
@@ -385,7 +594,7 @@ class BannerExtractor {
                 id: bannerId,
                 url: imageValidation.value,
                 clickRedirectUrl: clickRedirectUrl,
-                isActive: true,
+                isActive: this.defaultVisibility,
                 order: 0,
                 creationTimestamp: timestamp,
                 updateTimestamp: timestamp,

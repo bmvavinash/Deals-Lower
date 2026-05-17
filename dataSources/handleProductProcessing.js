@@ -5,7 +5,10 @@ const constants = require("../config/constants");
 const { getModuleLogger } = require("../logger/logger");
 const { getExtrapeUrl } = require("../affiliate/extrape");
 const { amazonLinkGenerator } = require("../affiliate/amazonLinkGenerator");
+const { extractAndStoreFromUrl } = require("./batchProductExtractor");
 const { executionTracker } = require("../services/executionTracker");
+const { isDriverSessionValid } = require("../utils/seleniumDriver");
+const { resolvePlatformFromUrl } = require("../utils/platformUtils");
 
 const logger = getModuleLogger('handleProductProcessing');
 
@@ -33,6 +36,11 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
 
 async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username = "", generateLink = false) {
   try {
+    if (!(await isDriverSessionValid(driver))) {
+      logger.warn('WebDriver not ready, skipping product processing', { link });
+      return searchStatus.SEARCH_NOT_APPLICABLE;
+    }
+
     let shortUrl = link;
     let resolvedUrl = link;
     
@@ -52,7 +60,7 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
       resolvedUrl = inrdealsUrl;
     }
 
-    const storeKey = Object.keys(storeMap).find(key => resolvedUrl.includes(key));
+    const storeKey = resolvePlatformFromUrl(resolvedUrl);
     if (!storeKey || !storeMap[storeKey]) {
       logger.warn('Unsupported store', { url: resolvedUrl, storeKey: storeKey || 'unknown' });
       return searchStatus.SEARCH_NOT_APPLICABLE;
@@ -97,27 +105,59 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
       return searchStatus.SEARCH_NOT_APPLICABLE;
     }
 
-    // Fallback: scrape listing/search page for first few products
+    // Fallback: scrape listing/search page and bulk save all products
     try {
-      const platform = Object.keys(storeMap).find(key => link.includes(key));
+      const platform = resolvePlatformFromUrl(resolvedUrl) || resolvePlatformFromUrl(link);
       if (!platform || !storeMap[platform]) {
         logger.warn('Unsupported platform for scraping', { url: link, platform: platform || 'unknown' });
         return searchStatus.SEARCH_NOT_APPLICABLE;
       }
-      const pageType = 'searchPage';
-      const config = await loadConfig(`./PageConfig/${platform}PageConfig.js`);
-      const products = await scrapePage(link, driver, config, pageType);
 
-      for (let i = 0; i < (products?.length || 0); i++) {
-        const product = products[i];
-        const postProduct = i < 1; // first product: post; next could be enrichment only
-        try { await driver.get(product?.productUrl); } catch (_) {}
-        await processProduct(driver, product?.productUrl, product?.name || text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink);
-        if (i >= 2) break; // limit work per message
+      logger.info('Processing search page - using bulk extraction and storage', { url: link, platform, username });
+      
+      // Use batch extractor which handles normalization, validation, and bulk storage
+      const result = await extractAndStoreFromUrl(
+        driver,
+        resolvedUrl,
+        'telegram', // sourceType
+        '', // categoryKey
+        null, // ctx (no context tracking needed here)
+        'deals' // targetDb
+      );
+
+      logger.info('Search page products processed via bulk extraction', {
+        url: link,
+        extracted: result.extracted,
+        stored: result.stored,
+        created: result.created,
+        updated: result.updated,
+        platform,
+        username
+      });
+
+      // Track bulk operation in execution tracker (summary tracking)
+      if (result.stored > 0) {
+        try {
+          // Update progress with batch summary
+          await executionTracker.updateTelegramProductProgress(
+            platform, 
+            result.created > 0 ? 'created' : 'updated', 
+            `batch_search_${Date.now()}`
+          );
+          logger.debug('Execution tracker updated for batch search products', {
+            platform,
+            stored: result.stored,
+            created: result.created,
+            updated: result.updated
+          });
+        } catch (e) {
+          logger.warn('Failed to track batch product progress', { error: e?.message });
+        }
       }
+
       return searchStatus.SEARCH_CREATED;
     } catch (e) {
-      logger.error('Fallback scrape failed', { error: e?.message });
+      logger.error('Fallback scrape failed', { error: e?.message, stack: e?.stack });
       return searchStatus.SEARCH_ERROR;
     }
   } catch (e) {

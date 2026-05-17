@@ -1,81 +1,103 @@
-const { Builder } = require("selenium-webdriver");
-const chrome = require("selenium-webdriver/chrome");
-require("chromedriver");
-const { initializeBot, setDriver, getNewBotMessages } = require('./dataSources/autoTelegramAll');
+const net = require('net');
+const { initializeBot, setDriver, getNewBotMessages, kickOffQueueProcessing } = require('./dataSources/autoTelegramAll');
 const { handleProductProcessing } = require('./dataSources/handleProductProcessing');
 const { firebaseget } = require('./database/firebaseget');
-const constants = require('./config/constants');
 const { getModuleLogger } = require('./logger/logger');
+const { createChromeDriver, isDriverSessionValid } = require('./utils/seleniumDriver');
 
 const logger = getModuleLogger('telegramBotRunner');
 
 let driver = null;
+let singleInstanceServer = null;
+
+async function acquireSingleInstanceLock() {
+  const lockPort = parseInt(process.env.TELEGRAM_BOT_LOCK_PORT || '9233', 10);
+  if (!Number.isFinite(lockPort)) {
+    logger.warn('Invalid TELEGRAM_BOT_LOCK_PORT, skipping single-instance lock', { value: process.env.TELEGRAM_BOT_LOCK_PORT });
+    return true;
+  }
+
+  return await new Promise((resolve) => {
+    const server = net.createServer();
+
+    server.once('error', (err) => {
+      if (err && err.code === 'EADDRINUSE') {
+        logger.error('Another Telegram bot instance is already running (lock port in use). Exiting to avoid Telegram 409 conflicts.', {
+          lockPort
+        });
+        return resolve(false);
+      }
+      logger.warn('Could not acquire Telegram bot single-instance lock (continuing anyway)', {
+        lockPort,
+        error: err?.message,
+        code: err?.code
+      });
+      return resolve(true);
+    });
+
+    server.listen(lockPort, '127.0.0.1', () => {
+      singleInstanceServer = server;
+      logger.info('Acquired Telegram bot single-instance lock', { lockPort });
+      resolve(true);
+    });
+  });
+}
 
 async function initializeDriver() {
   try {
-    logger.info('🌐 Initializing Chrome WebDriver...');
-    
-    let options = new chrome.Options();
-    options.debuggerAddress("localhost:9222"); // Connect to existing Chrome instance
-    
-    driver = await chrome.Driver.createSession(options);
-    global.driver = driver; // Make driver globally available
-    
-    // Verify driver session is valid
-    try {
-      await driver.getCurrentUrl(); // Test if session is valid
-      logger.info('✅ Chrome WebDriver initialized and session verified');
-    } catch (sessionError) {
-      logger.warn('⚠️ Driver session test failed, but continuing', { error: sessionError.message });
-    }
-    
+    logger.info('🌐 Initializing Chrome WebDriver (debugger port, then headless fallback)...');
+
+    const { driver: newDriver, mode, debuggerAddress } = await createChromeDriver();
+    driver = newDriver;
+    global.driver = driver;
+    setDriver(driver);
+
+    logger.info('✅ Chrome WebDriver initialized and session verified', { mode, debuggerAddress: debuggerAddress || 'n/a' });
     return driver;
   } catch (error) {
     logger.error('❌ Failed to initialize WebDriver:', { error: error.message, stack: error.stack });
-    // Don't throw - try to continue without driver or retry
+    driver = null;
+    global.driver = null;
+    setDriver(null);
     logger.warn('⚠️ Will retry driver initialization in next loop');
     return null;
   }
 }
 
 async function ensureDriverValid() {
-  if (!driver) {
-    logger.info('🔄 Driver is null, re-initializing...');
-    await initializeDriver();
-    if (driver) {
-      setDriver(driver);
-    }
-    return driver !== null;
-  }
-  
-  try {
-    // Test if driver session is still valid
-    await driver.getCurrentUrl();
+  if (await isDriverSessionValid(driver)) {
     return true;
-  } catch (error) {
-    logger.warn('⚠️ Driver session invalid, re-initializing...', { error: error.message });
-    driver = null;
-    await initializeDriver();
-    if (driver) {
-      setDriver(driver);
-    }
-    return driver !== null;
   }
+
+  logger.warn('⚠️ Driver session invalid or missing, re-initializing...');
+  if (driver) {
+    try {
+      await driver.quit();
+    } catch {
+      // ignore
+    }
+  }
+  driver = null;
+  global.driver = null;
+  setDriver(null);
+
+  await initializeDriver();
+  return await isDriverSessionValid(driver);
 }
 
 async function runTelegramBot() {
   const { executionTracker } = require('./services/executionTracker');
   
   try {
+    const locked = await acquireSingleInstanceLock();
+    if (!locked) return;
+
     // Start Telegram execution tracking
     await executionTracker.startTelegramExecution('telegram_bot');
     logger.info('🚀 Starting Telegram Bot with proper driver setup...');
     
     // Initialize driver first
     await initializeDriver();
-    
-    // Set the driver for Telegram bot processing
-    setDriver(driver);
     
     // Get initial data
     let jsonData = {};
@@ -128,6 +150,9 @@ async function runTelegramBot() {
           await new Promise(resolve => setTimeout(resolve, 10000)); // Wait 10s before retry
           continue;
         }
+
+        // Process any messages queued while driver was unavailable
+        await kickOffQueueProcessing();
         
         // Get new messages from Telegram (this waits 5 seconds internally)
         const messages = await getNewBotMessages();
@@ -228,6 +253,10 @@ process.on('SIGINT', async () => {
       logger.error('❌ Error closing WebDriver:', { error: error.message });
     }
   }
+  if (singleInstanceServer) {
+    try { singleInstanceServer.close(); } catch {}
+    singleInstanceServer = null;
+  }
   process.exit(0);
 });
 
@@ -240,6 +269,10 @@ process.on('SIGTERM', async () => {
     } catch (error) {
       logger.error('❌ Error closing WebDriver:', { error: error.message });
     }
+  }
+  if (singleInstanceServer) {
+    try { singleInstanceServer.close(); } catch {}
+    singleInstanceServer = null;
   }
   process.exit(0);
 });

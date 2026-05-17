@@ -49,7 +49,8 @@ async function scrapePage(url, driver, config, pageType) {
             throw new Error("storeMap configuration is not available");
         }
         
-        const storeKey = Object.keys(storeMap).find(key => url.includes(key.toLowerCase()));
+        const { resolvePlatformFromUrl } = require('./utils/platformUtils');
+        const storeKey = resolvePlatformFromUrl(url) || Object.keys(storeMap).find(key => url.includes(key.toLowerCase()));
         if (!storeKey) {
             logger.error('Platform not detected from URL', { 
                 url, 
@@ -254,12 +255,77 @@ async function scrapeGeneral(driver, pageConfig, storeKey) {
     
     try {
         // Wait for base selector to appear (handles lazy/dom injection)
+        logger.info('Waiting for base selector to appear', { baseSelector: pageConfig.baseSelector, timeout: 15000 });
         await driver.wait(async () => {
             const els = await driver.findElements(By.css(pageConfig.baseSelector));
-            return els && els.length > 0;
-        }, 10000);
-        const initialEls = await driver.findElements(By.css(pageConfig.baseSelector));
+            const hasElements = els && els.length > 0;
+            if (!hasElements) {
+                // Try alternative common selectors if base selector fails
+                const altSelectors = [
+                    'div[data-component-type="s-search-result"]',
+                    'div.s-result-item',
+                    'div[data-asin]',
+                    'div.s-card-container',
+                    'div.puis-card-container'
+                ];
+                for (const altSelector of altSelectors) {
+                    const altEls = await driver.findElements(By.css(altSelector));
+                    if (altEls && altEls.length > 0) {
+                        logger.info('Found products with alternative selector', { altSelector, count: altEls.length });
+                        return true;
+                    }
+                }
+            }
+            return hasElements;
+        }, 15000);
+        let initialEls = await driver.findElements(By.css(pageConfig.baseSelector));
         logger.info('Initial product tiles located', { storeKey, baseSelector: pageConfig.baseSelector, count: initialEls.length });
+        
+        // If base selector found nothing, try alternative selectors for Amazon
+        if (initialEls.length === 0 && storeKey.toLowerCase() === 'amazon') {
+            logger.warn('Base selector found no elements, trying alternatives', { baseSelector: pageConfig.baseSelector, storeKey });
+            const altSelectors = [
+                'div[data-component-type="s-search-result"]',
+                'div.s-result-item[data-asin]',
+                'div[data-asin]:not([data-asin=""])',
+                'div.s-card-container[data-asin]',
+                'div.puis-card-container[data-asin]',
+                'div.puis-card-container',
+                'div[data-asin]',
+                'div.s-result-item'
+            ];
+            for (const altSelector of altSelectors) {
+                try {
+                    const altEls = await driver.findElements(By.css(altSelector));
+                    if (altEls && altEls.length > 0) {
+                        logger.info('✅ Found products with alternative selector', { 
+                            altSelector, 
+                            count: altEls.length,
+                            originalSelector: pageConfig.baseSelector
+                        });
+                        pageConfig.baseSelector = altSelector;
+                        initialEls = altEls;
+                        break;
+                    }
+                } catch (e) {
+                    logger.debug('Alternative selector failed', { altSelector, error: e?.message });
+                }
+            }
+            
+            if (initialEls.length === 0) {
+                const currentUrl = await driver.getCurrentUrl();
+                logger.error('❌ All alternative selectors failed, no products found', { 
+                    url: currentUrl,
+                    storeKey,
+                    attemptedSelectors: altSelectors
+                });
+            } else {
+                logger.info('✅ Using alternative selector successfully', { 
+                    newSelector: pageConfig.baseSelector, 
+                    count: initialEls.length 
+                });
+            }
+        }
         // Also wait for at least one link inside a product card (common signal that content populated)
         try {
             await driver.wait(async () => {

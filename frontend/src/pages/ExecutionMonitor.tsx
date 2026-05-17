@@ -201,8 +201,48 @@ const ExecutionMonitor: React.FC = () => {
           )}
 
           {/* Hierarchical Pipeline View - Only for bulk updates */}
-          {executionType === 'bulk_update' && currentExec.platforms && (
+          {executionType === 'bulk_update' && currentExec.platforms && Object.keys(currentExec.platforms).length > 0 && (
             <PipelineView execution={currentExec} />
+          )}
+          
+          {/* Enhanced Platform/Category Summary - Show even if PipelineView is empty */}
+          {executionType === 'bulk_update' && currentExec.platforms && Object.keys(currentExec.platforms).length > 0 && (
+            <div className="platform-category-summary">
+              <h3>📊 Platform & Category Progress</h3>
+              <div className="platforms-list">
+                {Object.entries(currentExec.platforms).map(([platform, platformData]: [string, any]) => (
+                  <div key={platform} className="platform-card">
+                    <div className="platform-header">
+                      <span className="platform-icon">🌐</span>
+                      <span className="platform-name">{platform.toUpperCase()}</span>
+                      <span className="platform-status">
+                        {platformData.totalProcessed || 0} / {platformData.totalProducts || 0} products
+                      </span>
+                    </div>
+                    {platformData.categories && Object.keys(platformData.categories).length > 0 ? (
+                      <div className="categories-list">
+                        {Object.entries(platformData.categories).map(([category, categoryData]: [string, any]) => (
+                          <div key={category} className="category-item">
+                            <span className="category-icon">📁</span>
+                            <span className="category-name">{category}</span>
+                            <span className="category-stats">
+                              {categoryData.processed || 0} / {categoryData.totalProducts || 0} products
+                              {categoryData.created > 0 && <span className="stat-badge created">+{categoryData.created}</span>}
+                              {categoryData.updated > 0 && <span className="stat-badge updated">~{categoryData.updated}</span>}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="no-categories">
+                        <span className="category-icon">⏳</span>
+                        <span>Categories will appear as they are processed...</span>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Telegram Bot Products by Platform */}

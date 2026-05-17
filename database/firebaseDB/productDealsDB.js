@@ -191,12 +191,110 @@ class ProductDealsDB {
 					categoryDepth: product.categoryDepth || 0,
 					// Bulk-category keys
 					categoryKey: product.categoryKey || "",
-					// Prefer new hierarchical fields to derive grouping to avoid misclassification
-					categoryGroup: (product.categoryGroup
-						|| product.productCategory
-						|| product.categoryLevel1
-						|| product.hierarchicalCategory?.mainCategory
-						|| ((product.categoryKey && String(product.categoryKey).includes("_")) ? String(product.categoryKey).split("_")[1] : (product.category?.mainCategory || ""))),
+					// categoryGroup: Primary attribute for database queries (REQUIRED)
+					// Must match exact values: electronics, fashion, home-kitchen, sports-fitness, etc.
+					// Format: lowercase, hyphenated (e.g., "home-kitchen", "beauty-personal-care")
+					categoryGroup: (() => {
+						// Helper function to normalize category names to categoryGroup format
+						const normalizeCategoryGroup = (catName) => {
+							if (!catName || typeof catName !== 'string') return '';
+							return catName.toLowerCase()
+								.replace(/\s+/g, '-')           // Replace spaces with hyphens
+								.replace(/&/g, '')              // Remove ampersands
+								.replace(/[^a-z0-9-]/g, '')     // Remove special chars except hyphens
+								.replace(/-+/g, '-')            // Replace multiple hyphens with single
+								.replace(/^-|-$/g, '');         // Remove leading/trailing hyphens
+						};
+						
+						// Helper function to map display names to standard categoryGroup values
+						const mapToStandardCategoryGroup = (catName) => {
+							if (!catName) return '';
+							const normalized = normalizeCategoryGroup(catName);
+							
+							// Map common variations to standard categoryGroup values
+							const categoryMappings = {
+								// Home & Kitchen variations
+								'home-garden': 'home-kitchen',
+								'home-kitchen': 'home-kitchen',
+								'homeandgarden': 'home-kitchen',
+								'homeandkitchen': 'home-kitchen',
+								// Beauty & Personal Care variations
+								'beauty-personal-care': 'beauty-personal-care',
+								'beautypersonalcare': 'beauty-personal-care',
+								'beauty': 'beauty-personal-care',
+								'personal-care': 'beauty-personal-care',
+								// Sports & Fitness variations
+								'sports-fitness': 'sports-fitness',
+								'sportsfitness': 'sports-fitness',
+								'sports': 'sports-fitness',
+								'fitness': 'sports-fitness',
+								// Books & Stationery variations
+								'books-stationery': 'books-stationery',
+								'booksstationery': 'books-stationery',
+								'books': 'books-stationery',
+								'stationery': 'books-stationery',
+								// Baby & Kids variations
+								'baby-kids': 'baby-kids',
+								'bab kids': 'baby-kids',
+								'baby': 'baby-kids',
+								'kids': 'baby-kids',
+								// Tools & Hardware variations
+								'tools-hardware': 'tools-hardware',
+								'toolshardware': 'tools-hardware',
+								'tools': 'tools-hardware',
+								'hardware': 'tools-hardware',
+								// Music & Entertainment variations
+								'music-entertainment': 'music-entertainment',
+								'musicentertainment': 'music-entertainment',
+								'music': 'music-entertainment',
+								'entertainment': 'music-entertainment',
+								// Pet Supplies variations
+								'pet-supplies': 'pet-supplies',
+								'petsupplies': 'pet-supplies',
+								'pet': 'pet-supplies',
+								// Standard categories
+								'electronics': 'electronics',
+								'fashion': 'fashion',
+								'automotive': 'automotive',
+								'grocery': 'grocery'
+							};
+							
+							return categoryMappings[normalized] || normalized;
+						};
+						
+						// 1. If categoryGroup is already set, check if it needs normalization
+						if (product.categoryGroup && typeof product.categoryGroup === 'string') {
+							const current = product.categoryGroup.toLowerCase().trim();
+							// Check if it's already in correct format (contains hyphen or is a standard value)
+							if (current && (current.includes('-') || ['electronics', 'fashion', 'grocery', 'automotive', 'home-kitchen', 'beauty-personal-care', 'sports-fitness', 'books-stationery', 'baby-kids', 'tools-hardware', 'music-entertainment', 'pet-supplies'].includes(current))) {
+								return current;
+							}
+							// If not in correct format, try to map it
+							return mapToStandardCategoryGroup(current);
+						}
+						
+						// 2. Extract from categoryKey (format: platform_category) - This is the most reliable source
+						if (product.categoryKey && typeof product.categoryKey === 'string' && product.categoryKey.includes('_')) {
+							const categoryFromKey = product.categoryKey.split('_').pop() || '';
+							if (categoryFromKey) {
+								const normalized = categoryFromKey.toLowerCase().trim();
+								// categoryKey should already be in correct format (e.g., "home-kitchen")
+								if (normalized && (normalized.includes('-') || ['electronics', 'fashion', 'grocery', 'automotive'].includes(normalized))) {
+									return normalized;
+								}
+								// If not, try to map it
+								return mapToStandardCategoryGroup(normalized);
+							}
+						}
+						
+						// 3. Fallback: normalize from mainCategory/hierarchicalCategory
+						const mainCategory = product.productCategory || product.categoryLevel1 || product.hierarchicalCategory?.mainCategory || product.category?.mainCategory || '';
+						if (mainCategory) {
+							return mapToStandardCategoryGroup(mainCategory);
+						}
+						
+						return '';
+					})(),
 					productType: product.productType || "Website",
 					
 					// Product details

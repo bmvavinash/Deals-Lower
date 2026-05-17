@@ -2,7 +2,7 @@ const { validatePrice, validateDiscount, extractAsin, extractProductUrl, extract
 
 module.exports = {
   "searchPage": {
-    "baseSelector": "div.puis-card-container",
+    "baseSelector": "div[data-component-type='s-search-result']",
     "selectors": {
       // Standardized field names matching Flipkart structure
       "brand": [

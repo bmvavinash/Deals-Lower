@@ -226,6 +226,15 @@ class BannerExtractor {
                         continue;
                     }
                     
+                    // Additional check for flight-related content
+                    const bannerConfig = require('../config/bannerConfig');
+                    const flightKeywords = bannerConfig.global.flightKeywords || [];
+                    const searchText = (altText || '').toLowerCase();
+                    if (flightKeywords.some(keyword => searchText.includes(keyword.toLowerCase()))) {
+                        logger.debug('Skipping flight-related banner', { altText });
+                        continue;
+                    }
+                    
                     // Categorize the banner
                     const categorization = categorizeBanner(altText, null, imageUrl, platformKey);
                     
@@ -313,6 +322,15 @@ class BannerExtractor {
                     reason: contentValidation.reason, 
                     altText: altText 
                 });
+                return null;
+            }
+            
+            // Additional check for flight-related content
+            const bannerConfig = require('../config/bannerConfig');
+            const flightKeywords = bannerConfig.global.flightKeywords || [];
+            const searchText = (altText || '').toLowerCase();
+            if (flightKeywords.some(keyword => searchText.includes(keyword.toLowerCase()))) {
+                logger.debug('Skipping flight-related banner', { altText });
                 return null;
             }
             

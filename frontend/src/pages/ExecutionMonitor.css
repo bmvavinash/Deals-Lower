@@ -447,6 +447,132 @@
   color: #666;
 }
 
+/* Platform & Category Summary Styles */
+.platform-category-summary {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.platform-category-summary h3 {
+  margin: 0 0 20px 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.platforms-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.platform-card {
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 16px;
+  background: #fafafa;
+}
+
+.platform-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.platform-icon {
+  font-size: 20px;
+}
+
+.platform-name {
+  font-weight: bold;
+  font-size: 16px;
+  color: #333;
+  flex: 1;
+  text-transform: capitalize;
+}
+
+.platform-status {
+  font-size: 14px;
+  color: #666;
+  background: #e3f2fd;
+  padding: 4px 12px;
+  border-radius: 4px;
+}
+
+.categories-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-left: 32px;
+}
+
+.category-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
+  transition: all 0.2s;
+}
+
+.category-item:hover {
+  background: #f5f5f5;
+  border-color: #0088cc;
+}
+
+.category-icon {
+  font-size: 16px;
+}
+
+.category-name {
+  font-weight: 500;
+  color: #333;
+  flex: 1;
+  text-transform: capitalize;
+}
+
+.category-stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #666;
+}
+
+.stat-badge {
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.stat-badge.created {
+  background: #e8f5e9;
+  color: #388e3c;
+}
+
+.stat-badge.updated {
+  background: #fff3e0;
+  color: #f57c00;
+}
+
+.no-categories {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: #999;
+  font-style: italic;
+  margin-left: 32px;
+}
+
 
 
 

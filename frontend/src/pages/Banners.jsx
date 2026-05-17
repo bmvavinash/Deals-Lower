@@ -1,0 +1,448 @@
+import React, { useState, useEffect } from 'react';
+import './Banners.css';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
+const buildBannerKey = (banner = {}) => {
+  const platform = (banner.platform || '').trim().toLowerCase();
+  const url = (banner.url || '').trim().toLowerCase();
+  const clickUrl = (banner.clickRedirectUrl || '').trim().toLowerCase();
+  const key = [platform, url, clickUrl].join('|');
+  return key || banner.id;
+};
+
+const dedupeBanners = (banners = []) => {
+  const seen = new Set();
+  const unique = [];
+  let removed = 0;
+
+  banners.forEach((banner) => {
+    const key = buildBannerKey(banner);
+    if (seen.has(key)) {
+      removed += 1;
+      return;
+    }
+    seen.add(key);
+    unique.push(banner);
+  });
+
+  return { unique, removed };
+};
+
+const Banners = () => {
+  const [banners, setBanners] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [triggering, setTriggering] = useState(false);
+  const [filter, setFilter] = useState({ platform: 'all', activeOnly: false });
+  const [bannerSource, setBannerSource] = useState('test-banners');
+  const [sourceLoading, setSourceLoading] = useState(true);
+  const [bannerVisibility, setBannerVisibility] = useState({});
+  const [extracting, setExtracting] = useState(false);
+  const [extractionResult, setExtractionResult] = useState(null);
+  const [dedupeInfo, setDedupeInfo] = useState({ removed: 0 });
+
+  useEffect(() => {
+    fetchBannerSource();
+    fetchStats();
+    const interval = setInterval(() => {
+      fetchStats();
+    }, 30000); // Refresh every 30 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchBannerSource = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/source`);
+      const result = await response.json();
+      if (result.success) {
+        setBannerSource(result.data.current);
+        setSourceLoading(false);
+      }
+    } catch (err) {
+      console.error('Error fetching banner source:', err);
+      setBannerSource('test-banners'); // Default to test-banners
+      setSourceLoading(false);
+    }
+  };
+
+  const triggerBanners = async () => {
+    setTriggering(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        let bannersArray = result.data.banners;
+        
+        // Apply cached status to banners
+        bannersArray = bannersArray.map(banner => {
+          const cacheKey = `banner_${banner.id}_status`;
+          const cachedData = localStorage.getItem(cacheKey);
+          
+          if (cachedData) {
+            try {
+              const cached = JSON.parse(cachedData);
+              return { ...banner, isActive: cached.isActive };
+            } catch (e) {
+              // Invalid cache, use original
+              return banner;
+            }
+          }
+          return banner;
+        });
+        
+        const { unique, removed } = dedupeBanners(bannersArray);
+        setDedupeInfo({ removed });
+
+        setBanners(unique);
+
+        const updatedStats = {
+          ...(result.data.stats || {}),
+          total: unique.length,
+          active: unique.filter(b => b && b.isActive).length,
+          inactive: unique.filter(b => b && !b.isActive).length,
+          source: result.source || bannerSource
+        };
+        setStats(updatedStats);
+        
+        // Initialize visibility state for each banner
+        const visibilityState = {};
+        unique.forEach(banner => {
+          visibilityState[banner.id] = true; // Default to visible
+        });
+        setBannerVisibility(visibilityState);
+        
+        setLoading(false);
+      } else {
+        throw new Error(result.error || 'Failed to trigger banners');
+      }
+    } catch (err) {
+      setError(err.message);
+      setTriggering(false);
+    } finally {
+      setTriggering(false);
+    }
+  };
+
+  const toggleBannerSource = async () => {
+    setSourceLoading(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/source/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        setBannerSource(result.data.current);
+      } else {
+        throw new Error(result.error || 'Failed to toggle banner source');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSourceLoading(false);
+    }
+  };
+
+  const fetchBanners = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filter.platform !== 'all') params.append('platform', filter.platform);
+      if (filter.activeOnly) params.append('activeOnly', 'true');
+      
+      const response = await fetch(`${API_BASE_URL}/api/banners?${params}`);
+      const result = await response.json();
+      if (result.success) {
+        const bannersArray = Object.entries(result.data).map(([id, data]) => ({
+          id,
+          ...data
+        }));
+        const { unique, removed } = dedupeBanners(bannersArray);
+        setDedupeInfo({ removed });
+        setBanners(unique);
+        setLoading(false);
+      } else {
+        throw new Error(result.error || 'Failed to fetch banners');
+      }
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/stats`);
+      const result = await response.json();
+      if (result.success) {
+        setStats(result.data);
+      }
+    } catch (err) {
+      console.error('Error fetching banner stats:', err);
+    }
+  };
+
+  const toggleBannerStatus = async (bannerId, currentStatus) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/${bannerId}/toggle-active`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        // Update local state with new status
+        setBanners(prev => 
+          prev.map(b => 
+            b.id === bannerId 
+              ? { ...b, isActive: result.data.isActive }
+              : b
+          )
+        );
+        
+        // Cache the new status
+        const cacheKey = `banner_${bannerId}_status`;
+        localStorage.setItem(cacheKey, JSON.stringify({
+          isActive: result.data.isActive,
+          timestamp: new Date().toISOString()
+        }));
+        
+        // Update stats
+        fetchStats();
+      } else {
+        setError(`Failed to update banner: ${result.error}`);
+      }
+    } catch (err) {
+      setError(`Error updating banner: ${err.message}`);
+    }
+  };
+
+  const toggleBannerVisibility = (bannerId) => {
+    setBannerVisibility(prev => ({
+      ...prev,
+      [bannerId]: !prev[bannerId]
+    }));
+  };
+
+  const extractAllBanners = async () => {
+    setExtracting(true);
+    setError(null);
+    setExtractionResult(null);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/extract-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setExtractionResult({
+          extracted: result.data.extracted,
+          stored: result.data.stored,
+          duplicates: result.data.duplicates
+        });
+        
+        // Refresh stats after extraction
+        setTimeout(() => {
+          fetchStats();
+        }, 1000);
+        
+        // Show success message
+        setError(null);
+      } else {
+        throw new Error(result.error || 'Failed to extract banners');
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  return (
+    <div className="banners">
+      <div className="banners-header">
+        <h1>🖼️ Banner Management</h1>
+        {stats && (
+          <div className="banner-stats-summary">
+            <span>Total: {stats.total}</span>
+            <span className="active">Active: {stats.active}</span>
+            <span>Inactive: {stats.inactive}</span>
+            <span className="source-info">Source: {stats.source || bannerSource}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="banners-controls">
+        <div className="control-group">
+          <button 
+            onClick={triggerBanners}
+            disabled={triggering}
+            className="trigger-button"
+          >
+            {triggering ? '🔄 Triggering...' : '🚀 Trigger Banners'}
+          </button>
+          
+          <button 
+            onClick={extractAllBanners}
+            disabled={extracting}
+            className="extract-all-button"
+            title="Extract banners from all stores and store in DB (visibility OFF)"
+          >
+            {extracting ? '⏳ Extracting...' : '🔍 Extract All Banners'}
+          </button>
+          
+          <div className="source-toggle">
+            <span className="source-label">Banner Source:</span>
+            <div className="toggle-switch">
+              <button 
+                onClick={toggleBannerSource}
+                disabled={sourceLoading}
+                className={`source-button ${bannerSource === 'test-banners' ? 'active' : ''}`}
+              >
+                test-banners.json
+              </button>
+              <button 
+                onClick={toggleBannerSource}
+                disabled={sourceLoading}
+                className={`source-button ${bannerSource === 'production' ? 'active' : ''}`}
+              >
+                production
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {dedupeInfo.removed > 0 && (
+        <div className="banners-info">
+          Removed {dedupeInfo.removed} duplicate banners for this session.
+        </div>
+      )}
+
+      {error && (
+        <div className="banners-error">⚠️ Error: {error}</div>
+      )}
+
+      {extractionResult && (
+        <div className="banners-success">
+          ✅ Extraction Complete! 
+          Extracted: {extractionResult.extracted}, 
+          Stored: {extractionResult.stored}, 
+          Duplicates Skipped: {extractionResult.duplicates}
+          <br />
+          <small>All banners stored with visibility OFF. You can turn them on one by one in the UI.</small>
+        </div>
+      )}
+
+      {banners.length === 0 && !triggering && (
+        <div className="no-banners-message">
+          <p>No banners loaded yet. Click "Trigger Banners" to fetch from {bannerSource}.</p>
+        </div>
+      )}
+
+      <div className="banners-filters">
+        <select 
+          value={filter.platform} 
+          onChange={(e) => setFilter({ ...filter, platform: e.target.value })}
+          className="filter-select"
+          disabled={banners.length === 0}
+        >
+          <option value="all">All Platforms</option>
+          <option value="amazon">Amazon</option>
+          <option value="flipkart">Flipkart</option>
+          <option value="myntra">Myntra</option>
+          <option value="ajio">Ajio</option>
+        </select>
+        <label className="filter-checkbox">
+          <input
+            type="checkbox"
+            checked={filter.activeOnly}
+            onChange={(e) => setFilter({ ...filter, activeOnly: e.target.checked })}
+            disabled={banners.length === 0}
+          />
+          Active Only
+        </label>
+      </div>
+
+      {stats && stats.byPlatform && Object.keys(stats.byPlatform).length > 0 && (
+        <div className="platform-breakdown">
+          <h3>Banners by Platform</h3>
+          <div className="platform-stats">
+            {Object.entries(stats.byPlatform).map(([platform, count]) => (
+              <div key={platform} className="platform-stat-item">
+                <span className="platform-name">{platform}</span>
+                <span className="platform-count">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="banners-grid">
+        {banners.length === 0 && !triggering ? (
+          <div className="no-banners">No banners found</div>
+        ) : (
+          banners
+            .filter(banner => bannerVisibility[banner.id] !== false)
+            .map((banner) => (
+            <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
+              <div className="banner-status-toggle">
+                <button 
+                  onClick={() => toggleBannerStatus(banner.id, banner.isActive)}
+                  className={`status-toggle-btn ${banner.isActive ? 'active' : 'inactive'}`}
+                  title={`Click to ${banner.isActive ? 'deactivate' : 'activate'} this banner`}
+                >
+                  {banner.isActive ? '✓ Active' : '✗ Inactive'}
+                </button>
+              </div>
+              <div className="banner-image">
+                {banner.url ? (
+                  <img src={banner.url} alt={banner.title || banner.id} onError={(e) => {
+                    e.target.src = 'https://via.placeholder.com/300x150?text=Banner+Image';
+                  }} />
+                ) : (
+                  <div className="banner-placeholder">No Image</div>
+                )}
+              </div>
+              <div className="banner-info">
+                <h3>{banner.title || banner.id}</h3>
+                {banner.description && <p>{banner.description}</p>}
+                <div className="banner-meta">
+                  <span className={`banner-status ${banner.isActive ? 'active' : 'inactive'}`}>
+                    {banner.isActive ? '✓ Active' : '✗ Inactive'}
+                  </span>
+                  {banner.platform && (
+                    <span className="banner-platform">{banner.platform}</span>
+                  )}
+                </div>
+                {banner.clickRedirectUrl && (
+                  <a 
+                    href={banner.clickRedirectUrl} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="banner-link"
+                  >
+                    View Link →
+                  </a>
+                )}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Banners;

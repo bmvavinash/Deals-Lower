@@ -85,6 +85,118 @@ router.get('/history', async (req, res) => {
 });
 
 /**
+ * GET /api/execution/detailed
+ * Get detailed execution status with platform and category breakdown
+ */
+router.get('/detailed', async (req, res) => {
+  try {
+    const status = executionTracker.getCurrentStatus();
+    
+    let breakdown = null;
+    if (status.currentExecution && status.currentExecution.type === 'bulk_update') {
+      const execution = status.currentExecution;
+      breakdown = {
+        platforms: {},
+        categories: {},
+        summary: {
+          totalPlatforms: 0,
+          completedPlatforms: 0,
+          totalCategories: 0,
+          completedCategories: 0,
+          runningCategories: 0,
+          pendingCategories: 0,
+          zeroProductCategories: 0
+        }
+      };
+      
+      if (execution.platforms && typeof execution.platforms === 'object') {
+        const platforms = Object.keys(execution.platforms);
+        breakdown.summary.totalPlatforms = platforms.length;
+        
+        for (const [platform, platformData] of Object.entries(execution.platforms)) {
+          const categories = platformData.categories || {};
+          const categoryKeys = Object.keys(categories);
+          
+          let completedCount = 0;
+          let runningCount = 0;
+          let zeroCount = 0;
+          
+          const categoryDetails = {};
+          for (const [category, categoryData] of Object.entries(categories)) {
+            const total = categoryData.totalProducts || 0;
+            const processed = categoryData.processed || 0;
+            
+            let status = 'pending';
+            if (total === 0 && processed === 0) {
+              status = 'zero';
+              zeroCount++;
+            } else if (processed >= total && total > 0) {
+              status = 'completed';
+              completedCount++;
+            } else if (processed > 0) {
+              status = 'running';
+              runningCount++;
+            }
+            
+            categoryDetails[category] = {
+              status,
+              totalProducts: total,
+              processed: processed,
+              created: categoryData.created || 0,
+              updated: categoryData.updated || 0,
+              errors: categoryData.errors || 0,
+              startTime: categoryData.startTime,
+              lastUpdate: categoryData.lastUpdate
+            };
+            
+            breakdown.categories[category] = categoryDetails[category];
+          }
+          
+          breakdown.platforms[platform] = {
+            status: runningCount > 0 ? 'running' : (completedCount === categoryKeys.length && categoryKeys.length > 0 ? 'completed' : 'pending'),
+            totalCategories: categoryKeys.length,
+            completedCategories: completedCount,
+            runningCategories: runningCount,
+            zeroProductCategories: zeroCount,
+            totalProducts: platformData.totalProducts || 0,
+            processedProducts: platformData.totalProcessed || 0,
+            created: platformData.totalCreated || 0,
+            updated: platformData.totalUpdated || 0,
+            categories: categoryDetails,
+            startTime: platformData.startTime,
+            lastUpdate: platformData.lastUpdate
+          };
+          
+          if (completedCount === categoryKeys.length && categoryKeys.length > 0) {
+            breakdown.summary.completedPlatforms++;
+          }
+          
+          breakdown.summary.totalCategories += categoryKeys.length;
+          breakdown.summary.completedCategories += completedCount;
+          breakdown.summary.runningCategories += runningCount;
+          breakdown.summary.zeroProductCategories += zeroCount;
+        }
+      }
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        ...status,
+        breakdown
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting detailed execution status', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
  * GET /api/execution/product/:productCode
  * Get product details by product code from current execution
  */

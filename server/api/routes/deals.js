@@ -15,8 +15,287 @@ const constants = require('../../../config/constants');
 const { getAccessToken } = require('../../../database/getAccessToken');
 const { firebaseget } = require('../../../database/firebaseget');
 const { firebasepost } = require('../../../database/firebasepost');
+const handleProductProcessingModule = require('../../../dataSources/handleProductProcessing');
+const processProduct = handleProductProcessingModule.processProduct || (async (driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl) => {
+  // Fallback: use getProductDetails directly if processProduct is not exported
+  const { getProductDetails } = require('../../../scheduler');
+  return await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl);
+});
+const { executionTracker } = require('../../../services/executionTracker');
+const { spawn } = require('child_process');
+const path = require('path');
+const net = require('net');
 
 const logger = getModuleLogger('deals-api');
+
+// Global driver instance for product processing
+let globalDriver = null;
+
+async function getOrCreateDriver() {
+  if (!globalDriver) {
+    try {
+      let options = new chrome.Options();
+      options.debuggerAddress("localhost:9222");
+      globalDriver = await chrome.Driver.createSession(options);
+      logger.info('Chrome WebDriver initialized for product processing');
+    } catch (error) {
+      logger.error('Failed to initialize driver', { error: error.message });
+      throw error;
+    }
+  }
+  return globalDriver;
+}
+
+/**
+ * POST /api/deals/process-product
+ * Process a product URL and save to database
+ * Body: { url: string, postProduct: boolean }
+ */
+router.post('/process-product', async (req, res) => {
+  let driver = null;
+  try {
+    const { url, postProduct = false } = req.body;
+    
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({
+        success: false,
+        status: 'error',
+        message: 'Product URL is required',
+        error: 'Product URL is required'
+      });
+    }
+
+    logger.info('Processing product URL', { url, postProduct });
+
+    // Get or create driver - try to use global driver first (same instance as Telegram bot)
+    if (global.driver) {
+      logger.info('Using existing global driver instance');
+      driver = global.driver;
+      try {
+        await driver.getCurrentUrl();
+        logger.info('Global driver is valid');
+      } catch (e) {
+        logger.warn('Global driver invalid, creating new one', { error: e.message });
+        driver = await getOrCreateDriver();
+        global.driver = driver;
+      }
+    } else {
+      logger.info('No global driver found, creating new one');
+      driver = await getOrCreateDriver();
+      global.driver = driver;
+    }
+
+    // Resolve URL in browser first (same as handleProductProcessing)
+    let resolvedUrl = url;
+    try {
+      logger.info('Resolving URL in browser', { url });
+      await driver.get(url);
+      // Wait for page to load
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      resolvedUrl = await driver.getCurrentUrl() || url;
+      logger.info('URL resolved', { original: url, resolved: resolvedUrl });
+      try {
+        const pageTitle = await driver.getTitle();
+        logger.info('Page loaded', { title: pageTitle.substring(0, 100) });
+      } catch (e) {
+        logger.warn('Could not get page title', { error: e.message });
+      }
+    } catch (navError) {
+      logger.error('Failed to resolve URL in browser', { url, error: navError.message });
+    }
+
+    // Get required data (same pattern as working workflows)
+    const accessToken = await getAccessToken();
+    const jsonDataResult = await firebaseget();
+    const jsonData = jsonDataResult?.data || jsonDataResult || {};
+    const todayJsonDataResult = await firebaseget(true);
+    const todayJsonData = todayJsonDataResult?.data || todayJsonDataResult || {};
+    const len = jsonDataResult?.len || 0;
+
+    logger.info('Calling getProductDetails', { url: resolvedUrl, postProduct, len });
+
+    // Process the product using resolved URL (same as handleProductProcessing -> processProduct -> getProductDetails)
+    // getProductDetails expects driver to already be on the page, which we've done above
+    const result = await getProductDetails(
+      driver,
+      resolvedUrl, // Use resolved URL
+      '', // text
+      len,  // Use actual len
+      accessToken,
+      jsonData,
+      todayJsonData,
+      postProduct, // postProduct flag
+      '', // username
+      false, // generateLink
+      '' // shortUrl
+    );
+    
+    logger.info('getProductDetails returned', { result });
+
+    // Determine status based on result
+    let status = 'success';
+    let message = 'Product processed and saved to database successfully';
+    let error = null;
+
+    if (result === productStatus.PRODUCT_ERROR) {
+      status = 'error';
+      message = 'Failed to process product';
+      error = 'Product processing encountered an error';
+    } else if (result === productStatus.PRODUCT_EXCLUDED) {
+      status = 'excluded';
+      message = 'Product excluded (Affiliate policy)';
+    } else if (result === productStatus.PRODUCT_CREATED || result === productStatus.PRODUCT_UPDATED) {
+      status = 'success';
+      message = result === productStatus.PRODUCT_CREATED 
+        ? 'Product created successfully' 
+        : 'Product updated successfully';
+    } else {
+      status = 'success';
+      message = 'Product processed successfully';
+    }
+
+    res.json({
+      success: status === 'success' || status === 'excluded',
+      status,
+      message,
+      error,
+      result: result,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Error processing product', { 
+      error: error.message, 
+      stack: error.stack,
+      url: req.body?.url 
+    });
+    
+    res.status(500).json({
+      success: false,
+      status: 'error',
+      message: 'Failed to process product',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * POST /api/deals/manual-trigger
+ * Manually trigger bulk update for all platforms
+ * Body: { sourceType?: string, targetDb?: string }
+ * NOTE: This route must be defined BEFORE /:productCode to avoid route conflicts
+ */
+router.post('/manual-trigger', async (req, res) => {
+  try {
+    const { sourceType = 'website', targetDb = 'productdeals' } = req.body;
+    
+    logger.info('Manual bulk update triggered', { sourceType, targetDb });
+
+    // Run bulk update in background (don't await - return immediately)
+    runBulkUpdateAll(sourceType, targetDb)
+      .then((result) => {
+        logger.info('Bulk update completed', {
+          sourceType,
+          targetDb,
+          totalProducts: result.totalProducts,
+          successRate: result.successRate
+        });
+      })
+      .catch((error) => {
+        logger.error('Bulk update failed', {
+          sourceType,
+          targetDb,
+          error: error.message,
+          stack: error.stack
+        });
+      });
+
+    // Return immediately - bulk update runs in background
+    res.json({
+      success: true,
+      message: 'Bulk update triggered successfully. It will run in the background.',
+      sourceType,
+      targetDb,
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Error triggering bulk update', { 
+      error: error.message, 
+      stack: error.stack
+    });
+    
+    res.status(500).json({
+      success: false,
+      message: 'Failed to trigger bulk update',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * POST /api/deals/trigger-telegram-bot
+ * Trigger the long-running Telegram bot process from the UI
+ */
+router.post('/trigger-telegram-bot', async (req, res) => {
+  try {
+    logger.info('Telegram bot trigger received from UI');
+
+    const lockPort = parseInt(process.env.TELEGRAM_BOT_LOCK_PORT || '9233', 10);
+    const alreadyRunning = await new Promise((resolve) => {
+      const socket = net.createConnection({ host: '127.0.0.1', port: lockPort });
+      socket.setTimeout(250);
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.once('error', () => resolve(false));
+    });
+
+    if (alreadyRunning) {
+      logger.info('Telegram bot trigger ignored - lock port indicates running instance', { lockPort });
+      return res.json({
+        success: true,
+        alreadyRunning: true,
+        message: 'Telegram bot is already running.',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    // Spawn in a separate process so the API stays healthy and restarts don't kill the bot.
+    const scriptPath = path.resolve(__dirname, '..', '..', '..', 'run_telegram_bot.js');
+    const child = spawn(process.execPath, [scriptPath], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true
+    });
+    child.unref();
+
+    return res.json({
+      success: true,
+      message: 'Telegram bot started successfully. It will process messages in the background.',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error triggering Telegram bot', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to trigger Telegram bot',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 /**
  * GET /api/deals
@@ -104,79 +383,247 @@ router.get('/', async (req, res, next) => {
 });
 
 /**
- * GET /api/deals/:productCode
- * Get specific deal by product code
+ * POST /api/deals/bulk-refresh-timestamps
+ * Bulk update timestamps for a subset of products
+ * Body: { source: 'productdeals' | 'deals' | 'both', limit?: number, order?: 'newest' | 'oldest' }
  */
-router.get('/:productCode', async (req, res, next) => {
+router.post('/bulk-refresh-timestamps', async (req, res) => {
   try {
-    const { productCode } = req.params;
-    const { db = 'deals' } = req.query; // Allow specifying db: deals or productdeals
-    
-    // Check cache first (increased TTL to 10 minutes)
-    const cacheKey = `deal_${productCode}_${db}`;
-    const cached = cacheService.get(cacheKey);
-    if (cached) {
-      logger.debug('Returning cached deal', { productCode });
-      return res.json(cached);
-    }
-    
-    const targetRef = db === 'productdeals' ? productDealsDB.productdealsRef : productDealsDB.dealsRef;
-    const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
-    
-    const snapshot = await targetRef.child(safeKey).once('value');
-    const deal = snapshot.val();
-    
-    if (!deal) {
-      return res.status(404).json({ 
-        success: false, 
-        error: 'Deal not found' 
+    const { source = 'productdeals', limit = 100, order = 'newest' } = req.body || {};
+
+    const sourcesToProcess = source === 'both' ? ['productdeals', 'deals'] : [source];
+    const nowIso = new Date().toISOString();
+    const nowMs = Date.now();
+
+    const results = [];
+
+    for (const src of sourcesToProcess) {
+      const targetDb = src === 'deals' ? 'deals' : 'productdeals';
+      const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
+
+      const snapshot = await ref.once('value');
+      const data = snapshot.val() || {};
+      let items = Object.entries(data).map(([key, value]) => ({
+        key,
+        ...(value || {})
+      }));
+
+      // Sort by time (same priority as list endpoint)
+      items.sort((a, b) => {
+        const aTime = Number(a.updatedatetime || a.datetime || a.updateTimestamp || 0);
+        const bTime = Number(b.updatedatetime || b.datetime || b.updateTimestamp || 0);
+        return order === 'oldest' ? aTime - bTime : bTime - aTime;
       });
-    }
 
-    // Get notification status
-    const notificationStatus = await notificationTrackingDB.getNotificationStatus(productCode);
+      const slice = items.slice(0, Number(limit) || 100);
+      const updates = {};
+      slice.forEach((item) => {
+        updates[item.key] = {
+          updateTimestamp: nowIso,
+          updatedatetime: nowMs
+        };
+      });
 
-    const response = {
-      success: true,
-      data: {
-        productCode,
-        ...deal,
-        notificationStatus
-      }
-    };
-    
-    // Cache for 10 minutes (increased from 5 minutes)
-    cacheService.set(cacheKey, response, 10 * 60 * 1000);
-    
-    res.json(response);
-  } catch (error) {
-    logger.error('Error fetching deal', { productCode: req.params.productCode, error: error.message });
-    next(error);
-  }
-});
+      await ref.update(updates);
 
-/**
- * GET /api/deals/notifications/:productCode
- * Get notification status for a specific deal
- */
-router.get('/notifications/:productCode', async (req, res, next) => {
-  try {
-    const { productCode } = req.params;
-    const status = await notificationTrackingDB.getNotificationStatus(productCode);
-    
-    if (!status) {
-      return res.status(404).json({
-        success: false,
-        error: 'No notification status found for this product'
+      results.push({
+        source: targetDb,
+        updatedCount: slice.length
       });
     }
 
     res.json({
       success: true,
-      data: status
+      message: 'Timestamps refreshed successfully',
+      results,
+      requested: {
+        source,
+        limit: Number(limit) || 100,
+        order
+      },
+      timestamp: new Date().toISOString()
     });
-    } catch (error) {
-    logger.error('Error fetching notification status', { error: error.message, stack: error.stack });
+  } catch (error) {
+    logger.error('Error in bulk-refresh-timestamps', { error: error.message, stack: error.stack });
+    res.status(500).json({
+      success: false,
+      message: 'Failed to refresh timestamps',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * GET /api/deals/:productCode
+ * Get a single product by product code
+ * Query params: db (deals|productdeals)
+ */
+router.get('/:productCode', async (req, res, next) => {
+  try {
+    const { productCode } = req.params;
+    const { db = 'deals' } = req.query;
+    const targetDb = db === 'productdeals' ? 'productdeals' : 'deals';
+    
+    if (!productCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'Product code is required'
+      });
+    }
+
+    logger.info('Fetching product by code', { productCode, targetDb });
+
+    const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
+    const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
+    
+    // Try to get by productCode field first
+    let snapshot = await ref.orderByChild('productCode').equalTo(productCode).once('value');
+    let product = null;
+    let productKey = null;
+
+    if (snapshot.exists()) {
+      const products = snapshot.val();
+      productKey = Object.keys(products)[0];
+      product = products[productKey];
+    } else {
+      // Fallback: try direct key lookup
+      snapshot = await ref.child(safeKey).once('value');
+      if (snapshot.exists()) {
+        productKey = safeKey;
+        product = snapshot.val();
+      }
+    }
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        error: 'Product not found',
+        productCode
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        productKey,
+        ...product
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching product by code', { error: error.message, stack: error.stack });
+    next(error);
+  }
+});
+
+/**
+ * PUT /api/deals/:productCode
+ * Update a product by product code
+ * Body: { ...product attributes to update }
+ * Query params: db (deals|productdeals)
+ */
+router.put('/:productCode', async (req, res, next) => {
+  try {
+    const { productCode } = req.params;
+    const { db = 'deals' } = req.query;
+    const targetDb = db === 'productdeals' ? 'productdeals' : 'deals';
+    const updates = req.body;
+
+    if (!productCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'Product code is required'
+      });
+    }
+
+    if (!updates || Object.keys(updates).length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Update data is required'
+      });
+    }
+
+    logger.info('Updating product by code', { productCode, targetDb, updateFields: Object.keys(updates) });
+
+    const result = await productDealsDB.updateIndividualProduct(productCode, updates, targetDb);
+
+    if (result.status === 200) {
+      res.json({
+        success: true,
+        message: result.message,
+        productCode
+      });
+    } else {
+      res.status(result.status).json({
+        success: false,
+        error: result.message,
+        productCode
+      });
+    }
+  } catch (error) {
+    logger.error('Error updating product by code', { error: error.message, stack: error.stack });
+    next(error);
+  }
+});
+
+/**
+ * DELETE /api/deals/:productCode
+ * Delete a product by product code
+ * Query params: db (deals|productdeals)
+ */
+router.delete('/:productCode', async (req, res, next) => {
+  try {
+    const { productCode } = req.params;
+    const { db = 'deals' } = req.query;
+    const targetDb = db === 'productdeals' ? 'productdeals' : 'deals';
+
+    if (!productCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'Product code is required'
+      });
+    }
+
+    logger.info('Deleting product by code', { productCode, targetDb });
+
+    const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
+    const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
+    
+    // First, try to find the product by productCode field
+    let snapshot = await ref.orderByChild('productCode').equalTo(productCode).once('value');
+    let productKey = null;
+
+    if (snapshot.exists()) {
+      const products = snapshot.val();
+      productKey = Object.keys(products)[0];
+    } else {
+      // Fallback: try direct key lookup
+      snapshot = await ref.child(safeKey).once('value');
+      if (snapshot.exists()) {
+        productKey = safeKey;
+      }
+    }
+
+    if (!productKey) {
+      return res.status(404).json({
+        success: false,
+        error: 'Product not found',
+        productCode
+      });
+    }
+
+    await ref.child(productKey).remove();
+    
+    logger.info('Product deleted successfully', { productCode, productKey, targetDb });
+
+    res.json({
+      success: true,
+      message: 'Product deleted successfully',
+      productCode,
+      productKey
+    });
+  } catch (error) {
+    logger.error('Error deleting product by code', { error: error.message, stack: error.stack });
     next(error);
   }
 });

@@ -184,17 +184,23 @@ class BannerUrlFixer {
           }
         }
         
-        // Fallback: use inrdeals.com wrapper
-        return `inrdeals.com/avi646476329/${currentUrl}`;
+        // Fallback: use inrdeals.com wrapper with https://
+        const cleanUrl = currentUrl.replace(/^https?:\/\//, '').replace(/^inrdeals\.com\/avi646476329\//, '');
+        return `https://inrdeals.com/avi646476329/${cleanUrl}`;
       }
       
       // Check if current URL is already in correct format
-      if (currentUrl.startsWith('inrdeals.com/avi646476329/')) {
+      if (currentUrl.includes('inrdeals.com/avi646476329/')) {
+        // Ensure it has https://
+        if (!currentUrl.startsWith('http://') && !currentUrl.startsWith('https://')) {
+          return `https://${currentUrl}`;
+        }
         return currentUrl; // URL is already correct
       }
       
-      // If URL doesn't start with inrdeals.com, wrap it
-      return `inrdeals.com/avi646476329/${currentUrl}`;
+      // If URL doesn't start with inrdeals.com, wrap it with https://
+      const cleanUrl = currentUrl.replace(/^https?:\/\//, '');
+      return `https://inrdeals.com/avi646476329/${cleanUrl}`;
       
     } catch (error) {
       logger.error('Error generating non-Amazon URL for banner:', { error: error.message });

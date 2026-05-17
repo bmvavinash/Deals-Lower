@@ -105,47 +105,9 @@ router.get('/', async (req, res, next) => {
 });
 
 /**
- * GET /api/news/:id
- * Get a single news article by ID
- */
-router.get('/:id', async (req, res, next) => {
-  try {
-    const { id } = req.params;
-
-    // Check cache
-    const cacheKey = `news_${id}`;
-    const cached = cacheService.get(cacheKey);
-    if (cached) {
-      return res.json(cached);
-    }
-
-    const news = await getNewsById(id);
-
-    if (!news) {
-      return res.status(404).json({
-        success: false,
-        message: 'News article not found'
-      });
-    }
-
-    const response = {
-      success: true,
-      data: news
-    };
-
-    // Cache for 10 minutes
-    cacheService.set(cacheKey, response, 600);
-
-    res.json(response);
-  } catch (error) {
-    logger.error('Error fetching news by ID', { id: req.params.id, error: error.message });
-    next(error);
-  }
-});
-
-/**
- * GET /api/reviews
+ * GET /api/news/reviews
  * Get review articles with pagination and filters
+ * MUST be before /:id route to avoid conflict
  */
 router.get('/reviews', async (req, res, next) => {
   try {
@@ -225,7 +187,47 @@ router.get('/reviews', async (req, res, next) => {
 });
 
 /**
- * GET /api/reviews/:id
+ * GET /api/news/:id
+ * Get a single news article by ID
+ * MUST be after /reviews route to avoid conflict
+ */
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Check cache
+    const cacheKey = `news_${id}`;
+    const cached = cacheService.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const news = await getNewsById(id);
+
+    if (!news) {
+      return res.status(404).json({
+        success: false,
+        message: 'News article not found'
+      });
+    }
+
+    const response = {
+      success: true,
+      data: news
+    };
+
+    // Cache for 10 minutes
+    cacheService.set(cacheKey, response, 600);
+
+    res.json(response);
+  } catch (error) {
+    logger.error('Error fetching news by ID', { id: req.params.id, error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/news/reviews/:id
  * Get a single review article by ID
  */
 router.get('/reviews/:id', async (req, res, next) => {

@@ -59,6 +59,8 @@ const notificationsRoutes = require('./routes/notifications');
 const analyticsRoutes = require('./routes/analytics');
 const executionRoutes = require('./routes/execution');
 const newsRoutes = require('./routes/news');
+const bannersRoutes = require('./routes/banners');
+const dadExpensesRoutes = require('./routes/dadExpenses');
 
 const app = express();
 const PORT = constants.frontend?.apiPort || 3001;
@@ -95,6 +97,8 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/execution', executionRoutes);
 app.use('/api/news', newsRoutes);
+app.use('/api/banners', bannersRoutes);
+app.use('/api/dad-expenses', dadExpensesRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
