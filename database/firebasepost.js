@@ -15,7 +15,7 @@ async function firebasepost(app, access_token, env="prod", jsonFileName="deals",
 
   jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
 
-const apiUrl = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${jsonFileName}.json?access_token=${access_token}`
+const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json?access_token=${access_token}`
 
   await fetch(apiUrl, {
     method: 'POST',

@@ -23,7 +23,7 @@ async function firebaseget(isToday = false, collectionName = null) {
       urlappend = `shallow=true`;
     }
     
-    const apiUrl = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${jsonFileName}.json?${urlappend}&print=pretty`;
+    const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json?${urlappend}&print=pretty`;
     
     console.log("API URL firebase get is:", apiUrl);
     

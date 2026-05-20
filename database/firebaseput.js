@@ -7,7 +7,7 @@ async function firebasePut(app, access_token, env="prod", jsonFileName="deals") 
     const dbname = constants.postingTypesConfig[constants.type].DB;
     let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
   
-    const apiUrl = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${jsonFileName}.json?access_token=${access_token}`;
+    const apiUrl = `https://${DB_Name}-default-rtdb.firebaseio.com/${jsonFileName}.json?access_token=${access_token}`;
   
     let authorized = false;
   

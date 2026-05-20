@@ -24,7 +24,7 @@ try {
   try {
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      databaseURL: `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+      databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
     });
     db = admin.database();
     logger.info(`Firebase initialized for notification tracking: ${DB_Name}`);

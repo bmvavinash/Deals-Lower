@@ -20,10 +20,10 @@ jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
 if (!admin.apps.length) {
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
-});
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`,
+  });
 }
 
 const db = admin.database();

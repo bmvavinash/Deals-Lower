@@ -133,8 +133,9 @@ const DealsPage: React.FC = () => {
       await dealsAPI.triggerBulkUpdate('website', 'productdeals');
       alert('Bulk update triggered successfully! It will run in the background.');
       refetchDeals();
-    } catch (error) {
-      alert('Failed to trigger bulk update');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || error?.message || 'Failed to trigger bulk update';
+      alert(`Failed to trigger bulk update: ${msg}`);
     } finally {
       setIsBulkUpdating(false);
     }
@@ -165,8 +166,9 @@ const DealsPage: React.FC = () => {
       setIsTelegramRunning(true);
       await dealsAPI.triggerTelegramBot();
       alert('Telegram bot triggered successfully! It will process messages continuously in the background.');
-    } catch (error) {
-      alert('Failed to trigger Telegram bot');
+    } catch (error: any) {
+      const msg = error?.response?.data?.error || error?.message || 'Failed to trigger Telegram bot';
+      alert(`Failed to trigger Telegram bot: ${msg}`);
     } finally {
       setIsTelegramRunning(false);
     }

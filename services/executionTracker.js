@@ -3,17 +3,7 @@ const admin = require('firebase-admin');
 const constants = require('../config/constants');
 const config = require('../config/config');
 
-// Lazy load Telegram queue status to avoid circular dependency
-// Don't import at top level - import when needed inside methods
-function getTelegramQueueStatusLazy() {
-  try {
-    const telegramModule = require('../dataSources/autoTelegramAll');
-    return telegramModule.getQueueStatus || null;
-  } catch (e) {
-    // Module not available or circular dependency, return null
-    return null;
-  }
-}
+
 
 const logger = getModuleLogger('executionTracker');
 
@@ -41,74 +31,15 @@ class ExecutionTracker {
     if (db) {
       this.ref = db.ref('executionTracking');
       this.setupFirebaseListeners();
-      // Load initial state from Firebase
-      this.loadInitialState();
-    }
-  }
-
-  async loadInitialState() {
-    if (!this.ref) return;
-    
-    try {
-      const snapshot = await this.ref.once('value');
-      const data = snapshot.val();
-      if (data) {
-        if (data.current) {
-          this.currentExecution = data.current;
-          logger.info('Loaded current execution from Firebase', { 
-            executionId: this.currentExecution.id,
-            type: this.currentExecution.type 
-          });
-        }
-        if (data.history) {
-          this.executionHistory = Array.isArray(data.history) ? data.history : [];
-        }
-        if (data.telegramQueue) {
-          this.telegramQueue = data.telegramQueue;
-        }
-      }
-    } catch (error) {
-      logger.warn('Failed to load initial state from Firebase', { error: error.message });
     }
   }
 
   setupFirebaseListeners() {
     // Listen for real-time updates
-    // IMPORTANT: Only sync from Firebase if we don't have a local execution or if the execution ID matches
-    // This prevents overwriting local updates with stale Firebase data
     this.ref.on('value', (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const firebaseExecution = data.current || null;
-        
-        // Only update from Firebase if:
-        // 1. We don't have a local execution, OR
-        // 2. The Firebase execution ID matches our local execution ID (same execution)
-        // This prevents race conditions where Firebase overwrites our local updates
-        if (firebaseExecution) {
-          if (!this.currentExecution || this.currentExecution.id === firebaseExecution.id) {
-            // Merge Firebase data with local data to preserve any in-memory updates
-            if (this.currentExecution && this.currentExecution.id === firebaseExecution.id) {
-              // Same execution - merge to preserve local updates that might not be in Firebase yet
-              this.currentExecution = {
-                ...firebaseExecution,
-                // Preserve local platforms data if it's more recent
-                platforms: this.currentExecution.platforms && 
-                           Object.keys(this.currentExecution.platforms).length > 0 &&
-                           (this.currentExecution.totalProducts > firebaseExecution.totalProducts ||
-                            this.currentExecution.totalProcessed > firebaseExecution.totalProcessed)
-                  ? this.currentExecution.platforms
-                  : firebaseExecution.platforms || {}
-              };
-            } else {
-              // New execution or no local execution - use Firebase data
-              this.currentExecution = firebaseExecution;
-            }
-          }
-        } else if (!this.currentExecution) {
-          // No Firebase execution and no local execution - set to null
-          this.currentExecution = null;
-        }
+        this.currentExecution = data.current || null;
         
         // Ensure currentExecution.platforms is always an object if currentExecution exists
         if (this.currentExecution && (!this.currentExecution.platforms || typeof this.currentExecution.platforms !== 'object')) {
@@ -214,6 +145,10 @@ class ExecutionTracker {
    */
   async updateTelegramMessageProgress(status = 'processed') {
     if (!this.currentExecution || this.currentExecution.type !== 'telegram_bot') return;
+
+    if (!this.currentExecution.messages || typeof this.currentExecution.messages !== 'object') {
+      this.currentExecution.messages = { total: 0, processed: 0, failed: 0 };
+    }
     
     if (status === 'processed') {
       this.currentExecution.messages.processed += 1;
@@ -236,7 +171,19 @@ class ExecutionTracker {
       await this.startTelegramExecution();
     }
     
-    const products = this.currentExecution.products;
+    const products = this.currentExecution.products || {
+      total: 0,
+      processed: 0,
+      created: 0,
+      updated: 0,
+      failed: 0,
+      byPlatform: {}
+    };
+    this.currentExecution.products = products;
+    if (!products.byPlatform || typeof products.byPlatform !== 'object') {
+      products.byPlatform = {};
+    }
+
     products.total += 1;
     
     if (status === 'created') {
@@ -463,16 +410,8 @@ class ExecutionTracker {
     pageData.totalProducts += progress.totalProducts || 0;
     pageData.lastUpdate = new Date().toISOString();
     
-    // Update category totals
-    categoryData.totalProducts += progress.totalProducts || 0;
-    categoryData.processed += progress.processed || 0;
-    categoryData.created += progress.created || 0;
-    categoryData.updated += progress.updated || 0;
-    categoryData.errors += progress.errors || 0;
-    
-    if (this.ref) {
-      await this.ref.child('current').set(this.currentExecution);
-    }
+    // Let updateCategoryProgress handle all rollups (category, platform, execution) and Firebase save!
+    await this.updateCategoryProgress(platform, category, progress);
   }
 
   /**
@@ -520,10 +459,7 @@ class ExecutionTracker {
    * Update category progress
    */
   async updateCategoryProgress(platform, category, progress) {
-    if (!this.currentExecution) {
-      logger.warn('updateCategoryProgress: currentExecution is null, cannot update');
-      return;
-    }
+    if (!this.currentExecution) return;
     
     // Ensure platforms object exists
     if (!this.currentExecution.platforms || typeof this.currentExecution.platforms !== 'object') {
@@ -536,28 +472,8 @@ class ExecutionTracker {
     
     let platformData = this.currentExecution.platforms[platform];
     if (!platformData) {
-      logger.debug('updateCategoryProgress: platformData not found, calling updateCurrentPlatform', { platform, category });
       await this.updateCurrentPlatform(platform, category);
-      // Re-fetch platformData after updateCurrentPlatform
       platformData = this.currentExecution.platforms[platform];
-      if (!platformData) {
-        logger.error('updateCategoryProgress: platformData still not found after updateCurrentPlatform, initializing manually', { platform, category });
-        // Manually initialize if updateCurrentPlatform didn't work
-        this.currentExecution.platforms[platform] = {
-          startTime: new Date().toISOString(),
-          totalProducts: 0,
-          totalProcessed: 0,
-          totalCreated: 0,
-          totalUpdated: 0,
-          categories: {}
-        };
-        platformData = this.currentExecution.platforms[platform];
-      }
-    }
-
-    // Ensure platformData.categories exists
-    if (!platformData.categories || typeof platformData.categories !== 'object') {
-      platformData.categories = {};
     }
 
     if (!platformData.categories[category]) {
@@ -575,17 +491,6 @@ class ExecutionTracker {
     }
 
     const categoryData = platformData.categories[category];
-    
-    // Log the update for debugging
-    logger.debug('updateCategoryProgress: updating category', {
-      platform,
-      category,
-      progress,
-      beforeTotal: categoryData.totalProducts,
-      beforeProcessed: categoryData.processed
-    });
-    
-    // Update category data
     categoryData.processed += progress.processed || 0;
     categoryData.created += progress.created || 0;
     categoryData.updated += progress.updated || 0;
@@ -598,58 +503,15 @@ class ExecutionTracker {
     platformData.totalProcessed += progress.processed || 0;
     platformData.totalCreated += progress.created || 0;
     platformData.totalUpdated += progress.updated || 0;
-    platformData.lastUpdate = new Date().toISOString();
 
     // Update execution totals
     this.currentExecution.totalProducts += progress.totalProducts || 0;
     this.currentExecution.totalProcessed += progress.processed || 0;
     this.currentExecution.totalCreated += progress.created || 0;
     this.currentExecution.totalUpdated += progress.updated || 0;
-    this.currentExecution.lastUpdate = new Date().toISOString();
 
-    // Save to Firebase - use set() to ensure full object is saved
-    // IMPORTANT: Temporarily disable Firebase listener to prevent overwriting our updates
     if (this.ref) {
-      try {
-        // Temporarily remove listener to prevent race condition
-        const listenerWasActive = this.ref.listenerCount && this.ref.listenerCount('value') > 0;
-        if (listenerWasActive) {
-          this.ref.off('value');
-        }
-        
-        // Save to Firebase
-        await this.ref.child('current').set(this.currentExecution);
-        
-        logger.info('updateCategoryProgress: saved to Firebase', {
-          platform,
-          category,
-          totalProducts: this.currentExecution.totalProducts,
-          totalProcessed: this.currentExecution.totalProcessed,
-          totalCreated: this.currentExecution.totalCreated,
-          categoryTotal: categoryData.totalProducts,
-          categoryProcessed: categoryData.processed,
-          categoryCreated: categoryData.created
-        });
-        
-        // Re-enable listener after a short delay to allow Firebase to propagate
-        if (listenerWasActive) {
-          setTimeout(() => {
-            this.setupFirebaseListeners();
-          }, 100);
-        }
-      } catch (firebaseError) {
-        logger.error('updateCategoryProgress: Firebase save failed', {
-          error: firebaseError.message,
-          stack: firebaseError.stack,
-          platform,
-          category
-        });
-        // Re-enable listener even on error
-        if (this.ref && (!this.ref.listenerCount || this.ref.listenerCount('value') === 0)) {
-          this.setupFirebaseListeners();
-        }
-        // Don't throw - continue execution
-      }
+      await this.ref.child('current').set(this.currentExecution);
     }
   }
 
@@ -768,20 +630,27 @@ class ExecutionTracker {
    * Get current execution status
    */
   getCurrentStatus() {
-    // Get real-time Telegram queue status if available (lazy loaded to avoid circular dependency)
+    // Get real-time Telegram queue status if available
     let telegramQueue = this.telegramQueue;
-    const queueStatusFn = getTelegramQueueStatusLazy();
-    if (queueStatusFn) {
+    
+    let getTelegramQueueStatus = null;
+    try {
+      const telegramModule = require('../dataSources/autoTelegramAll');
+      getTelegramQueueStatus = telegramModule.getQueueStatus;
+    } catch (e) {
+      // Module not available, will use fallback
+    }
+    
+    if (getTelegramQueueStatus) {
       try {
-        const realTimeQueue = queueStatusFn();
+        const realTimeQueue = getTelegramQueueStatus();
         telegramQueue = {
-          pending: realTimeQueue.pending || telegramQueue.pending,
-          processing: realTimeQueue.processing || telegramQueue.processing,
-          channels: realTimeQueue.channels || telegramQueue.channels
+          pending: realTimeQueue.pending,
+          processing: realTimeQueue.processing,
+          channels: realTimeQueue.channels
         };
       } catch (e) {
-        // Fallback to stored status - avoid circular dependency issues
-        logger.debug('Could not get real-time queue status, using stored', { error: e?.message });
+        // Fallback to stored status
       }
     }
     

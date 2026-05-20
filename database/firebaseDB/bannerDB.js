@@ -41,13 +41,11 @@ const buildBannerKey = (banner = {}) => {
 const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
-const DB_Region = config.DATABASE_CONFIG[`${dbname}_REGION`] || 'asia-southeast1';
-
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
-  const databaseURL = `https://${DB_Name}-default-rtdb.${DB_Region}.firebasedatabase.app`;
+  const databaseURL = `https://${DB_Name}-default-rtdb.firebaseio.com`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL

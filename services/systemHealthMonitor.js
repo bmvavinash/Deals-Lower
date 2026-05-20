@@ -1,3 +1,4 @@
+const admin = require('firebase-admin');
 const { getModuleLogger } = require('../logger/logger');
 const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
 const { bannerDB } = require('../database/firebaseDB/bannerDB');
@@ -7,6 +8,17 @@ const fs = require('fs');
 const path = require('path');
 
 const logger = getModuleLogger('systemHealthMonitor');
+
+const HEALTH_CHECK_TIMEOUT_MS = 10000;
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
 
 class SystemHealthMonitor {
   constructor() {
@@ -204,9 +216,11 @@ class SystemHealthMonitor {
           } else if (name === 'banner') {
             // Special handling for banner database
             if (db && db.bannersRef) {
-              const testRef = db.bannersRef.child('health_check');
-              await testRef.set({ timestamp: Date.now() });
-              await testRef.remove();
+              await withTimeout(
+                admin.database().ref('.info/connected').once('value'),
+                HEALTH_CHECK_TIMEOUT_MS,
+                name
+              );
               dbCheck.databases[name] = { status: 'healthy', error: null };
               logger.debug(`✅ Database ${name} is healthy`);
             } else {
@@ -222,11 +236,11 @@ class SystemHealthMonitor {
               throw new Error('User favorites database not properly initialized');
             }
           } else if (db && db.ref) {
-            // Standard Firebase database check
-            const testRef = db.ref.child('health_check');
-            await testRef.set({ timestamp: Date.now() });
-            await testRef.remove();
-            
+            await withTimeout(
+              admin.database().ref('.info/connected').once('value'),
+              HEALTH_CHECK_TIMEOUT_MS,
+              name
+            );
             dbCheck.databases[name] = { status: 'healthy', error: null };
             logger.debug(`✅ Database ${name} is healthy`);
           } else {
@@ -240,15 +254,23 @@ class SystemHealthMonitor {
         }
       }
 
-      // Check for critical database issues
+      // Only treat total DB failure as critical (allow partial timeouts on large DBs)
       const unhealthyDbs = Object.values(dbCheck.databases).filter(db => db.status === 'unhealthy');
-      if (unhealthyDbs.length > 0) {
+      if (unhealthyDbs.length === Object.keys(dbCheck.databases).length && unhealthyDbs.length > 0) {
         dbCheck.status = 'unhealthy';
         healthReport.criticalIssues.push({
           type: 'database_connection_failed',
           message: `${unhealthyDbs.length} database(s) are unhealthy`,
           fixSteps: this.fixSteps.get('database_connection_failed')
         });
+      } else if (unhealthyDbs.length > 0) {
+        dbCheck.status = 'degraded';
+        const failedNames = Object.entries(dbCheck.databases)
+          .filter(([, v]) => v.status === 'unhealthy')
+          .map(([k]) => k);
+        healthReport.recommendations.push(
+          `Some database checks failed (${failedNames.join(', ')}); continuing startup.`
+        );
       }
 
     } catch (error) {

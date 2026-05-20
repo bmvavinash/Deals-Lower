@@ -225,14 +225,22 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
         postStatus = productStatus.PRODUCT_CREATED;
         // Track Telegram execution if from Telegram
         if (product.sourceType === 'telegram' && product.storeType) {
-          await executionTracker.updateTelegramProductProgress(product.storeType, 'created', product.productCode);
+          try {
+            await executionTracker.updateTelegramProductProgress(product.storeType, 'created', product.productCode);
+          } catch (trackErr) {
+            logger.warn('Telegram progress tracking failed', { error: trackErr?.message });
+          }
         }
         // i--;
       } else if (postflag.status == 200) {
         postStatus = productStatus.PRODUCT_UPDATED_SUCCESSFULLY;
         // Track Telegram execution if from Telegram
         if (product.sourceType === 'telegram' && product.storeType) {
-          await executionTracker.updateTelegramProductProgress(product.storeType, 'updated', product.productCode);
+          try {
+            await executionTracker.updateTelegramProductProgress(product.storeType, 'updated', product.productCode);
+          } catch (trackErr) {
+            logger.warn('Telegram progress tracking failed', { error: trackErr?.message });
+          }
         }
       } else if (postflag.status == 301) {
         if(!constants.updateTodayDeals) {
@@ -254,7 +262,11 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       }
       // if (postflag && postProduct && !constants.updateTodayDeals) {
       if (postflag && postProduct) {
-        postDeals(driver, product, link, shortUrl, username);
+        try {
+          await postDeals(driver, product, link, shortUrl, username);
+        } catch (postErr) {
+          logger.warn('postDeals failed (product already saved)', { error: postErr?.message, link });
+        }
       }
       else {
         // console.log("Post Flag is false ",product?.links?.avinashbmv)
@@ -290,7 +302,11 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     logger.info("error in scheduler: ", e)
     // Track Telegram execution error if from Telegram
     if (product && product.sourceType === 'telegram' && product.storeType) {
-      await executionTracker.updateTelegramProductProgress(product.storeType, 'failed', product.productCode);
+      try {
+        await executionTracker.updateTelegramProductProgress(product.storeType, 'failed', product.productCode);
+      } catch (trackErr) {
+        logger.warn('Telegram failure tracking failed', { error: trackErr?.message });
+      }
     }
     return productStatus.PRODUCT_ERROR
   }

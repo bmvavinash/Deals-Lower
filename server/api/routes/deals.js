@@ -1,4 +1,6 @@
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const router = express.Router();
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
 const { notificationTrackingDB } = require('../../../database/firebaseDB/notificationTrackingDB');
@@ -23,10 +25,20 @@ const processProduct = handleProductProcessingModule.processProduct || (async (d
 });
 const { executionTracker } = require('../../../services/executionTracker');
 const { spawn } = require('child_process');
-const path = require('path');
 const net = require('net');
 
 const logger = getModuleLogger('deals-api');
+const TELEGRAM_LOCK_FILE = path.join(__dirname, '../../../.telegram-bot.lock');
+
+function isProcessRunning(pid) {
+  if (!pid || Number.isNaN(pid)) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 // Global driver instance for product processing
 let globalDriver = null;
@@ -383,9 +395,152 @@ router.get('/', async (req, res, next) => {
 });
 
 /**
+ * GET /api/deals/notifications/:productCode
+ * Get notification status for a specific deal
+ */
+router.get('/notifications/:productCode', async (req, res, next) => {
+  try {
+    const { productCode } = req.params;
+    const status = await notificationTrackingDB.getNotificationStatus(productCode);
+    
+    if (!status) {
+      return res.status(404).json({
+        success: false,
+        error: 'No notification status found for this product'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: status
+    });
+  } catch (error) {
+    logger.error('Error fetching notification status', { error: error.message, stack: error.stack });
+    next(error);
+  }
+});
+
+/**
+ * POST /api/deals/manual-trigger
+ * Manually trigger bulk update from the dashboard
+ */
+router.post('/manual-trigger', async (req, res, next) => {
+  try {
+    const { sourceType = 'website', targetDb = 'productdeals' } = req.body || {};
+    const { executionTracker } = require('../../../services/executionTracker');
+    const status = executionTracker.getCurrentStatus();
+
+    // Check for running execution, but allow override if it's stale (older than 1 hour)
+    if (
+      status.currentExecution?.type === 'bulk_update' &&
+      status.currentExecution?.status === 'running'
+    ) {
+      const lastUpdateTime = new Date(status.currentExecution.lastUpdate || status.currentExecution.startTime).getTime();
+      const isStale = (Date.now() - lastUpdateTime) > 60 * 1000; // 1 minute
+      
+      if (!isStale) {
+        return res.status(409).json({
+          success: false,
+          error: 'Bulk update is already running. Check Execution Monitor for progress.'
+        });
+      } else {
+        logger.warn('Overriding stale running execution', { 
+          executionId: status.currentExecution.id,
+          lastUpdateTime: new Date(lastUpdateTime).toISOString()
+        });
+      }
+    }
+
+    logger.info('Manual bulk update triggered', { sourceType, targetDb });
+
+    runBulkUpdateAll(sourceType, targetDb)
+      .then((result) => logger.info('Manual bulk update completed', result))
+      .catch((error) => {
+        logger.error('Manual bulk update failed', {
+          error: error.message,
+          stack: error.stack
+        });
+      });
+
+    res.json({
+      success: true,
+      message: 'Bulk update triggered successfully',
+      note: 'Update is running in background. Check Execution Monitor or logs for progress.'
+    });
+  } catch (error) {
+    logger.error('Error triggering bulk update', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * POST /api/deals/trigger-telegram-bot
+ * Manually trigger Telegram bot processing (separate process)
+ */
+router.post('/trigger-telegram-bot', async (req, res, next) => {
+  try {
+    logger.info('Manual Telegram bot trigger requested', {
+      enableTelegramProcessing: constants.enableTelegramProcessing
+    });
+
+    if (fs.existsSync(TELEGRAM_LOCK_FILE)) {
+      const existingPid = parseInt(fs.readFileSync(TELEGRAM_LOCK_FILE, 'utf8'), 10);
+      if (isProcessRunning(existingPid)) {
+        return res.status(409).json({
+          success: false,
+          error: `Telegram bot is already running (PID ${existingPid}). Stop it before starting another instance.`
+        });
+      }
+      fs.unlinkSync(TELEGRAM_LOCK_FILE);
+    }
+
+    const { spawn } = require('child_process');
+    const nodePath = process.execPath;
+    const telegramBotPath = path.join(__dirname, '../../../run_telegram_bot.js');
+
+    const telegramProcess = spawn(nodePath, [telegramBotPath], {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: path.join(__dirname, '../../../'),
+      windowsHide: true
+    });
+
+    telegramProcess.stdout?.on('data', (data) => {
+      logger.info('Telegram Bot Output', { output: data.toString().trim() });
+    });
+
+    telegramProcess.stderr?.on('data', (data) => {
+      logger.warn('Telegram Bot Error', { error: data.toString().trim() });
+    });
+
+    telegramProcess.on('error', (error) => {
+      logger.error('Telegram Bot Process Error', { error: error.message });
+    });
+
+    telegramProcess.unref();
+
+    logger.info('Telegram bot process spawned', { pid: telegramProcess.pid });
+
+    res.json({
+      success: true,
+      message: 'Telegram bot triggered successfully.',
+      note: 'Bot runs in background. Requires Chrome on port 9222. Check logs for progress.',
+      processId: telegramProcess.pid
+    });
+  } catch (error) {
+    logger.error('Error triggering Telegram bot', { error: error.message, stack: error.stack });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/deals/:productCode
+ * Get specific deal by product code
+
  * POST /api/deals/bulk-refresh-timestamps
  * Bulk update timestamps for a subset of products
  * Body: { source: 'productdeals' | 'deals' | 'both', limit?: number, order?: 'newest' | 'oldest' }
+
  */
 router.post('/bulk-refresh-timestamps', async (req, res) => {
   try {
@@ -629,3 +784,4 @@ router.delete('/:productCode', async (req, res, next) => {
 });
 
 module.exports = router;
+

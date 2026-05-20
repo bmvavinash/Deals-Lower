@@ -3,8 +3,7 @@
 // const { environment } = require('./config/constants');
 
 // const ENVIRONMENT = environment; // or 'stage' based on your current setup
-const pathToFile = "F:/Study/Affiliate/Projects/Affiliate/New Clone Affiliate/Firebase/Firebase key"
-// const pathToFile = "C:/Users/Dell/Tasks/All/Aff/Key"
+const pathToFile = "C:/Users/anila/keys"
 
 
 const facebookId="100094567890123" // Replace with your actual Facebook ID
@@ -27,7 +26,7 @@ const source="deals"
 
 // const generaltype="telegramFile"
 // const generaltype="urlsFile"
-const generaltype="telegramBot"  // ENABLED FOR TELEGRAM BOT EXTRACTION
+const generaltype="bulkUpdate"  // Telegram datasources disabled; bulk + API only
 
 const type="general"
 // const type="textfilelinks"
@@ -49,7 +48,7 @@ const bulkUpdateIntervalMs = 2 * 60 * 60 * 1000; // 2 hours
 // const bulkUpdateIntervalMs = null; // Disabled for testing
 
 // Execution toggles
-const enableTelegramProcessing = true; // Gate to start Telegram bot processing
+const enableTelegramProcessing = false; // Telegram datasources disabled
 const enableBulkProcessing = true;     // Gate to start bulk website processing
 const telegramMode = 'finite';         // 'continuous' for infinite loop, 'finite' for limited loops
 const enableProductUrlFix = true;      // Gate to enable product URL verification and fixing
@@ -60,20 +59,20 @@ const maxPlatformTimeoutMs = 10 * 60 * 1000;   // 10 minutes per platform/catego
 const maxIdleGlobalMs = 5 * 60 * 1000;         // 5 minutes idle watchdog
 
 // TELEGRAM BOT WITH BULK UPDATES CONFIGURATION
-console.log("=== TELEGRAM BOT + BULK UPDATES MODE ENABLED ===");
+console.log("=== BULK UPDATES + API MODE (Telegram datasources disabled) ===");
 console.log("Type:", type);
-console.log("General Type:", generaltype, "(TELEGRAM BOT MODE)");
+console.log("General Type:", generaltype);
 console.log("Source:", source);
 console.log("Environment:", env);
 console.log("Bulk Updates:", bulkUpdateIntervalMs ? "ENABLED" : "DISABLED");
-console.log("Mode: Telegram Bot Product Extraction + Bulk Updates + DB Storage");
+console.log("Mode: Bulk Updates + API (no Telegram datasource)");
 console.log("==================================================");
 const POSTING_TYPES_CONFIG = {
   general: {
-    DB: 'DB1Backup',
-    // DB: 'DB1',
+    DB: 'DB1',
+    // DB: 'DB1Backup',
     postTo: {
-      telegram: true,  // ENABLED FOR TESTING
+      telegram: false,
       whatsapp: false, // DISABLED FOR TESTING
       // whatsapp: true,
       facebook: false  // DISABLED FOR TESTING
@@ -81,8 +80,8 @@ const POSTING_TYPES_CONFIG = {
     typeValue: 'all'
   },
   textfilelinks: {
-    DB: 'DB1Backup',
-    // DB: 'DB1',
+    DB: 'DB1',
+    // DB: 'DB1Backup',
     postTo: {
       telegram: true,
       whatsapp: false,
@@ -151,7 +150,7 @@ module.exports = {
 
   // Secondary Firebase project for user favourites/preferences (uses Admin SDK)
   userFirebase: {
-    serviceAccountPath: process.env.USERS_FIREBASE_SERVICE_ACCOUNT_PATH || 'F:/Study/Affiliate/Projects/Affiliate/New Clone Affiliate/Firebase/Firebase key', // Set path to users project service account JSON
+    serviceAccountPath: process.env.USERS_FIREBASE_SERVICE_ACCOUNT_PATH || 'C:/Users/anila/keys',
     databaseURL: process.env.USERS_FIREBASE_DATABASE_URL || 'https://dealshub-users-default-rtdb.asia-southeast1.firebasedatabase.app',
     appName: 'user-favourites'
   },
@@ -159,7 +158,7 @@ module.exports = {
   // Notification toggles and thresholds
   notifications: {
     enableWhatsapp: false,
-    enableTelegram: true,
+    enableTelegram: false,
     enablePush: false,
     enableBrowser: false,
     enableFavoritesService: false,
