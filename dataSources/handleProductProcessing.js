@@ -50,6 +50,7 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
     if (!driver) {
       logger.error('WebDriver not available for handleProductProcessing');
       return searchStatus.SEARCH_ERROR;
+    }
     if (!(await isDriverSessionValid(driver))) {
       logger.warn('WebDriver not ready, skipping product processing', { link });
       return searchStatus.SEARCH_NOT_APPLICABLE;
