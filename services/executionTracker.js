@@ -3,14 +3,7 @@ const admin = require('firebase-admin');
 const constants = require('../config/constants');
 const config = require('../config/config');
 
-// Try to import Telegram queue status if available
-let getTelegramQueueStatus = null;
-try {
-  const telegramModule = require('../dataSources/autoTelegramAll');
-  getTelegramQueueStatus = telegramModule.getQueueStatus;
-} catch (e) {
-  // Module not available, will use fallback
-}
+
 
 const logger = getModuleLogger('executionTracker');
 
@@ -152,6 +145,10 @@ class ExecutionTracker {
    */
   async updateTelegramMessageProgress(status = 'processed') {
     if (!this.currentExecution || this.currentExecution.type !== 'telegram_bot') return;
+
+    if (!this.currentExecution.messages || typeof this.currentExecution.messages !== 'object') {
+      this.currentExecution.messages = { total: 0, processed: 0, failed: 0 };
+    }
     
     if (status === 'processed') {
       this.currentExecution.messages.processed += 1;
@@ -174,7 +171,19 @@ class ExecutionTracker {
       await this.startTelegramExecution();
     }
     
-    const products = this.currentExecution.products;
+    const products = this.currentExecution.products || {
+      total: 0,
+      processed: 0,
+      created: 0,
+      updated: 0,
+      failed: 0,
+      byPlatform: {}
+    };
+    this.currentExecution.products = products;
+    if (!products.byPlatform || typeof products.byPlatform !== 'object') {
+      products.byPlatform = {};
+    }
+
     products.total += 1;
     
     if (status === 'created') {
@@ -401,16 +410,8 @@ class ExecutionTracker {
     pageData.totalProducts += progress.totalProducts || 0;
     pageData.lastUpdate = new Date().toISOString();
     
-    // Update category totals
-    categoryData.totalProducts += progress.totalProducts || 0;
-    categoryData.processed += progress.processed || 0;
-    categoryData.created += progress.created || 0;
-    categoryData.updated += progress.updated || 0;
-    categoryData.errors += progress.errors || 0;
-    
-    if (this.ref) {
-      await this.ref.child('current').set(this.currentExecution);
-    }
+    // Let updateCategoryProgress handle all rollups (category, platform, execution) and Firebase save!
+    await this.updateCategoryProgress(platform, category, progress);
   }
 
   /**
@@ -469,10 +470,10 @@ class ExecutionTracker {
       this.currentExecution.platforms = {};
     }
     
-    const platformData = this.currentExecution.platforms[platform];
+    let platformData = this.currentExecution.platforms[platform];
     if (!platformData) {
       await this.updateCurrentPlatform(platform, category);
-      return;
+      platformData = this.currentExecution.platforms[platform];
     }
 
     if (!platformData.categories[category]) {
@@ -631,6 +632,15 @@ class ExecutionTracker {
   getCurrentStatus() {
     // Get real-time Telegram queue status if available
     let telegramQueue = this.telegramQueue;
+    
+    let getTelegramQueueStatus = null;
+    try {
+      const telegramModule = require('../dataSources/autoTelegramAll');
+      getTelegramQueueStatus = telegramModule.getQueueStatus;
+    } catch (e) {
+      // Module not available, will use fallback
+    }
+    
     if (getTelegramQueueStatus) {
       try {
         const realTimeQueue = getTelegramQueueStatus();

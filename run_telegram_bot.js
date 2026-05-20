@@ -8,6 +8,9 @@ const constants = require('./config/constants');
 const { getModuleLogger } = require('./logger/logger');
 
 const logger = getModuleLogger('telegramBotRunner');
+const fs = require('fs');
+const path = require('path');
+const LOCK_FILE = path.join(__dirname, '.telegram-bot.lock');
 
 let driver = null;
 
@@ -63,8 +66,27 @@ async function ensureDriverValid() {
   }
 }
 
+function releaseLock() {
+  try {
+    if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE);
+  } catch (_) {}
+}
+
 async function runTelegramBot() {
   const { executionTracker } = require('./services/executionTracker');
+
+  if (fs.existsSync(LOCK_FILE)) {
+    const existingPid = parseInt(fs.readFileSync(LOCK_FILE, 'utf8'), 10);
+    try {
+      process.kill(existingPid, 0);
+      logger.error('Another Telegram bot instance is already running', { pid: existingPid });
+      process.exit(1);
+    } catch {
+      fs.unlinkSync(LOCK_FILE);
+    }
+  }
+
+  fs.writeFileSync(LOCK_FILE, String(process.pid));
   
   try {
     // Start Telegram execution tracking
@@ -161,6 +183,12 @@ async function runTelegramBot() {
               );
               
               logger.info(`✅ Processing result for ${link}:`, result);
+
+              try {
+                await executionTracker.updateTelegramMessageProgress('processed');
+              } catch (trackErr) {
+                logger.warn('Telegram message progress tracking failed', { error: trackErr?.message });
+              }
               
             } catch (error) {
               logger.error(`❌ Error processing message:`, { 
@@ -209,6 +237,7 @@ async function runTelegramBot() {
     
   } catch (error) {
     logger.error('💥 Critical error in Telegram bot:', { error: error.message });
+    releaseLock();
   } finally {
     // Only cleanup if we're actually stopping (not just looping)
     // Don't quit driver if we're still in the loop - it's needed for continuous operation
@@ -220,6 +249,7 @@ async function runTelegramBot() {
 // Handle graceful shutdown
 process.on('SIGINT', async () => {
   logger.info('🛑 Received SIGINT. Shutting down gracefully...');
+  releaseLock();
   if (driver) {
     try {
       await driver.quit();
@@ -233,6 +263,7 @@ process.on('SIGINT', async () => {
 
 process.on('SIGTERM', async () => {
   logger.info('🛑 Received SIGTERM. Shutting down gracefully...');
+  releaseLock();
   if (driver) {
     try {
       await driver.quit();

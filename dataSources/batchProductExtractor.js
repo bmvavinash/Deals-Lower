@@ -4,6 +4,7 @@ const chrome = require('selenium-webdriver/chrome');
 const { getModuleLogger } = require('../logger/logger');
 const { loadConfig, scrapePage } = require('../pageScheduler');
 const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
+const { executionTracker } = require('../services/executionTracker');
 const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require('../utils/commonUtils');
 const { findMatchingHierarchy, generateHierarchicalKey } = require('../config/categoryHierarchy');
 const { DynamicCategoryExtractor } = require('../utils/dynamicCategoryExtractor');
@@ -924,7 +925,10 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 		
 		let rawProducts, usedPageType;
 		try {
-			const result = await withTimeout(tryConfigs(url, driver, config), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE');
+			const tryConfigsPromise = tryConfigs(url, driver, config);
+			// Prevent unhandled rejection from the background task if the timeout wins
+			tryConfigsPromise.catch(e => logger.debug('Swallowed late tryConfigs error after timeout', { error: e.message }));
+			const result = await withTimeout(tryConfigsPromise, (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE');
 			rawProducts = result.rawProducts;
 			usedPageType = result.usedPageType;
 		} catch (scrapeError) {
@@ -1037,7 +1041,9 @@ async function initializeDriver() {
 	options.addArguments('--disable-infobars');
 	options.addArguments('--lang=en-US');
 	options.addArguments('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36');
-	options.excludeSwitches(['enable-automation']);
+	options.addArguments('--log-level=3'); // Suppress severe/fatal only
+	options.addArguments('--disable-logging');
+	options.excludeSwitches(['enable-automation', 'enable-logging']);
 	
 	// Memory optimization flags
 	options.addArguments('--memory-pressure-off');
@@ -1054,8 +1060,26 @@ async function initializeDriver() {
 	return driver;
 }
 
+async function isDriverAlive(driver) {
+	if (!driver) return false;
+	try {
+		await driver.getCurrentUrl();
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 async function closeDriver(driver) {
-	try { await driver.quit(); } catch {}
+	if (!driver) return;
+	try {
+		await driver.quit();
+	} catch (e) {
+		const msg = e?.message || String(e);
+		if (!/invalid session|NoSuchSession|not connected to DevTools/i.test(msg)) {
+			logger.debug('closeDriver warning', { error: msg });
+		}
+	}
 }
 
 async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '', targetDb = 'deals') {
@@ -1112,6 +1136,12 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 		let totalExtracted = 0, totalStored = 0, createdCount = 0, updatedCount = 0;
 		for (let pageIndex = 0; pageIndex < seedUrls.length; pageIndex++) {
 			const url = seedUrls[pageIndex];
+
+			if (!(await isDriverAlive(driver))) {
+				logger.warn('WebDriver session lost — reinitializing', { pageIndex, url });
+				try { await closeDriver(driver); } catch (_) {}
+				driver = await initializeDriver();
+			}
 			
 			// Don't initialize with 0 - wait for actual extraction results
 			// This prevents showing 0/0 when extraction hasn't completed yet

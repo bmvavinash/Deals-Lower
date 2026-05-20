@@ -14,6 +14,10 @@ const constants = require('../config/constants');
 
 const logger = getModuleLogger('favoritesNotificationService');
 
+function isFavoritesEnabled() {
+  return constants.notifications?.enableFavoritesService === true;
+}
+
 class FavoritesBasedNotificationService {
   constructor() {
     this.notificationStats = {
@@ -38,6 +42,7 @@ class FavoritesBasedNotificationService {
    */
   async checkPriceDrops(productCode, currentPrice, previousPrice) {
     try {
+      if (!isFavoritesEnabled()) return;
       if (!productCode || !currentPrice || !previousPrice) return;
 
       const currentPriceNum = parseFloat(String(currentPrice).replace(/[^\d.]/g, ''));
@@ -83,6 +88,7 @@ class FavoritesBasedNotificationService {
    */
   async checkNewDeals(productCode, productData) {
     try {
+      if (!isFavoritesEnabled()) return;
       if (!productCode || !productData) return;
 
       // Get users who favorited this product
@@ -114,6 +120,7 @@ class FavoritesBasedNotificationService {
    */
   async checkCategoryDeals(category, productData) {
     try {
+      if (!isFavoritesEnabled()) return;
       if (!category || !productData) return;
 
       // Get all users and their favorites

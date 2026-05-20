@@ -26,13 +26,29 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
 
   if (isProductPosted === productStatus.PRODUCT_ERROR) {
     logger.warn('Missed link during processProduct', { link });
-  } else if (isProductPosted === productStatus.PRODUCT_EXCLUDED) {
-    logger.warn('Excluded product (Aff policy)', { link });
+    return searchStatus.SEARCH_ERROR;
   }
+  if (isProductPosted === productStatus.PRODUCT_EXCLUDED) {
+    logger.warn('Excluded product (Aff policy)', { link });
+    return searchStatus.SEARCH_NOT_APPLICABLE;
+  }
+  if (isProductPosted === productStatus.PRODUCT_CREATED || isProductPosted === productStatus.PRODUCT_UPDATED_SUCCESSFULLY) {
+    return searchStatus.SEARCH_CREATED;
+  }
+  return searchStatus.SEARCH_ERROR;
 }
 
 async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username = "", generateLink = false) {
   try {
+    if (!storeMap || typeof storeMap !== 'object') {
+      logger.error('storeMap unavailable in handleProductProcessing');
+      return searchStatus.SEARCH_ERROR;
+    }
+    if (!driver) {
+      logger.error('WebDriver not available for handleProductProcessing');
+      return searchStatus.SEARCH_ERROR;
+    }
+
     let shortUrl = link;
     let resolvedUrl = link;
     
@@ -89,8 +105,8 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
         }
       }
       
-      await processProduct(driver, resolvedUrl, text, len, accessToken, jsonData, todayJsonData, true, username, generateLink, finalShortUrl);
-      return searchStatus.SEARCH_CREATED;
+      const status = await processProduct(driver, resolvedUrl, text, len, accessToken, jsonData, todayJsonData, true, username, generateLink, finalShortUrl);
+      return status;
     }
 
     if (!String(username || '').includes('dealsglobalhub')) {

@@ -16,7 +16,7 @@ const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 if (!admin.apps.length) {
 	admin.initializeApp({
 		credential: admin.credential.cert(serviceAccount),
-		databaseURL: `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+		databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
 	});
 	console.log(`Firebase initialized successfully for ${DB_Name}`);
 } else {
@@ -92,10 +92,12 @@ class ProductDealsDB {
 			
 			// Load favorites notification service (lazy load to avoid circular deps)
 			let favoritesNotificationService = null;
-			try {
-				favoritesNotificationService = require('../../services/favoritesBasedNotificationService').favoritesNotificationService;
-			} catch (e) {
-				logger.debug('Favorites notification service not available', { error: e.message });
+			if (constants.notifications?.enableFavoritesService) {
+				try {
+					favoritesNotificationService = require('../../services/favoritesBasedNotificationService').favoritesNotificationService;
+				} catch (e) {
+					logger.debug('Favorites notification service not available', { error: e.message });
+				}
 			}
 
 			for (const product of products) {

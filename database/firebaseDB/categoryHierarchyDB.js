@@ -21,7 +21,7 @@ const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 if (!admin.apps.length) {
 	admin.initializeApp({
 		credential: admin.credential.cert(serviceAccount),
-		databaseURL: `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+		databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
 	});
 }
 
