@@ -803,7 +803,7 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 			mainCategory: categoryData.mainCategory || ''
 		},
 		sourceType,
-		storeType: 'Amazon',
+		storeType: raw.storeType || (/amazon\./i.test(hostname) ? 'Amazon' : /flipkart\./i.test(hostname) ? 'Flipkart' : /myntra\./i.test(hostname) ? 'Myntra' : /ajio\./i.test(hostname) ? 'Ajio' : (sourceType !== 'telegram' && sourceType !== 'website' ? sourceType.charAt(0).toUpperCase() + sourceType.slice(1) : 'Unknown')),
 		creationTimestamp: isoNow,
 		updateTimestamp: isoNow,
 		date: dateOnly,
