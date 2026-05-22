@@ -290,7 +290,7 @@ const Banners = () => {
             disabled={triggering}
             className="trigger-button"
           >
-            {triggering ? '🔄 Triggering...' : '🚀 Trigger Banners'}
+            {triggering ? '🔄 Loading...' : '🚀 Display Banners'}
           </button>
           
           <button 
@@ -347,7 +347,7 @@ const Banners = () => {
 
       {banners.length === 0 && !triggering && (
         <div className="no-banners-message">
-          <p>No banners loaded yet. Click "Trigger Banners" to fetch from {bannerSource}.</p>
+          <p>No banners loaded yet. Click "Display Banners" to fetch from {bannerSource}.</p>
         </div>
       )}
 

@@ -35,7 +35,7 @@ interface BannerStats {
 
 const DealsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('deals');
-  const [filters, setFilters] = useState({ dealType: '', platform: '', limit: 100, offset: 0 });
+  const [filters, setFilters] = useState({ dealType: '', platform: '', date: '', limit: 100, offset: 0 });
   const [newsFilters, setNewsFilters] = useState({ limit: 20, offset: 0, category: '', sortBy: 'publishDate', order: 'desc' });
   const [reviewsFilters, setReviewsFilters] = useState({ limit: 20, offset: 0, productName: '', minRating: '', sortBy: 'publishDate', order: 'desc' });
   
@@ -1109,9 +1109,9 @@ const DealsPage: React.FC = () => {
               onClick={handleTriggerBanners} 
               className="trigger-button banner-trigger-button"
               disabled={isTriggeringBanners}
-              title="Trigger banners from all platforms (Amazon, Flipkart, Myntra, Ajio) - Uses headless browser (no Chrome 9222)"
+              title="Display banners from all platforms (Amazon, Flipkart, Myntra, Ajio) - Uses headless browser (no Chrome 9222)"
             >
-              {isTriggeringBanners ? '⏳ Triggering...' : '🚀 Trigger Banners'}
+              {isTriggeringBanners ? '⏳ Loading...' : '🚀 Display Banners'}
             </button>
           </div>
           {dealsLoading && <div className="loading">Loading deals...</div>}
@@ -1392,7 +1392,7 @@ const DealsPage: React.FC = () => {
                 disabled={isTriggeringBanners}
                 className="trigger-button"
               >
-                {isTriggeringBanners ? '🔄 Triggering...' : '🚀 Trigger Banners'}
+                {isTriggeringBanners ? '🔄 Loading...' : '🚀 Display Banners'}
               </button>
               
               <button 
@@ -1473,7 +1473,7 @@ const DealsPage: React.FC = () => {
 
           {banners.length === 0 && !isTriggeringBanners && (
             <div className="no-banners-message">
-              <p>No banners loaded yet. Click "Trigger Banners" to fetch from {bannerSource}.</p>
+              <p>No banners loaded yet. Click "Display Banners" to fetch from {bannerSource}.</p>
             </div>
           )}
 

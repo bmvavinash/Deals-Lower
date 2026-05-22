@@ -70,7 +70,7 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
           <img src={deal.photo} alt={deal.title} className="deal-image" />
         )}
         <div className="deal-content">
-          <h3 className="deal-title">{deal.title || 'No Title'}</h3>
+          <h3 className="deal-title">{deal.title || deal.shortText || deal.productText || 'No Title'}</h3>
           <div className="deal-info">
             <span className="deal-price">
               {deal.price ? `₹${deal.price}` : 'Price N/A'}

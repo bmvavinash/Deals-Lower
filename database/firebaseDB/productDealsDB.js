@@ -14,9 +14,12 @@ console.log(`Initializing Firebase with DB: ${DB_Name}, Token File: ${filePath}`
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
 if (!admin.apps.length) {
+	const dbUrl = DB_Name === 'lowerdealhub' 
+		? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+		: `https://${DB_Name}-default-rtdb.firebaseio.com`;
 	admin.initializeApp({
 		credential: admin.credential.cert(serviceAccount),
-		databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
+		databaseURL: dbUrl
 	});
 	console.log(`Firebase initialized successfully for ${DB_Name}`);
 } else {
@@ -479,6 +482,31 @@ class ProductDealsDB {
 		} catch (error) {
 			logger.error('updateExistingRecordsWithNewAttributes error', { error: error.message, stack: error.stack });
 			return { status: 500, message: error.message };
+		}
+	}
+
+	async getProduct(productCode, targetDb = 'deals') {
+		try {
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
+			const snapshot = await targetRef.child(safeKey).once('value');
+			
+			if (snapshot.exists()) {
+				return snapshot.val();
+			}
+			
+			// Fallback: search by productCode if key doesn't match
+			const querySnapshot = await targetRef.orderByChild('productCode').equalTo(productCode).once('value');
+			if (querySnapshot.exists()) {
+				const products = querySnapshot.val();
+				const keys = Object.keys(products);
+				return products[keys[0]];
+			}
+			
+			return null;
+		} catch (error) {
+			logger.error('getProduct error', { error: error.message });
+			return null;
 		}
 	}
 

@@ -90,8 +90,8 @@ const CONFIG = {
       ALL_DEALS: "Kzl4DB4yCXzJaaCP0Lrf1G"
     },
     DATABASE_CONFIG: {
-      DB1_TOKEN_FILE: "dealshubglobal-firebase-adminsdk-7527s-a09ba4201e",
-      DB1_NAME: "dealshubglobal",
+      DB1_TOKEN_FILE: "lowerdealhub-firebase-adminsdk-fbsvc-fa13fd2614",
+      DB1_NAME: "lowerdealhub",
       JSON_FILE_NAME: "deals",
       DB1_BACKUP_TOKEN_FILE: "lowerdealhub-firebase-adminsdk-fbsvc-fa13fd2614",
       DB1Backup_TOKEN_FILE: "lowerdealhub-firebase-adminsdk-fbsvc-fa13fd2614",

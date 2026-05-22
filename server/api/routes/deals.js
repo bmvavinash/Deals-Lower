@@ -316,10 +316,10 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, limit = 100, offset = 0 } = req.query;
+    const { dealType, platform, date, limit = 100, offset = 0 } = req.query;
     
     // Create cache key
-    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${limit}_${offset}`;
+    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${limit}_${offset}`;
     
     // Check cache first (increased TTL to 10 minutes for deals)
     const cached = cacheService.get(cacheKey);
@@ -332,14 +332,26 @@ router.get('/', async (req, res, next) => {
     const targetDb = dealType === 'hotDeal' ? 'deals' : 'productdeals';
     const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
     
-    const snapshot = await ref.once('value');
+    let snapshot;
+    if (date) {
+      // Use native Firebase querying to fetch by date
+      snapshot = await ref.orderByChild('date').equalTo(date).once('value');
+    } else {
+      // Use native Firebase querying to fetch a larger pool (5000) to account for potential invalid items
+      snapshot = await ref.orderByChild('datetime').limitToLast(5000).once('value');
+    }
     let deals = snapshot.val() || {};
     
-    // Convert to array and filter
+    // Convert to array and filter out completely empty items
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
       productCode: key,
       ...value
-    }));
+    })).filter(deal => {
+      const hasAnyTitle = (deal.title && deal.title.trim() !== '') || 
+                          (deal.shortText && deal.shortText.trim() !== '') || 
+                          (deal.productText && deal.productText.trim() !== '');
+      return hasAnyTitle && deal.price;
+    });
 
     // Filter by platform if specified
     if (platform) {
@@ -348,13 +360,24 @@ router.get('/', async (req, res, next) => {
       );
     }
 
-    // Sort by timestamp in descending order (newest first)
-    // Priority: updatedatetime > datetime > updateTimestamp > 0
-    dealsArray.sort((a, b) => {
-      const aTime = Number(a.updatedatetime || a.datetime || a.updateTimestamp || 0);
-      const bTime = Number(b.updatedatetime || b.datetime || b.updateTimestamp || 0);
-      return bTime - aTime; // Descending order (newest first)
-    });
+    // Apply sorting
+    if (date) {
+      // If date is specified, Firebase natively sorts identical dates by key ascending.
+      // We must match this behavior so the Admin portal exactly matches the Website.
+      dealsArray.sort((a, b) => {
+        if (a.productCode < b.productCode) return -1;
+        if (a.productCode > b.productCode) return 1;
+        return 0;
+      });
+    } else {
+      // Sort by timestamp in descending order (newest first)
+      // Priority: updatedatetime > datetime > updateTimestamp > 0
+      dealsArray.sort((a, b) => {
+        const aTime = Number(a.updatedatetime || a.datetime || a.updateTimestamp || 0);
+        const bTime = Number(b.updatedatetime || b.datetime || b.updateTimestamp || 0);
+        return bTime - aTime; // Descending order (newest first)
+      });
+    }
 
     // Apply pagination
     const total = dealsArray.length;

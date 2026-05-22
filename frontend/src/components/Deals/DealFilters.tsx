@@ -34,6 +34,14 @@ const DealFilters: React.FC<DealFiltersProps> = ({ filters, onFilterChange }) =>
         <option value="Ajio">Ajio</option>
       </select>
 
+      <input
+        type="date"
+        value={filters.date || ''}
+        onChange={(e) => onFilterChange({ date: e.target.value })}
+        className="date-filter"
+        title="Filter by Date"
+      />
+
       <select
         value={filters.limit}
         onChange={(e) => onFilterChange({ limit: parseInt(e.target.value) })}
