@@ -5,17 +5,21 @@ import { dealsAPI } from '../../services/api';
 import './ExpandableDealCard.css';
 
 interface ExpandableDealCardProps {
-  deal: Deal;
+  deal: any;
   isExpanded?: boolean;
   showAllDetails?: boolean;
+  viewMode?: 'deals' | 'products' | 'both';
+  database?: string;
   onToggleExpand?: () => void;
   onRetrigger?: (productCode: string) => void;
 }
 
 const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({ 
   deal, 
-  isExpanded: externalExpanded,
+  isExpanded: externalExpanded = false, 
   showAllDetails = false,
+  viewMode = 'deals',
+  database,
   onToggleExpand,
   onRetrigger 
 }) => {
@@ -39,7 +43,7 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
     
     setIsRetriggering(true);
     try {
-      await dealsAPI.retriggerProduct(deal.productCode, 'productdeals');
+      await dealsAPI.retriggerProduct(deal.productCode, database || 'productdeals');
       alert('Product re-extraction triggered successfully! It will be updated in the background.');
       if (onRetrigger) {
         onRetrigger(deal.productCode);

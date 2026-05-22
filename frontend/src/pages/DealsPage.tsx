@@ -1119,6 +1119,7 @@ const DealsPage: React.FC = () => {
           {dealsData && (
             <DealList 
               deals={(dealsData.data as any).data || []} 
+              database={(dealsData.data as any).database}
               pagination={(dealsData.data as any).pagination}
               onPageChange={(offset) => setFilters({ ...filters, offset })}
             />

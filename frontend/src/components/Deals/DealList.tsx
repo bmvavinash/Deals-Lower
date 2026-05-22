@@ -5,6 +5,7 @@ import './DealList.css';
 
 interface DealListProps {
   deals: Deal[];
+  database?: string;
   pagination?: {
     total: number;
     limit: number;
@@ -14,7 +15,7 @@ interface DealListProps {
   onPageChange: (offset: number) => void;
 }
 
-const DealList: React.FC<DealListProps> = ({ deals, pagination, onPageChange }) => {
+const DealList: React.FC<DealListProps> = ({ deals, database, pagination, onPageChange }) => {
   const [expandedProducts, setExpandedProducts] = useState<Set<string>>(new Set());
   const [showAllDetails, setShowAllDetails] = useState(false);
 
@@ -51,6 +52,7 @@ const DealList: React.FC<DealListProps> = ({ deals, pagination, onPageChange }) 
           <ExpandableDealCard 
             key={deal.productCode || index} 
             deal={deal}
+            database={database}
             isExpanded={expandedProducts.has(deal.productCode || '')}
             showAllDetails={showAllDetails}
             onToggleExpand={() => deal.productCode && handleToggleExpand(deal.productCode)}
