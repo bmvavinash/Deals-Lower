@@ -18,9 +18,20 @@ async function testExtraction() {
     console.log("\nTesting Amazon...");
     await driver.get("https://www.amazon.in/Apple-MacBook-Chip-13-inch-256GB/dp/B08N5W4NNB");
     const amazonProduct = await scrapeProduct("https://www.amazon.in/Apple-MacBook-Chip-13-inch-256GB/dp/B08N5W4NNB", "amazon", driver);
-    console.log("Amazon Result Brand:", amazonProduct.brand);
-    console.log("Amazon Result Title:", amazonProduct.title);
-    console.log("Amazon Result MainCategory:", amazonProduct.category?.mainCategory);
+    console.log("Amazon Result Brand:", amazonProduct?.brand);
+    console.log("Amazon Result Title:", amazonProduct?.title);
+
+    console.log("\nTesting Ajio...");
+    await driver.get("https://www.ajio.com/w-floral-print-straight-kurta-suit-set/p/442252483_lightyellow");
+    const ajioProduct = await scrapeProduct("https://www.ajio.com/w-floral-print-straight-kurta-suit-set/p/442252483_lightyellow", "ajio", driver);
+    console.log("Ajio Result Brand:", ajioProduct?.brand);
+    console.log("Ajio Result Title:", ajioProduct?.title);
+
+    console.log("\nTesting Flipkart...");
+    await driver.get("https://www.flipkart.com/apple-iphone-15-black-128-gb/p/itm6ac6485515ae4");
+    const flipkartProduct = await scrapeProduct("https://www.flipkart.com/apple-iphone-15-black-128-gb/p/itm6ac6485515ae4", "flipkart", driver);
+    console.log("Flipkart Result Brand:", flipkartProduct?.brand);
+    console.log("Flipkart Result Title:", flipkartProduct?.title);
 
   } catch (error) {
     console.error('Error:', error);
