@@ -127,13 +127,21 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
       });
 
       if (!significantChanges) {
-        logger.info('Changes not significant; skipping update', { 
+        logger.info('Changes not significant; skipping full update but updating timestamps', { 
           functionName: 'updateProduct', 
           productCode,
           changeType: changeResult.changeType,
           changeCount: changeResult.changeCount
         });
-        return { status: 304, message: 'NO_SIGNIFICANT_CHANGES' };
+        
+        const nowIso = new Date().toISOString();
+        const nowMs = Date.now();
+        await productRef.update({
+          updateTimestamp: nowIso,
+          updatedatetime: nowMs
+        });
+        
+        return { status: 200, message: 'NO_SIGNIFICANT_CHANGES_TIMESTAMP_UPDATED' };
       }
 
       // Prepare update data with only changed fields
