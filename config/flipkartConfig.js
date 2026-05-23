@@ -4,13 +4,16 @@ module.exports = {
   title: [
     { type: 'css', selector: 'h1._6EBuvT .VU-ZEz' },
     { type: 'css', selector: 'h1._6EBuvT' },
+    { type: 'css', selector: 'h1' }, // Added fallback for new UI
   ],
   brand: [
     { type: 'css', selector: 'h1._6EBuvT .mEh187' },
+    { type: 'css', selector: 'h1' }, // Added fallback for new UI
   ],
   productText: [
     { type: 'css', selector: 'h1._6EBuvT .VU-ZEz' },
     { type: 'css', selector: 'h1._6EBuvT' },
+    { type: 'css', selector: 'h1' }, // Added fallback for new UI
   ],
   price: [
     { type: 'css', selector: '.hl05eU .Nx9bqj.CxhGGd', validator: validatePrice },
