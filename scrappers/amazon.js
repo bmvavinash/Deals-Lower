@@ -162,7 +162,10 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
       try { 
         const imageElement = await extractAttribute(driver, config?.photo);
         if (imageElement) {
-          try { product.photo = imageElement.match(/url\("(.*?)"\)/)[1]; } catch (e) { logger.error(`[${platform}] Image Extract Error:`, { error: e.message, stack: e.stack }); product.photo = ""; }
+          try { 
+            const match = imageElement.match(/url\(['"]?(.*?)['"]?\)/);
+            product.photo = match ? match[1] : ""; 
+          } catch (e) { logger.error(`[${platform}] Image Extract Error:`, { error: e.message, stack: e.stack }); product.photo = ""; }
         } else {
           product.photo = "";
         }

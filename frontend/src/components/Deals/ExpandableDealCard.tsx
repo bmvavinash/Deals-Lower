@@ -70,8 +70,8 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
   return (
     <div className={`expandable-deal-card ${isExpanded ? 'expanded' : ''}`}>
       <div className="deal-card-minimal">
-        {deal.photo && (
-          <img src={deal.photo} alt={deal.title} className="deal-image" />
+        {(deal.photo || deal.images || deal.image) && (
+          <img src={deal.photo || deal.images || deal.image || ''} alt={deal.title || deal.shortText || 'Product Deal'} className="deal-image" />
         )}
         <div className="deal-content">
           <h3 className="deal-title">{deal.title || deal.shortText || deal.productText || 'No Title'}</h3>

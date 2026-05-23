@@ -237,9 +237,15 @@ function validateOriginalPrice(value) {
 }
 
 function validateText(value) {
-    // Replace "&amp;" with "&" and remove all white spaces
-    let cleanedValue = value.replace(/&amp;|\s/g, "").replace(/-/g, "").trim();
-    return cleanedValue;
+    if (!value || typeof value !== 'string') {
+        return { isValid: false, value: "" };
+    }
+    // Replace "&amp;" with "&", normalize spaces, and remove hyphens
+    let cleanedValue = value.replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/-/g, "").trim();
+    return {
+        isValid: cleanedValue.length > 0,
+        value: cleanedValue
+    };
 }
 
 function getAjioCode(url) {

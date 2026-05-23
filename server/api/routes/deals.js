@@ -821,11 +821,40 @@ router.post('/:productCode/retrigger', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Product or URL not found' });
     }
     
-    const { extractAndStoreFromUrl } = require('../../../dataSources/batchProductExtractor');
     const driver = global.driver || await getOrCreateDriver();
-    const result = await extractAndStoreFromUrl(driver, product.productUrl, 'retrigger', null, null, db);
+    const { scrapeProduct } = require('../../../scrappers/amazon');
+    const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
     
-    res.json({ success: true, result });
+    const platform = resolvePlatformFromUrl(product.productUrl) || 'amazon';
+    
+    const extractedData = await scrapeProduct(
+      product.productUrl, 
+      platform, 
+      driver, 
+      product.productText || product.title || "", 
+      false, 
+      "dealsglobalhub"
+    );
+    
+    if (extractedData && Object.keys(extractedData).length > 0) {
+      // Merge with existing product data
+      const updatedProduct = {
+        ...product,
+        ...extractedData,
+        updateTimestamp: new Date().toISOString(),
+        updatedatetime: Date.now()
+      };
+      
+      // Keep existing photo if the new extraction failed to find one
+      if (!updatedProduct.photo && product.photo) {
+        updatedProduct.photo = product.photo;
+      }
+      
+      await productDealsDB.updateIndividualProduct(productCode, updatedProduct, db);
+      res.json({ success: true, result: { extracted: 1, stored: 1, products: [updatedProduct] } });
+    } else {
+      res.json({ success: false, error: 'Extraction returned no data' });
+    }
   } catch (error) {
     logger.error('Error retriggering product', { error: error.message });
     res.status(500).json({ success: false, error: error.message });

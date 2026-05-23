@@ -10,8 +10,8 @@ interface DealCardProps {
 const DealCard: React.FC<DealCardProps> = ({ deal }) => {
   return (
     <div className="deal-card">
-      {deal.photo && (
-        <img src={deal.photo} alt={deal.title} className="deal-image" />
+      {(deal.photo || deal.images || deal.image) && (
+        <img src={deal.photo || deal.images || deal.image || ''} alt={deal.title || deal.shortText || 'Product Deal'} className="deal-image" />
       )}
       <div className="deal-content">
         <h3 className="deal-title">{deal.title}</h3>
