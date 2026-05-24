@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery } from 'react-query';
 import { analyticsAPI, schedulerAPI, bannersAPI, dealsAPI } from '../services/api';
+import { useNotification } from '../context/NotificationContext';
 import './Dashboard.css';
 
 const Dashboard: React.FC = () => {
@@ -13,11 +14,6 @@ const Dashboard: React.FC = () => {
   const [productUrl, setProductUrl] = useState('');
   const [postProduct, setPostProduct] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processStatus, setProcessStatus] = useState<{
-    status: 'idle' | 'success' | 'error' | 'excluded';
-    message: string;
-    error?: string;
-  }>({ status: 'idle', message: '' });
   
   // Product code search and CRUD state
   const [productCode, setProductCode] = useState('');
@@ -25,10 +21,8 @@ const Dashboard: React.FC = () => {
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [productStatus, setProductStatus] = useState<{
-    status: 'idle' | 'success' | 'error';
-    message: string;
-  }>({ status: 'idle', message: '' });
+  
+  const { addNotification } = useNotification();
   
   const handleBannerExtraction = async () => {
     try {
@@ -43,29 +37,36 @@ const Dashboard: React.FC = () => {
 
   const handleProcessProduct = async () => {
     if (!productUrl.trim()) {
-      setProcessStatus({
-        status: 'error',
-        message: 'Please enter a product URL',
-        error: 'Product URL is required'
+      addNotification({
+        type: 'error',
+        message: 'Product URL is required',
+        source: 'Process Product',
+        page: 'Dashboard'
       });
       return;
     }
 
     setIsProcessing(true);
-    setProcessStatus({ status: 'idle', message: 'Processing...' });
+    addNotification({ type: 'info', message: 'Processing started...', source: 'Process Product', page: 'Dashboard' });
 
     try {
       const response = await dealsAPI.processProduct(productUrl.trim(), postProduct);
-      setProcessStatus({
-        status: response.data.status,
-        message: response.data.message,
-        error: response.data.error || undefined
+      let type: 'success' | 'error' | 'info' | 'warning' = 'success';
+      if (response.data.status === 'error') type = 'error';
+      else if (response.data.status === 'excluded') type = 'warning';
+
+      addNotification({
+        type,
+        message: response.data.message || 'Product processed successfully',
+        source: 'Process Product',
+        page: 'Dashboard'
       });
     } catch (error: any) {
-      setProcessStatus({
-        status: 'error',
-        message: 'Failed to process product',
-        error: error.response?.data?.error || error.message || 'Unknown error occurred'
+      addNotification({
+        type: 'error',
+        message: error.response?.data?.error || error.message || 'Failed to process product',
+        source: 'Process Product',
+        page: 'Dashboard'
       });
     } finally {
       setIsProcessing(false);
@@ -74,36 +75,23 @@ const Dashboard: React.FC = () => {
 
   const handleSearchProduct = async () => {
     if (!productCode.trim()) {
-      setProductStatus({
-        status: 'error',
-        message: 'Please enter a product code'
-      });
+      addNotification({ type: 'error', message: 'Please enter a product code', source: 'Search Product', page: 'Dashboard' });
       return;
     }
 
     setIsLoadingProduct(true);
-    setProductStatus({ status: 'idle', message: 'Loading...' });
     setProductData(null);
 
     try {
       const response = await dealsAPI.getByCode(productCode.trim());
       if (response.data.success) {
         setProductData(response.data.data);
-        setProductStatus({
-          status: 'success',
-          message: 'Product found successfully'
-        });
+        addNotification({ type: 'success', message: 'Product found successfully', source: 'Search Product', page: 'Dashboard' });
       } else {
-        setProductStatus({
-          status: 'error',
-          message: response.data.error || 'Product not found'
-        });
+        addNotification({ type: 'error', message: response.data.error || 'Product not found', source: 'Search Product', page: 'Dashboard' });
       }
     } catch (error: any) {
-      setProductStatus({
-        status: 'error',
-        message: error.response?.data?.error || error.message || 'Failed to fetch product'
-      });
+      addNotification({ type: 'error', message: error.response?.data?.error || error.message || 'Failed to fetch product', source: 'Search Product', page: 'Dashboard' });
     } finally {
       setIsLoadingProduct(false);
     }
@@ -111,38 +99,25 @@ const Dashboard: React.FC = () => {
 
   const handleUpdateProduct = async () => {
     if (!productData || !productCode.trim()) {
-      setProductStatus({
-        status: 'error',
-        message: 'No product data to update'
-      });
+      addNotification({ type: 'error', message: 'No product data to update', source: 'Update Product', page: 'Dashboard' });
       return;
     }
 
     setIsUpdating(true);
-    setProductStatus({ status: 'idle', message: 'Updating...' });
 
     try {
       // Remove productKey from updates if it exists
       const { productKey, ...updates } = productData;
       const response = await dealsAPI.updateProduct(productCode.trim(), updates);
       if (response.data.success) {
-        setProductStatus({
-          status: 'success',
-          message: 'Product updated successfully'
-        });
+        addNotification({ type: 'success', message: 'Product updated successfully', source: 'Update Product', page: 'Dashboard' });
         // Refresh product data
         await handleSearchProduct();
       } else {
-        setProductStatus({
-          status: 'error',
-          message: response.data.error || 'Failed to update product'
-        });
+        addNotification({ type: 'error', message: response.data.error || 'Failed to update product', source: 'Update Product', page: 'Dashboard' });
       }
     } catch (error: any) {
-      setProductStatus({
-        status: 'error',
-        message: error.response?.data?.error || error.message || 'Failed to update product'
-      });
+      addNotification({ type: 'error', message: error.response?.data?.error || error.message || 'Failed to update product', source: 'Update Product', page: 'Dashboard' });
     } finally {
       setIsUpdating(false);
     }
@@ -150,10 +125,7 @@ const Dashboard: React.FC = () => {
 
   const handleDeleteProduct = async () => {
     if (!productCode.trim()) {
-      setProductStatus({
-        status: 'error',
-        message: 'Product code is required'
-      });
+      addNotification({ type: 'error', message: 'Product code is required', source: 'Delete Product', page: 'Dashboard' });
       return;
     }
 
@@ -162,28 +134,18 @@ const Dashboard: React.FC = () => {
     }
 
     setIsDeleting(true);
-    setProductStatus({ status: 'idle', message: 'Deleting...' });
 
     try {
       const response = await dealsAPI.deleteProduct(productCode.trim());
       if (response.data.success) {
-        setProductStatus({
-          status: 'success',
-          message: 'Product deleted successfully'
-        });
+        addNotification({ type: 'success', message: 'Product deleted successfully', source: 'Delete Product', page: 'Dashboard' });
         setProductData(null);
         setProductCode('');
       } else {
-        setProductStatus({
-          status: 'error',
-          message: response.data.error || 'Failed to delete product'
-        });
+        addNotification({ type: 'error', message: response.data.error || 'Failed to delete product', source: 'Delete Product', page: 'Dashboard' });
       }
     } catch (error: any) {
-      setProductStatus({
-        status: 'error',
-        message: error.response?.data?.error || error.message || 'Failed to delete product'
-      });
+      addNotification({ type: 'error', message: error.response?.data?.error || error.message || 'Failed to delete product', source: 'Delete Product', page: 'Dashboard' });
     } finally {
       setIsDeleting(false);
     }
@@ -287,38 +249,6 @@ const Dashboard: React.FC = () => {
             {isProcessing ? 'Processing...' : 'Submit'}
           </button>
 
-          {processStatus.status !== 'idle' && (
-            <div style={{
-              marginTop: '15px',
-              padding: '12px',
-              borderRadius: '4px',
-              backgroundColor: 
-                processStatus.status === 'success' ? '#d4edda' :
-                processStatus.status === 'error' ? '#f8d7da' :
-                processStatus.status === 'excluded' ? '#fff3cd' : '#e2e3e5',
-              border: `1px solid ${
-                processStatus.status === 'success' ? '#c3e6cb' :
-                processStatus.status === 'error' ? '#f5c6cb' :
-                processStatus.status === 'excluded' ? '#ffeaa7' : '#d6d8db'
-              }`,
-              color: 
-                processStatus.status === 'success' ? '#155724' :
-                processStatus.status === 'error' ? '#721c24' :
-                processStatus.status === 'excluded' ? '#856404' : '#383d41'
-            }}>
-              <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
-                Status: {processStatus.status === 'success' ? '✅ Success' : processStatus.status === 'error' ? '❌ Error' : processStatus.status === 'excluded' ? '⚠️ Excluded' : '⏳ Processing'}
-              </div>
-              <div style={{ marginBottom: processStatus.error ? '5px' : '0' }}>
-                {processStatus.message}
-              </div>
-              {processStatus.error && (
-                <div style={{ marginTop: '8px', fontSize: '14px', fontStyle: 'italic' }}>
-                  <strong>Error:</strong> {processStatus.error}
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -367,25 +297,7 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          {productStatus.status !== 'idle' && (
-            <div style={{
-              marginBottom: '15px',
-              padding: '12px',
-              borderRadius: '4px',
-              backgroundColor: 
-                productStatus.status === 'success' ? '#d4edda' :
-                productStatus.status === 'error' ? '#f8d7da' : '#e2e3e5',
-              border: `1px solid ${
-                productStatus.status === 'success' ? '#c3e6cb' :
-                productStatus.status === 'error' ? '#f5c6cb' : '#d6d8db'
-              }`,
-              color: 
-                productStatus.status === 'success' ? '#155724' :
-                productStatus.status === 'error' ? '#721c24' : '#383d41'
-            }}>
-              {productStatus.message}
-            </div>
-          )}
+
 
           {productData && (
             <div style={{

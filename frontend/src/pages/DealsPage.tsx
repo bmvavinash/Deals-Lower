@@ -3,6 +3,7 @@ import { useQuery } from 'react-query';
 import { dealsAPI, newsAPI } from '../services/api';
 import DealList from '../components/Deals/DealList';
 import DealFilters from '../components/Deals/DealFilters';
+import { useNotification } from '../context/NotificationContext';
 import './DealsPage.css';
 import './Banners.css';
 
@@ -39,6 +40,7 @@ const DealsPage: React.FC = () => {
   const [newsFilters, setNewsFilters] = useState({ limit: 20, offset: 0, category: '', sortBy: 'publishDate', order: 'desc' });
   const [reviewsFilters, setReviewsFilters] = useState({ limit: 20, offset: 0, productName: '', minRating: '', sortBy: 'publishDate', order: 'desc' });
   
+  const { addNotification } = useNotification();
   // Deals query
   const { data: dealsData, isLoading: dealsLoading, error: dealsError, refetch: refetchDeals } = useQuery(
     ['deals', filters],
@@ -131,11 +133,11 @@ const DealsPage: React.FC = () => {
     try {
       setIsBulkUpdating(true);
       await dealsAPI.triggerBulkUpdate('website', 'productdeals');
-      alert('Bulk update triggered successfully! It will run in the background.');
+      addNotification({ type: 'success', message: 'Bulk update triggered successfully! It will run in the background.', source: 'Bulk Update', page: 'Deals' });
       refetchDeals();
     } catch (error: any) {
       const msg = error?.response?.data?.error || error?.message || 'Failed to trigger bulk update';
-      alert(`Failed to trigger bulk update: ${msg}`);
+      addNotification({ type: 'error', message: `Failed to trigger bulk update: ${msg}`, source: 'Bulk Update', page: 'Deals' });
     } finally {
       setIsBulkUpdating(false);
     }
@@ -165,10 +167,10 @@ const DealsPage: React.FC = () => {
     try {
       setIsTelegramRunning(true);
       await dealsAPI.triggerTelegramBot();
-      alert('Telegram bot triggered successfully! It will process messages continuously in the background.');
+      addNotification({ type: 'success', message: 'Telegram bot triggered successfully! It will process messages continuously in the background.', source: 'Telegram Bot', page: 'Deals' });
     } catch (error: any) {
       const msg = error?.response?.data?.error || error?.message || 'Failed to trigger Telegram bot';
-      alert(`Failed to trigger Telegram bot: ${msg}`);
+      addNotification({ type: 'error', message: `Failed to trigger Telegram bot: ${msg}`, source: 'Telegram Bot', page: 'Deals' });
     } finally {
       setIsTelegramRunning(false);
     }
@@ -196,19 +198,19 @@ const DealsPage: React.FC = () => {
         .map(([field, _]) => field);
       
       if (selectedFields.length === 0) {
-        alert('Please select at least one field to retrigger');
+        addNotification({ type: 'warning', message: 'Please select at least one field to retrigger', source: 'Retrigger', page: 'Deals' });
         return;
       }
 
       const response = await dealsAPI.retriggerToday(selectedFields, 'price');
       const data = response.data;
       
-      alert(`Retrigger started! Found ${data.stats.toRetrigger} deals to process.\n\nIssues breakdown:\n- Price: ${data.stats.issuesBreakdown.price}\n- Links: ${data.stats.issuesBreakdown.links}\n- Discount: ${data.stats.issuesBreakdown.discount}\n- Category: ${data.stats.issuesBreakdown.category}\n- Photo: ${data.stats.issuesBreakdown.photo}\n\nProducts with price issues are processed first. Check logs for progress.`);
+      addNotification({ type: 'success', message: `Retrigger started! Found ${data.stats.toRetrigger} deals to process.\nCheck logs for progress.`, source: 'Retrigger', page: 'Deals' });
       
       setShowRetriggerModal(false);
       refetchDeals();
     } catch (error: any) {
-      alert(`Failed to trigger retrigger: ${error.response?.data?.error || error.message}`);
+      addNotification({ type: 'error', message: `Failed to trigger retrigger: ${error.response?.data?.error || error.message}`, source: 'Retrigger', page: 'Deals' });
     } finally {
       setIsRetriggering(false);
     }

@@ -8,24 +8,31 @@ import SchedulerPage from './pages/SchedulerPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import ExecutionMonitor from './pages/ExecutionMonitor';
 import DadExpensesPage from './pages/DadExpensesPage';
+import { NotificationProvider } from './context/NotificationContext';
+import Toaster from './components/Notifications/Toaster';
+import NotificationQueue from './components/Notifications/NotificationQueue';
 
 function App() {
   return (
-    <Router>
-      <MainLayout>
-        <Routes>
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
-          <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/deals" element={<DealsPage />} />
-          <Route path="/stocks" element={<StocksPage />} />
-          <Route path="/logs" element={<LogsPage />} />
-          <Route path="/scheduler" element={<SchedulerPage />} />
-          <Route path="/analytics" element={<AnalyticsPage />} />
-          <Route path="/execution" element={<ExecutionMonitor />} />
-          <Route path="/others/dad-expenses" element={<DadExpensesPage />} />
-        </Routes>
-      </MainLayout>
-    </Router>
+    <NotificationProvider>
+      <Router>
+        <MainLayout>
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/deals" element={<DealsPage />} />
+            <Route path="/stocks" element={<StocksPage />} />
+            <Route path="/logs" element={<LogsPage />} />
+            <Route path="/scheduler" element={<SchedulerPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/execution" element={<ExecutionMonitor />} />
+            <Route path="/others/dad-expenses" element={<DadExpensesPage />} />
+          </Routes>
+        </MainLayout>
+      </Router>
+      <Toaster />
+      <NotificationQueue />
+    </NotificationProvider>
   );
 }
 
