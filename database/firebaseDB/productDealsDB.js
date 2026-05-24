@@ -1,7 +1,8 @@
 const admin = require('firebase-admin');
 const constants = require('../../config/constants.js');
 const config = require('../../config/config.js');
-const { getModuleLogger } = require("../../logger/logger.js");
+const { getModuleLogger } = require('../../logger/logger');
+const { getISTTimestamp } = require('../../utils/commonUtils');
 
 const logger = getModuleLogger('productDealsDB');
 
@@ -86,7 +87,7 @@ class ProductDealsDB {
 			const updates = {};
 			let createdCount = 0;
 			let updatedCount = 0;
-			const now = new Date().toISOString();
+			const now = getISTTimestamp();
 			
 			// Get existing records to determine created vs updated
 			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
@@ -426,7 +427,7 @@ class ProductDealsDB {
 			}
 
 			const updates = {};
-			const now = new Date().toISOString();
+			const now = getISTTimestamp();
 			
 			Object.entries(existingRecords).forEach(([key, record]) => {
 				// Add missing attributes with defaults
@@ -520,9 +521,9 @@ class ProductDealsDB {
 			
 			const updateData = {
 				...updates,
-				updateTimestamp: new Date().toISOString(),
+				updateTimestamp: getISTTimestamp(),
 				updatedatetime: new Date().getTime(),
-				updatedAt: new Date().toISOString()
+				updatedAt: getISTTimestamp()
 			};
 			
 			await targetRef.child(safeKey).update(updateData);

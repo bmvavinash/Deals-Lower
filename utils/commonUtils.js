@@ -670,6 +670,13 @@ function getformattedDate(url) {
     return formattedDate;
 }
 
+function getISTTimestamp() {
+    const date = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000;
+    const istTime = new Date(date.getTime() + istOffset);
+    return istTime.toISOString().replace('Z', '+05:30');
+}
+
 function getFlipkartProductId(url) {
     const parsedUrl = new URL(url);
     const searchParams = new URLSearchParams(parsedUrl.search);
@@ -1010,6 +1017,7 @@ module.exports = {
     getAsin,
     getFlipkartProductId,
     getformattedDate,
+    getISTTimestamp,
     readUrlsFromTxtUtils,
     extrapeLogin,
     extractLinksAndText,

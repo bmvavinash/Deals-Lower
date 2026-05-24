@@ -7,6 +7,7 @@ const config = require('../../config/config.js');
 const { productStatus } = require('../../config/const.js');
 const { getModuleLogger } = require("../../logger/logger.js");
 const { detectChanges, areChangesSignificant, logChanges } = require("../../utils/changeDetection.js");
+const { getISTTimestamp } = require('../../utils/commonUtils');
 
 env=constants.env
 
@@ -134,7 +135,7 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
           changeCount: changeResult.changeCount
         });
         
-        const nowIso = new Date().toISOString();
+        const nowIso = getISTTimestamp();
         const nowMs = Date.now();
         await productRef.update({
           updateTimestamp: nowIso,
@@ -146,7 +147,7 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
       }
 
       // Prepare update data with only changed fields
-      const nowIso = new Date().toISOString();
+      const nowIso = getISTTimestamp();
       const nowMs = Date.now();
       
       const diff = {};

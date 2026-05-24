@@ -1,5 +1,7 @@
 const express = require('express');
 const fs = require('fs');
+const express = require('express');
+const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
@@ -7,7 +9,7 @@ const { notificationTrackingDB } = require('../../../database/firebaseDB/notific
 const { runBulkUpdateAll } = require('../../../scripts/bulkUpdateAllPlatforms');
 const { getModuleLogger } = require('../../../logger/logger');
 const cacheService = require('../../../services/cacheService');
-const { getformattedDate } = require('../../../utils/commonUtils');
+const { getformattedDate, getISTTimestamp } = require('../../../utils/commonUtils');
 const { Builder } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 require('chromedriver');
@@ -700,7 +702,7 @@ router.get('/:productCode', async (req, res, next) => {
  * Body: { ...product attributes to update }
  * Query params: db (deals|productdeals)
  */
-router.put('/:productCode', async (req, res, next) => {
+router.put/:productCode', async (req, res, next) => {
   try {
     const { productCode } = req.params;
     const { db = 'deals' } = req.query;
@@ -838,12 +840,13 @@ router.post('/:productCode/retrigger', async (req, res) => {
     
     if (extractedData && Object.keys(extractedData).length > 0) {
       // Merge with existing product data
-      const updatedProduct = {
-        ...product,
-        ...extractedData,
-        updateTimestamp: new Date().toISOString(),
-        updatedatetime: Date.now()
-      };
+        const updatedProduct = {
+          ...product,
+          ...extractedData,
+          updateTimestamp: getISTTimestamp(),
+          updatedAt: getISTTimestamp(),
+          updatedatetime: Date.now()
+        };
       
       // Keep existing photo if the new extraction failed to find one
       if (!updatedProduct.photo && product.photo) {
