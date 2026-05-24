@@ -37,6 +37,7 @@ module.exports = {
   ],
   image: [
     { type: 'css', selector: '.C7fEHH img', attribute: 'src' },
+    { type: 'xpath', selector: '(//img[contains(@src, "rukminim2.flixcart.com/image")])[1]', attribute: 'src' },
   ],
   images: [
     { type: 'css', selector: 'ul.ZqtVYK img._0DkuPH', attribute: 'src', multiple: true },
@@ -81,6 +82,7 @@ module.exports = {
   photo: [
       { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/div[1]/div[2]/div/img', attribute: 'src' },
       { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/div[1]/div[2]/img', attribute: 'src' },
+      { type: 'xpath', selector: '(//img[contains(@src, "rukminim2.flixcart.com/image")])[1]', attribute: 'src' },
       // Add more xpaths as needed
   ],
   sizeFit: [

@@ -86,10 +86,13 @@ async function scrapeFlipkartProduct(url, text, driver) {
         try {product.category = await extractAttribute(driver, flipkartConfig.category); } catch(e) { console.log("Error in category",e);}
 
         product.links = {};
-      if(product?.photo != ""){
-        // Make Extrape URL generation non-blocking with timeout
-        try { 
-            const extrapePromise = getExtrapeUrl(driver, url, 25000); // 25 second timeout
+        if(product?.photo != ""){
+          // Add INRDeals fallback directly
+          product.links.avinashbmvINR = "https://inrdeals.com/avi646476329/" + url;
+          
+          // Make Extrape URL generation non-blocking with timeout
+          try { 
+              const extrapePromise = getExtrapeUrl(driver, url, 25000); // 25 second timeout
             product.links.avinashbmv = await Promise.race([
                 extrapePromise,
                 new Promise((resolve) => setTimeout(() => resolve(""), 25000))
