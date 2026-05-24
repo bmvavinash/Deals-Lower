@@ -367,7 +367,9 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
             }
           } else {
             // For non-dealsglobalhub users, use username-based storage
-            product.links[username] = shortUrl || "";
+            if (username) {
+              product.links[username] = shortUrl || "";
+            }
             try { 
               if (platform === "amazon") {
                 // For Amazon: set avinashbmvINR to clean affiliate URL
@@ -449,8 +451,9 @@ async function extractAttribute(driver, attributeConfig) {
         let rawValue = await element.getAttribute(attributeToExtract);
 
         // Use validator directly from utils
-        if (config.validator) {
-          const validationResult = config.validator(rawValue);
+        const validatorFn = config.validator || config.validate;
+        if (validatorFn) {
+          const validationResult = validatorFn(rawValue);
           if (!validationResult.isValid) {
             lastConfig = config; // Update lastConfig for the failed config
             // if(config.) //#ToDo for logging only for last config Path

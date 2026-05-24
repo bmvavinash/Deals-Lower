@@ -134,8 +134,9 @@ async function extractAttribute(driver, attributeConfig) {
             let rawValue = await element.getAttribute(attributeToExtract);
 
             // Use validator directly from utils
-            if (config.validator) {
-                const validationResult = config.validator(rawValue);
+            const validatorFn = config.validator || config.validate;
+            if (validatorFn) {
+                const validationResult = validatorFn(rawValue);
                 if (!validationResult.isValid) {
                     console.log("Validation failed for:", config.selector);
                     continue; // Skip to the next selector if validation fails

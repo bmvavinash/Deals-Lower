@@ -15,8 +15,9 @@ async function extractAttribute(driver, attributeConfig) {
         const attributeToExtract = config.attribute || "innerHTML";
         let rawValue = await element.getAttribute(attributeToExtract);
   
-        if (config.validator) {
-          const validationResult = config.validator(rawValue);
+        const validatorFn = config.validator || config.validate;
+        if (validatorFn) {
+          const validationResult = validatorFn(rawValue);
           if (!validationResult.isValid) {
             lastConfig = config; // Update lastConfig for the failed config
             continue; // Skip to the next selector if validation fails
