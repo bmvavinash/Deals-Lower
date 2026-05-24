@@ -18,6 +18,7 @@ module.exports = {
   price: [
     { type: 'css', selector: '.hl05eU .Nx9bqj.CxhGGd', validator: validatePrice },
     { type: 'css', selector: '.Nx9bqj.CxhGGd', validator: validatePrice },
+    { type: 'css', selector: '.Nx9bqj', validator: validatePrice },
     { type: 'xpath', selector: '(//div[contains(text(), "₹") and string-length(text()) < 15])[1]', validator: validatePrice },
   ],
   mrp: [
@@ -72,7 +73,7 @@ module.exports = {
       selector: 'li.kF1Ml8.col',
       labelSelector: 'span.ynXjOy',
       contentSelector: 'span',
-      classifyType: true // custom flag to classify as bank, emi, special, other
+      classifyType: true
     }
   ],
   description: [
@@ -83,7 +84,6 @@ module.exports = {
       { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/div[1]/div[2]/div/img', attribute: 'src' },
       { type: 'xpath', selector: '//*[@id="container"]/div/div[3]/div[1]/div[1]/div[1]/div/div[1]/div[2]/div[1]/div[2]/img', attribute: 'src' },
       { type: 'xpath', selector: '(//img[contains(@src, "rukminim2.flixcart.com/image")])[1]', attribute: 'src' },
-      // Add more xpaths as needed
   ],
   sizeFit: [
     { type: 'css', selector: '.pdp-sizeFitDescContent' },
@@ -93,7 +93,6 @@ module.exports = {
   ],
   category: [
       { type: 'xpath', selector: '//*[@id="wayfinding-breadcrumbs_feature_div"]/ul/li/span/a' },
-      // Add more xpaths as needed
   ],
   specifications: [
     {
@@ -117,8 +116,7 @@ module.exports = {
     { type: 'css', selector: '.coupon-badge' },
     { type: 'css', selector: '.coupon-text' },
   ],
-
   timer: [
-    { type: 'css', selector: '.mSzn2o .E2lCdq span:not(.DWia7o)' }, // Selects the timer spans (hours, mins, secs)
+    { type: 'css', selector: '.mSzn2o .E2lCdq span:not(.DWia7o)' }, 
   ],
 };

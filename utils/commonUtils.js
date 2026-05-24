@@ -240,11 +240,8 @@ function validateText(value) {
     if (!value || typeof value !== 'string') {
         return { isValid: false, value: "" };
     }
-    // FUTURE REQUIREMENT: Replace "&amp;" with "&", normalize spaces, and remove hyphens
-    // let cleanedValue = value.replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/-/g, "").trim();
-    
-    // CURRENT REQUIREMENT: Replace "&amp;" with "&" and remove all white spaces
-    let cleanedValue = value.replace(/&amp;|\s/g, "").replace(/-/g, "").trim();
+    // Replace "&amp;" with "&", normalize spaces, and remove hyphens
+    let cleanedValue = value.replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/-/g, "").trim();
     
     return {
         isValid: cleanedValue.length > 0,
