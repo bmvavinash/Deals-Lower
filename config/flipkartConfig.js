@@ -18,10 +18,12 @@ module.exports = {
   price: [
     { type: 'css', selector: '.hl05eU .Nx9bqj.CxhGGd', validator: validatePrice },
     { type: 'css', selector: '.Nx9bqj.CxhGGd', validator: validatePrice },
+    { type: 'xpath', selector: '(//div[contains(text(), "₹") and string-length(text()) < 15])[1]', validator: validatePrice },
   ],
   mrp: [
     { type: 'css', selector: '.hl05eU .yRaY8j.A6+E6v', validator: validatePrice },
     { type: 'css', selector: '.yRaY8j', validator: validatePrice },
+    { type: 'xpath', selector: '(//*[contains(@style, "line-through")])[1]', validator: validatePrice },
   ],
   discount: [
     { type: 'css', selector: '.hl05eU .UkUFwK.WW8yVX span', validator: validateDiscount },
@@ -31,6 +33,7 @@ module.exports = {
     { type: 'css', selector: '[class*="UkUFwK"] span', validator: validateDiscount },
     { type: 'css', selector: '[class*="WW8yVX"] span', validator: validateDiscount },
     { type: 'css', selector: '.hl05eU span:contains("%")', validator: validateDiscount },
+    { type: 'xpath', selector: '(//div[(contains(text(), "% off") or contains(text(), "% Off")) and string-length(text()) < 15])[1]', validator: validateDiscount },
   ],
   image: [
     { type: 'css', selector: '.C7fEHH img', attribute: 'src' },
