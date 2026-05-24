@@ -138,7 +138,8 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
         const nowMs = Date.now();
         await productRef.update({
           updateTimestamp: nowIso,
-          updatedatetime: nowMs
+          updatedatetime: nowMs,
+          updatedAt: nowIso
         });
         
         return { status: 200, message: 'NO_SIGNIFICANT_CHANGES_TIMESTAMP_UPDATED' };
@@ -156,6 +157,7 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
       // Ensure timestamps when we do update
       diff.updateTimestamp = nowIso;
       diff.updatedatetime = nowMs;
+      diff.updatedAt = nowIso;
 
       // Ensure fields like createdAt, productId, productCode are preserved
       diff.createdAt = existingProductData.createdAt;

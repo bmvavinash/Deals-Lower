@@ -378,7 +378,8 @@ class ProductDealsDB {
 					updateTimestamp: now,
 					date: product.date || now.slice(0, 10),
 					datetime: product.datetime || new Date().getTime(),
-					updatedatetime: new Date().getTime()
+					updatedatetime: new Date().getTime(),
+					updatedAt: now
 				};
 				
 				updates[safeKey] = normalized;
@@ -470,7 +471,8 @@ class ProductDealsDB {
 					
 					// Update timestamp
 					updateTimestamp: now,
-					updatedatetime: new Date().getTime()
+					updatedatetime: new Date().getTime(),
+					updatedAt: now
 				};
 				
 				updates[key] = updatedRecord;
@@ -519,7 +521,8 @@ class ProductDealsDB {
 			const updateData = {
 				...updates,
 				updateTimestamp: new Date().toISOString(),
-				updatedatetime: new Date().getTime()
+				updatedatetime: new Date().getTime(),
+				updatedAt: new Date().toISOString()
 			};
 			
 			await targetRef.child(safeKey).update(updateData);
