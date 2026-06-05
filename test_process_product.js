@@ -6,7 +6,7 @@
 const axios = require('axios');
 
 const API_BASE_URL = 'http://localhost:3001/api';
-const TEST_URL = 'https://amzn.in/d/6DjlLxV';
+const TEST_URL = process.argv[2] || 'https://amzn.in/d/6DjlLxV';
 const POST_PRODUCT = false; // Set to true to post to social media
 
 async function testProcessProduct() {
@@ -65,16 +65,18 @@ async function testProcessProduct() {
 
     console.log('\n✅ Request completed successfully!');
     
-    if (response.data.status === 'success' || response.data.status === 'excluded') {
-      console.log('\n🎉 Product processing completed!');
+    if (response.data.status === 'success' || response.data.status === 'excluded' || response.data.status === 'processing') {
+      console.log('\n🎉 Product processing request completed!');
       if (response.data.status === 'success') {
         console.log('   ✅ Product should be in the database');
+      } else if (response.data.status === 'processing') {
+        console.log('   ⏳ Background listing extraction started successfully');
       } else {
         console.log('   ⚠️  Product was excluded (affiliate policy)');
       }
       process.exit(0);
     } else {
-      console.log('\n⚠️  Product processing completed with errors');
+      console.log('\n⚠️  Product processing completed with other status');
       process.exit(1);
     }
 

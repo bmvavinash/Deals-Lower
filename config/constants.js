@@ -48,13 +48,13 @@ const bulkUpdateIntervalMs = 2 * 60 * 60 * 1000; // 2 hours
 // const bulkUpdateIntervalMs = null; // Disabled for testing
 
 // Execution toggles
-const enableTelegramProcessing = false; // Telegram datasources disabled
+const enableTelegramProcessing = true; // Telegram datasources enabled
 const enableBulkProcessing = true;     // Gate to start bulk website processing
 const telegramMode = 'finite';         // 'continuous' for infinite loop, 'finite' for limited loops
 const enableProductUrlFix = true;      // Gate to enable product URL verification and fixing
 
 // Global timeouts and watchdogs
-const maxPageTimeoutMs = 2 * 60 * 1000;        // 2 minutes per webpage scrape
+const maxPageTimeoutMs = 5 * 60 * 1000;        // 5 minutes per webpage scrape
 const maxPlatformTimeoutMs = 10 * 60 * 1000;   // 10 minutes per platform/category batch
 const maxIdleGlobalMs = 5 * 60 * 1000;         // 5 minutes idle watchdog
 

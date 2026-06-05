@@ -54,8 +54,14 @@ module.exports = {
       "ratingsCount": { type: "css", selector: "div.product-ratingsCount", validate: validateRatingsCount },
       "reviewsCount": { type: "css", selector: "div.product-ratingsCount", validate: validateReviewsCount },
       "productUrl": { type: "css", selector: "a", attribute: "href" },
-      "photo": { type: "css", selector: "img.img-responsive", attribute: "src" },
-      "images": { type: "css", selector: "img.img-responsive", attribute: "src" },
+      "photo": [
+        { type: "css", selector: "img.img-responsive", attribute: "src" },
+        { type: "css", selector: ".image-grid-image", attribute: "style", extractImageFromStyle: true }
+      ],
+      "images": [
+        { type: "css", selector: "img.img-responsive", attribute: "src" },
+        { type: "css", selector: ".image-grid-image", attribute: "style", extractImageFromStyle: true }
+      ],
       "sizes": { type: "css", selector: "h4.product-sizes" },
       "availableSizes": { type: "css", selector: "span.product-sizeInventoryPresent" },
       "offerBadge": { type: "css", selector: "div.xcelerator-plpXceleratorInfoTag" },

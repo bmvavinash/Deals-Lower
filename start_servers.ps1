@@ -30,14 +30,14 @@ Start-Sleep -Seconds 2
 
 Write-Host "3. Starting Backend Server (Port 3001)..." -ForegroundColor Green
 $backendScript = "cd '$PWD'; Write-Host '=== BACKEND SERVER (Port 3001) ===' -ForegroundColor Cyan; Write-Host 'Starting on: http://localhost:3001' -ForegroundColor White; npm run api"
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $backendScript
+Start-Process powershell -ArgumentList "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", $backendScript
 
 Write-Host "4. Waiting 5 seconds for backend to initialize..." -ForegroundColor Yellow
 Start-Sleep -Seconds 5
 
 Write-Host "5. Starting Frontend Server (Port 5173)..." -ForegroundColor Green
 $frontendScript = "cd '$PWD'; Write-Host '=== FRONTEND SERVER (Port 5173) ===' -ForegroundColor Cyan; Write-Host 'Starting on: http://localhost:5173' -ForegroundColor White; npm run frontend"
-Start-Process powershell -ArgumentList "-NoExit", "-Command", $frontendScript
+Start-Process powershell -ArgumentList "-ExecutionPolicy", "Bypass", "-NoExit", "-Command", $frontendScript
 
 Write-Host ""
 Write-Host "=== SERVER STARTUP COMPLETE ===" -ForegroundColor Green

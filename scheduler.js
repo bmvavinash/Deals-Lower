@@ -32,7 +32,7 @@ const logger = getModuleLogger('scheduler');
 // let productCounter = 0;
 // const PRODUCT_LIMIT = 30;
 
-async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="") {
+async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="", categoryOverride = null) {
 
   let postflag = false;
   let postStatus = "";
@@ -80,6 +80,30 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
 
     // Scrape product details and set store type
     product = await scrapeProduct(link, storeKey, driver, text, keyExist, username, generateLink, shortUrl);
+    
+    if (product && categoryOverride) {
+      if (!product.category) product.category = {};
+      product.category = { ...product.category, ...categoryOverride };
+      
+      // Apply category override attributes to top-level product object
+      product.categoryLevel1 = categoryOverride.categoryLevel1 || product.categoryLevel1 || '';
+      product.categoryLevel2 = categoryOverride.categoryLevel2 || product.categoryLevel2 || '';
+      product.categoryLevel3 = categoryOverride.categoryLevel3 || product.categoryLevel3 || '';
+      product.subcategory1 = categoryOverride.subcategory1 || product.subcategory1 || '';
+      product.subcategory2 = categoryOverride.subcategory2 || product.subcategory2 || '';
+      product.productCategory = categoryOverride.productCategory || product.productCategory || '';
+      product.productSubcategory = categoryOverride.productSubcategory || product.productSubcategory || '';
+      product.productStyle = categoryOverride.productStyle || product.productStyle || '';
+      product.categoryGroup = categoryOverride.categoryGroup || product.categoryGroup || '';
+      
+      if (!product.hierarchicalCategory) product.hierarchicalCategory = {};
+      product.hierarchicalCategory.mainCategory = categoryOverride.mainCategory || product.hierarchicalCategory.mainCategory || '';
+      product.hierarchicalCategory.subcategory = categoryOverride.subcategory || product.hierarchicalCategory.subcategory || '';
+      product.hierarchicalCategory.style = categoryOverride.style || product.hierarchicalCategory.style || '';
+      product.hierarchicalCategory.hierarchicalKey = categoryOverride.hierarchicalKey || product.hierarchicalCategory.hierarchicalKey || '';
+      
+      logger.info('Applied categoryOverride from queue/parameters to product details', { productCode: product.productCode || productCode, categoryGroup: product.categoryGroup });
+    }
     
     // Check if product is excluded from Amazon Associates Program
     if (product.isExcluded) {
@@ -292,6 +316,8 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
               : 'Unknown validation failure'
       })
 
+      // Validation failed, so it's an error
+      postStatus = productStatus.PRODUCT_ERROR;
     }
 
     // productCounter++;

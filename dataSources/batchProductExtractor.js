@@ -2,7 +2,7 @@ const { Builder, By, until } = require('selenium-webdriver');
 require('chromedriver');
 const chrome = require('selenium-webdriver/chrome');
 const { getModuleLogger } = require('../logger/logger');
-const { loadConfig, scrapePage } = require('../pageScheduler');
+const { loadConfig, scrapePage, postProcessProductData } = require('../pageScheduler');
 const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
 const { executionTracker } = require('../services/executionTracker');
 const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require('../utils/commonUtils');
@@ -598,6 +598,69 @@ function extractCategoryFromUrl(productUrl, sourceType) {
 	return [...new Set(categoryHints)];
 }
 
+function extractCategoryFromSearchUrl(url) {
+	try {
+		if (!url || typeof url !== 'string') return '';
+		const urlObj = new URL(url);
+		const searchParams = ['k', 'q', 'query', 'searchVal', 'p', 'search'];
+		for (const param of searchParams) {
+			const val = urlObj.searchParams.get(param);
+			if (val) {
+				return decodeURIComponent(val).replace(/\+/g, ' ').trim();
+			}
+		}
+		
+		const path = urlObj.pathname;
+		const isAjio = /ajio\./i.test(urlObj.hostname);
+		const isMyntra = /myntra\./i.test(urlObj.hostname);
+		
+		if (isAjio && path.includes('/s/')) {
+			const segment = path.split('/s/')[1];
+			if (segment) return segment.split('/')[0].replace(/-/g, ' ').replace(/\+/g, ' ').trim();
+		}
+		if (isMyntra) {
+			const segments = path.split('/').filter(Boolean);
+			if (segments.length === 1) {
+				return segments[0].replace(/-/g, ' ').replace(/\+/g, ' ').trim();
+			}
+		}
+		
+		if (path.includes('search')) {
+			const segments = path.split('/').filter(Boolean);
+			const last = segments[segments.length - 1];
+			if (last && last !== 'search') return last.replace(/-/g, ' ').replace(/\+/g, ' ').trim();
+		}
+	} catch (e) {
+		// ignore
+	}
+	return '';
+}
+
+function getHierarchyFromSearchQuery(searchQuery) {
+	if (!searchQuery) return null;
+	const categoryData = {
+		mainCategory: searchQuery,
+		c1: searchQuery,
+		c2: searchQuery,
+		c3: searchQuery,
+		c4: searchQuery,
+		c5: searchQuery
+	};
+	const hierarchy = findMatchingHierarchy(categoryData);
+	if (hierarchy && hierarchy.mainCategory && hierarchy.mainCategory !== 'Unknown') {
+		const hierarchicalKey = generateHierarchicalKey(hierarchy.mainCategory, hierarchy.subcategory, hierarchy.style);
+		return {
+			mainCategory: hierarchy.mainCategory,
+			subcategory: hierarchy.subcategory,
+			style: hierarchy.style,
+			hierarchicalKey,
+			confidence: 90,
+			source: 'search-query'
+		};
+	}
+	return null;
+}
+
 async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = '', usedPageType = null) {
 	const productUrl = raw.productUrl || url || '';
 	const hostname = (() => { try { return new URL(productUrl).hostname; } catch { return ''; } })();
@@ -635,33 +698,47 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 	let categorySource = 'unknown';
 	
 	try {
-		// Try dynamic extraction first
-		const dynamicHierarchy = await dynamicCategoryExtractor.extractAndLearnCategories(raw, sourceType);
-		if (dynamicHierarchy && dynamicHierarchy.confidence > 50) {
-			hierarchy = dynamicHierarchy;
-			hierarchicalKey = dynamicHierarchy.hierarchicalKey;
-			categorySource = 'dynamic';
-			logger.info('✅ Used dynamic category extraction', { 
-				productCode, 
-				confidence: dynamicHierarchy.confidence,
-				hierarchicalKey: dynamicHierarchy.hierarchicalKey,
-				mainCategory: dynamicHierarchy.mainCategory,
-				subcategory: dynamicHierarchy.subcategory,
-				style: dynamicHierarchy.style
+		const searchQuery = extractCategoryFromSearchUrl(url);
+		const searchHierarchy = getHierarchyFromSearchQuery(searchQuery);
+		
+		if (searchHierarchy) {
+			hierarchy = searchHierarchy;
+			hierarchicalKey = searchHierarchy.hierarchicalKey;
+			categorySource = 'search-query';
+			logger.info('🔍 Used search query categorization', {
+				productCode,
+				searchQuery,
+				hierarchicalKey
 			});
 		} else {
-			// Fallback to static matching
-			hierarchy = findMatchingHierarchy(categoryData);
-			hierarchicalKey = generateHierarchicalKey(hierarchy.mainCategory, hierarchy.subcategory, hierarchy.style);
-			categorySource = 'static';
-			logger.info('📋 Used static category matching', { 
-				productCode, 
-				hierarchicalKey,
-				mainCategory: hierarchy.mainCategory,
-				subcategory: hierarchy.subcategory,
-				style: hierarchy.style,
-				categoryData: categoryData
-			});
+			// Try dynamic extraction first
+			const dynamicHierarchy = await dynamicCategoryExtractor.extractAndLearnCategories(raw, sourceType);
+			if (dynamicHierarchy && dynamicHierarchy.confidence > 50) {
+				hierarchy = dynamicHierarchy;
+				hierarchicalKey = dynamicHierarchy.hierarchicalKey;
+				categorySource = 'dynamic';
+				logger.info('✅ Used dynamic category extraction', { 
+					productCode, 
+					confidence: dynamicHierarchy.confidence,
+					hierarchicalKey: dynamicHierarchy.hierarchicalKey,
+					mainCategory: dynamicHierarchy.mainCategory,
+					subcategory: dynamicHierarchy.subcategory,
+					style: dynamicHierarchy.style
+				});
+			} else {
+				// Fallback to static matching
+				hierarchy = findMatchingHierarchy(categoryData);
+				hierarchicalKey = generateHierarchicalKey(hierarchy.mainCategory, hierarchy.subcategory, hierarchy.style);
+				categorySource = 'static';
+				logger.info('📋 Used static category matching', { 
+					productCode, 
+					hierarchicalKey,
+					mainCategory: hierarchy.mainCategory,
+					subcategory: hierarchy.subcategory,
+					style: hierarchy.style,
+					categoryData: categoryData
+				});
+			}
 		}
 	} catch (error) {
 		logger.warn('⚠️ Dynamic category extraction failed, using static matching', { 
@@ -700,8 +777,45 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		// Fallback: try to derive from hierarchy or use default
 		const mainCat = hierarchy?.mainCategory || '';
 		if (mainCat) {
-			// Convert "Home & Kitchen" to "home-kitchen" format
-			categoryGroup = mainCat.toLowerCase().replace(/\s+/g, '-').replace(/&/g, '').replace(/\//g, '-');
+			const normalizedGroup = mainCat.toLowerCase().replace(/\s+/g, '-').replace(/&/g, '').replace(/\//g, '-');
+			const categoryMappings = {
+				'home-garden': 'home-kitchen',
+				'home-kitchen': 'home-kitchen',
+				'homeandgarden': 'home-kitchen',
+				'homeandkitchen': 'home-kitchen',
+				'beauty-personal-care': 'beauty-personal-care',
+				'beautypersonalcare': 'beauty-personal-care',
+				'beauty': 'beauty-personal-care',
+				'personal-care': 'beauty-personal-care',
+				'sports-fitness': 'sports-fitness',
+				'sportsfitness': 'sports-fitness',
+				'sports': 'sports-fitness',
+				'fitness': 'sports-fitness',
+				'books-stationery': 'books-stationery',
+				'booksstationery': 'books-stationery',
+				'books': 'books-stationery',
+				'stationery': 'books-stationery',
+				'baby-kids': 'baby-kids',
+				'babykids': 'baby-kids',
+				'baby': 'baby-kids',
+				'kids': 'baby-kids',
+				'tools-hardware': 'tools-hardware',
+				'toolshardware': 'tools-hardware',
+				'tools': 'tools-hardware',
+				'hardware': 'tools-hardware',
+				'music-entertainment': 'music-entertainment',
+				'musicentertainment': 'music-entertainment',
+				'music': 'music-entertainment',
+				'entertainment': 'music-entertainment',
+				'pet-supplies': 'pet-supplies',
+				'petsupplies': 'pet-supplies',
+				'pet': 'pet-supplies',
+				'electronics': 'electronics',
+				'fashion': 'fashion',
+				'automotive': 'automotive',
+				'grocery': 'grocery'
+			};
+			categoryGroup = categoryMappings[normalizedGroup] || normalizedGroup;
 		}
 	}
 	
@@ -814,6 +928,22 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		dealName: deriveDealName(raw),
 		sectionName: deriveSectionName(productUrl || url, usedPageType || '')
 	};
+
+	// Apply postProcessProductData to normalize and compute missing price/mrp/discount
+	try {
+		let processed = { 
+			...normalized,
+			mrp: normalized.originalPrice || normalized.mrp || '',
+			discount: normalized.discountPercentage || normalized.discount || ''
+		};
+		processed = postProcessProductData(processed, normalized.storeType);
+		normalized.price = processed.price;
+		normalized.originalPrice = processed.mrp;
+		normalized.discountPercentage = processed.discount;
+	} catch (e) {
+		logger.warn('Error running postProcessProductData in normalizeProduct', { error: e.message });
+	}
+
 	const requiredFields = ['productCode', 'price', 'discountPercentage'];
 	requiredFields.forEach(field => {
 		const val = normalized[field];
@@ -916,7 +1046,19 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 		let detectedPlatform = platform;
 		if (!detectedPlatform) {
 			const { resolvePlatformFromUrl } = require('../utils/platformUtils');
-			const storeKey = resolvePlatformFromUrl(url) || Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase()));
+			let storeKey = resolvePlatformFromUrl(url) || Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase()));
+			
+			// Fallback to checking the current URL (in case of redirects from shortlinks)
+			if (!storeKey && driver) {
+				try {
+					const currentUrl = await driver.getCurrentUrl();
+					logger.info('Platform detection fallback: checking current URL', { url, currentUrl });
+					storeKey = resolvePlatformFromUrl(currentUrl) || Object.keys(storeMap).find(key => currentUrl.toLowerCase().includes(key.toLowerCase()));
+				} catch (e) {
+					logger.warn('Could not get current URL for platform detection', { error: e.message });
+				}
+			}
+
 			if (!storeKey) {
 				logger.warn('Could not detect platform from URL, defaulting to amazon', { url, availablePlatforms: Object.keys(storeMap) });
 				detectedPlatform = 'amazon';
@@ -999,34 +1141,126 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 			}
 		}
 
+		let finalProductsToStore = uniqueProducts;
+		let enqueuedProducts = [];
+		const LIMIT = 10;
+		
+		const isListingPage = usedPageType && ['searchPage', 'dealsGridPage', 'carouselPage', 'bestCarouselPage'].includes(usedPageType);
+		
+		if ((isListingPage || sourceType === 'telegram') && uniqueProducts.length > 1) {
+			const isSearchPageGroup = !!isListingPage;
+			const limitToUse = isSearchPageGroup ? uniqueProducts.length : LIMIT;
+			
+			logger.info(`Setting up parent-child relation. isSearchPageGroup: ${isSearchPageGroup}, count: ${uniqueProducts.length}, limitToUse: ${limitToUse}`);
+			
+			const activeProducts = uniqueProducts.slice(0, limitToUse);
+			if (!isSearchPageGroup) {
+				enqueuedProducts = uniqueProducts.slice(limitToUse);
+			}
+			
+			const parent = activeProducts[0];
+			parent.isParent = true;
+			parent.similarProducts = activeProducts.slice(1).map(p => ({
+				brand: p.brand || '',
+				title: p.title || '',
+				price: p.price || '',
+				originalPrice: p.originalPrice || '',
+				discountPercentage: p.discountPercentage || '',
+				rating: p.rating || '',
+				photo: p.photo || '',
+				productCode: p.productCode,
+				productUrl: p.productUrl,
+				links: p.links || {},
+				categoryGroup: p.categoryGroup || '',
+				hierarchicalCategory: p.hierarchicalCategory || {}
+			}));
+			
+			for (let i = 1; i < activeProducts.length; i++) {
+				activeProducts[i].isChild = true;
+				activeProducts[i].parentId = parent.productCode || parent.id || '';
+			}
+			
+			finalProductsToStore = activeProducts;
+			
+			if (enqueuedProducts.length > 0) {
+				try {
+					const path = require('path');
+					const fs = require('fs');
+					const queueFile = path.join(__dirname, 'scrappers', 'holdProducts.json');
+				
+				const dir = path.dirname(queueFile);
+				if (!fs.existsSync(dir)) {
+					fs.mkdirSync(dir, { recursive: true });
+				}
+				
+				let currentQueue = [];
+				if (fs.existsSync(queueFile)) {
+					try {
+						const data = fs.readFileSync(queueFile, 'utf8');
+						currentQueue = JSON.parse(data);
+					} catch (e) {
+						logger.error('Failed to read existing holdProducts queue', { error: e.message });
+					}
+				}
+				
+				for (const ep of enqueuedProducts) {
+					currentQueue.push({
+						productUrl: ep.productUrl,
+						name: ep.title || 'Queued Product',
+						categoryOverride: {
+							mainCategory: parent.hierarchicalCategory?.mainCategory || '',
+							subcategory: parent.hierarchicalCategory?.subcategory || '',
+							style: parent.hierarchicalCategory?.style || '',
+							hierarchicalKey: parent.hierarchicalCategory?.hierarchicalKey || '',
+							categoryLevel1: parent.categoryLevel1 || '',
+							categoryLevel2: parent.categoryLevel2 || '',
+							categoryLevel3: parent.categoryLevel3 || '',
+							subcategory1: parent.subcategory1 || '',
+							subcategory2: parent.subcategory2 || '',
+							productCategory: parent.productCategory || '',
+							productSubcategory: parent.productSubcategory || '',
+							productStyle: parent.productStyle || '',
+							categoryGroup: parent.categoryGroup || ''
+						}
+					});
+				}
+				
+				fs.writeFileSync(queueFile, JSON.stringify(currentQueue, null, 2), 'utf8');
+				logger.info(`Successfully added ${enqueuedProducts.length} products to holdProducts queue file`, { queueFile, queueSize: currentQueue.length });
+			} catch (queueErr) {
+				logger.error('Failed to write to holdProducts queue file', { error: queueErr.message });
+			}
+		}
+	}
+
 		let storedCount = 0;
 		let createdCount = 0;
 		let updatedCount = 0;
 		try {
 			const result = await withTimeout(
-				productDealsDB.bulkUpsertProducts(uniqueProducts, targetDb),
+				productDealsDB.bulkUpsertProducts(finalProductsToStore, targetDb),
 				(require('../config/constants').maxPlatformTimeoutMs || 900000),
 				'DB_UPSERT'
 			);
-			storedCount = result.count || uniqueProducts.length;
+			storedCount = result.count || finalProductsToStore.length;
 			createdCount = result.created || 0;
 			updatedCount = result.updated || 0;
 		} catch (e) {
-			if (ctx) ctx.failedCount += uniqueProducts.length;
+			if (ctx) ctx.failedCount += finalProductsToStore.length;
 			throw e;
 		}
 
 		// Estimate unchanged as difference between unique and stored when DB returns fewer
-		if (ctx && storedCount < uniqueProducts.length) {
-			ctx.skippedUnchangedCount += (uniqueProducts.length - storedCount);
+		if (ctx && storedCount < finalProductsToStore.length) {
+			ctx.skippedUnchangedCount += (finalProductsToStore.length - storedCount);
 		}
 
 		// Check for category deals and notify favorited users (async, non-blocking)
-		if (category && uniqueProducts.length > 0) {
+		if (category && finalProductsToStore.length > 0) {
 			try {
 				const { favoritesNotificationService } = require('../services/favoritesBasedNotificationService');
 				// Use first product as sample for category notification
-				const sampleProduct = uniqueProducts[0];
+				const sampleProduct = finalProductsToStore[0];
 				favoritesNotificationService.checkCategoryDeals(category, sampleProduct).catch(err => {
 					logger.debug('Category deal check failed (non-fatal)', { category, error: err.message });
 				});
@@ -1041,7 +1275,7 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 			stored: storedCount, 
 			created: createdCount, 
 			updated: updatedCount,
-			products: uniqueProducts.map(p => ({ productCode: p.productCode, productId: p.id || p.productId || '' }))
+			products: finalProductsToStore.map(p => ({ productCode: p.productCode, productId: p.id || p.productId || '' }))
 		};
 	} catch (error) {
 		logger.error('❌ [ERROR] extractAndStoreFromUrl error', { 

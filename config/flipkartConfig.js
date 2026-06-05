@@ -1,4 +1,4 @@
-const { validatePrice, validateDiscount, validateText } = require("../utils/commonUtils");
+const { validatePrice, validateDiscount, validateText, validateBrand } = require("../utils/commonUtils");
 
 module.exports = {
   title: [
@@ -7,8 +7,8 @@ module.exports = {
     { type: 'css', selector: 'h1', validator: validateText }, // Added fallback for new UI
   ],
   brand: [
-    { type: 'css', selector: 'h1._6EBuvT .mEh187', validator: validateText },
-    { type: 'css', selector: 'h1', validator: validateText }, // Added fallback for new UI
+    { type: 'css', selector: 'h1._6EBuvT .mEh187', validator: validateBrand },
+    { type: 'css', selector: 'h1', validator: validateBrand }, // Added fallback for new UI
   ],
   productText: [
     { type: 'css', selector: 'h1._6EBuvT .VU-ZEz', validator: validateText },
@@ -20,11 +20,13 @@ module.exports = {
     { type: 'css', selector: '.Nx9bqj.CxhGGd', validator: validatePrice },
     { type: 'css', selector: '.Nx9bqj', validator: validatePrice },
     { type: 'xpath', selector: '(//div[contains(text(), "₹") and string-length(text()) < 15])[1]', validator: validatePrice },
+    { type: 'css', selector: 'div[class*="v1zwn2"][class*="v1zwn29"]', validator: validatePrice },
   ],
   mrp: [
     { type: 'css', selector: '.hl05eU .yRaY8j.A6+E6v', validator: validatePrice },
     { type: 'css', selector: '.yRaY8j', validator: validatePrice },
     { type: 'xpath', selector: '(//*[contains(@style, "line-through")])[1]', validator: validatePrice },
+    { type: 'css', selector: 'div[class*="v1zwn2"][class*="v1zwn20"]', validator: validatePrice },
   ],
   discount: [
     { type: 'css', selector: '.hl05eU .UkUFwK.WW8yVX span', validator: validateDiscount },
@@ -35,12 +37,17 @@ module.exports = {
     { type: 'css', selector: '[class*="WW8yVX"] span', validator: validateDiscount },
     { type: 'css', selector: '.hl05eU span:contains("%")', validator: validateDiscount },
     { type: 'xpath', selector: '(//div[(contains(text(), "% off") or contains(text(), "% Off")) and string-length(text()) < 15])[1]', validator: validateDiscount },
+    { type: 'xpath', selector: '(//*[contains(text(), "%") and string-length(text()) < 10])[1]', validator: validateDiscount },
+    { type: 'xpath', selector: '(//*[contains(@style, "rgb(0, 128, 66)") and contains(text(), "%")])[1]', validator: validateDiscount },
+    { type: 'css', selector: 'div[class*="v1zwn2"][class*="v1zwn24"]', validator: validateDiscount },
   ],
   image: [
+    { type: 'css', selector: 'img._53J4C-', attribute: 'src' },
     { type: 'css', selector: '.C7fEHH img', attribute: 'src' },
     { type: 'xpath', selector: '(//img[contains(@src, "rukminim2.flixcart.com/image")])[1]', attribute: 'src' },
   ],
   images: [
+    { type: 'css', selector: 'img._53J4C-', attribute: 'src', multiple: true },
     { type: 'css', selector: 'ul.ZqtVYK img._0DkuPH', attribute: 'src', multiple: true },
     { type: 'css', selector: '.C7fEHH img', attribute: 'src', multiple: true },
   ],

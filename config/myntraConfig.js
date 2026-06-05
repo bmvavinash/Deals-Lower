@@ -1,8 +1,8 @@
-const { validatePrice, validateDiscount, validateText, validateMRP, validateRatingsCount } = require("../utils/commonUtils");
+const { validatePrice, validateDiscount, validateText, validateMRP, validateRatingsCount, validateBrand } = require("../utils/commonUtils");
 
 module.exports = {
     brand: [
-        { type: "css", selector: ".pdp-title", validator: validateText },
+        { type: "css", selector: ".pdp-title", validator: validateBrand },
     ],
     title: [
         { type: "css", selector: ".pdp-name", validator: validateText },

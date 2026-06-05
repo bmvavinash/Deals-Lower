@@ -89,10 +89,33 @@ class ProductDealsDB {
 			let updatedCount = 0;
 			const now = getISTTimestamp();
 			
-			// Get existing records to determine created vs updated
 			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
-			const existingSnapshot = await targetRef.once('value');
-			const existingRecords = existingSnapshot.val() || {};
+			// Only fetch the existing records for the products we are updating to avoid downloading the entire node
+			const existingRecords = {};
+			const fetchPromises = products.map(async (product) => {
+				const key = product.productCode || product.id || product.asin || product.title || '';
+				const safeKey = String(key).replace(/[.#$/\[\]]/g, '_');
+				if (safeKey) {
+					try {
+						// Implement a 3-second timeout per read to avoid hanging on network lag
+						let timeoutId;
+						const readPromise = targetRef.child(safeKey).once('value');
+						const timeoutPromise = new Promise((_, reject) => {
+							timeoutId = setTimeout(() => reject(new Error('TIMEOUT')), 3000);
+						});
+						const snapshot = await Promise.race([readPromise, timeoutPromise]);
+						clearTimeout(timeoutId);
+						
+						const val = snapshot.val();
+						if (val) {
+							existingRecords[safeKey] = val;
+						}
+					} catch (e) {
+						logger.warn('Failed to fetch existing record for key (timed out or connection error)', { safeKey, error: e.message });
+					}
+				}
+			});
+			await Promise.all(fetchPromises);
 			
 			// Load favorites notification service (lazy load to avoid circular deps)
 			let favoritesNotificationService = null;
@@ -573,7 +596,26 @@ class ProductDealsDB {
 			return [];
 		}
 	}
+
+	async getAllProductDeals(targetDb = 'deals') {
+		try {
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const snapshot = await targetRef.once('value');
+			return snapshot.val() || {};
+		} catch (error) {
+			logger.error('getAllProductDeals error', { error: error.message });
+			return {};
+		}
+	}
+
+	async updateProductDeal(productCode, updates, targetDb = 'deals') {
+		return this.updateIndividualProduct(productCode, updates, targetDb);
+	}
 }
 
 const productDealsDB = new ProductDealsDB();
-module.exports = { productDealsDB };
+module.exports = {
+	productDealsDB,
+	getAllProductDeals: productDealsDB.getAllProductDeals.bind(productDealsDB),
+	updateProductDeal: productDealsDB.updateProductDeal.bind(productDealsDB)
+};

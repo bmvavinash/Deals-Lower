@@ -9,6 +9,9 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium a", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus span", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus a", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus", validate: extractBrand },
         { type: "css", selector: "a.a-link-normal[href*='/dp/']", validate: extractBrand },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2", validate: extractBrand },
         { type: "css", selector: ".acsProductBlockV2__contributor .a-text-bold", validate: extractBrand }
@@ -17,6 +20,9 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span" },
         { type: "css", selector: "h2.a-size-medium a" },
         { type: "css", selector: "h2.a-size-medium" },
+        { type: "css", selector: "h2.a-size-base-plus span" },
+        { type: "css", selector: "h2.a-size-base-plus a" },
+        { type: "css", selector: "h2 span" },
         { type: "css", selector: "a.a-link-normal[href*='/dp/']" },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2" },
         { type: "css", selector: ".acsProductBlockV2__product-title .a-truncate-full" }
@@ -25,6 +31,8 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span" },
         { type: "css", selector: "h2.a-size-medium a" },
         { type: "css", selector: "h2.a-size-medium" },
+        { type: "css", selector: "h2.a-size-base-plus span" },
+        { type: "css", selector: "h2 span" },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2" },
         { type: "css", selector: ".acsProductBlockV2__product-title .a-truncate-full" }
       ],
@@ -32,6 +40,8 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span" },
         { type: "css", selector: "h2.a-size-medium a" },
         { type: "css", selector: "h2.a-size-medium" },
+        { type: "css", selector: "h2.a-size-base-plus span" },
+        { type: "css", selector: "h2 span" },
         { type: "css", selector: "a.a-link-normal[href*='/dp/']" },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2" },
         { type: "css", selector: ".acsProductBlockV2__product-title .a-truncate-full" }
@@ -115,12 +125,12 @@ module.exports = {
       
       // Ratings and Reviews
       "rating": [
-        { type: "css", selector: "i.a-icon-star span.a-icon-alt", attribute: "aria-label" },
-        { type: "css", selector: "span[aria-label*='out of 5 stars']", attribute: "aria-label" },
-        { type: "css", selector: ".a-icon-row a[aria-label*='out of 5 stars']", attribute: "aria-label" },
-        { type: "css", selector: ".a-icon-row i .a-icon-alt" },
-        { type: "css", selector: "i.a-icon-star-small span.a-icon-alt", attribute: "textContent" },
-        { type: "css", selector: "i.a-icon-star", attribute: "aria-label" },
+        { type: "css", selector: "i.a-icon-star span.a-icon-alt", attribute: "aria-label", validate: validateRatingsCount },
+        { type: "css", selector: "span[aria-label*='out of 5 stars']", attribute: "aria-label", validate: validateRatingsCount },
+        { type: "css", selector: ".a-icon-row a[aria-label*='out of 5 stars']", attribute: "aria-label", validate: validateRatingsCount },
+        { type: "css", selector: ".a-icon-row i .a-icon-alt", validate: validateRatingsCount },
+        { type: "css", selector: "i.a-icon-star-small span.a-icon-alt", attribute: "textContent", validate: validateRatingsCount },
+        { type: "css", selector: "i.a-icon-star", attribute: "aria-label", validate: validateRatingsCount },
         { type: "css", selector: "span[aria-label*='stars']", attribute: "aria-label" },
         { type: "css", selector: ".a-icon-alt" },
         { type: "css", selector: ".acsProductBlockV2__review .a-icon-alt" }
@@ -200,6 +210,9 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium a", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus span", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus a", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus", validate: extractBrand },
         { type: "css", selector: "p[id^='title-']", validate: extractBrand },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2", validate: extractBrand },
         { type: "css", selector: ".acsProductBlockV2__contributor .a-text-bold", validate: extractBrand }
@@ -342,6 +355,9 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium a", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus span", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus a", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus", validate: extractBrand },
         { type: "css", selector: ".acsProductBlockV2__contributor .a-text-bold", validate: extractBrand },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2", validate: extractBrand }
       ],
@@ -472,6 +488,9 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium a", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus span", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus a", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus", validate: extractBrand },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2", validate: extractBrand },
         { type: "css", selector: ".acsProductBlockV2__contributor .a-text-bold", validate: extractBrand }
       ],
@@ -606,6 +625,9 @@ module.exports = {
         { type: "css", selector: "h2.a-size-medium span", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium a", validate: extractBrand },
         { type: "css", selector: "h2.a-size-medium", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus span", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus a", validate: extractBrand },
+        { type: "css", selector: "h2.a-size-base-plus", validate: extractBrand },
         { type: "css", selector: "a.a-link-normal[href*='/dp/']", validate: extractBrand },
         { type: "css", selector: ".p13n-sc-truncate-desktop-type2", validate: extractBrand },
         { type: "css", selector: ".acsProductBlockV2__contributor .a-text-bold", validate: extractBrand }

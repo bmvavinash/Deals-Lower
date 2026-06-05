@@ -12,6 +12,7 @@ const Dashboard: React.FC = () => {
   
   // Product processing state
   const [productUrl, setProductUrl] = useState('');
+  const [processPlatform, setProcessPlatform] = useState('Amazon');
   const [postProduct, setPostProduct] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   
@@ -39,18 +40,26 @@ const Dashboard: React.FC = () => {
     if (!productUrl.trim()) {
       addNotification({
         type: 'error',
-        message: 'Product URL is required',
+        message: 'Product URL or Code is required',
         source: 'Process Product',
         page: 'Dashboard'
       });
       return;
     }
 
+    let urlToProcess = productUrl.trim();
+    if (!urlToProcess.startsWith('http')) {
+      if (processPlatform === 'Amazon') urlToProcess = `https://www.amazon.in/dp/${urlToProcess}`;
+      else if (processPlatform === 'Flipkart') urlToProcess = `https://www.flipkart.com/p/item?pid=${urlToProcess}`;
+      else if (processPlatform === 'Myntra') urlToProcess = `https://www.myntra.com/${urlToProcess}`;
+      else if (processPlatform === 'Ajio') urlToProcess = `https://www.ajio.com/search/?text=${urlToProcess}`;
+    }
+
     setIsProcessing(true);
     addNotification({ type: 'info', message: 'Processing started...', source: 'Process Product', page: 'Dashboard' });
 
     try {
-      const response = await dealsAPI.processProduct(productUrl.trim(), postProduct);
+      const response = await dealsAPI.processProduct(urlToProcess, postProduct);
       let type: 'success' | 'error' | 'info' | 'warning' = 'success';
       if (response.data.status === 'error') type = 'error';
       else if (response.data.status === 'excluded') type = 'warning';
@@ -83,7 +92,8 @@ const Dashboard: React.FC = () => {
     setProductData(null);
 
     try {
-      const response = await dealsAPI.getByCode(productCode.trim());
+      const targetDb = searchDb === 'hotDeal' ? 'deals' : 'productdeals';
+      const response = await dealsAPI.getByCode(productCode.trim(), targetDb);
       if (response.data.success) {
         setProductData(response.data.data);
         addNotification({ type: 'success', message: 'Product found successfully', source: 'Search Product', page: 'Dashboard' });
@@ -108,7 +118,8 @@ const Dashboard: React.FC = () => {
     try {
       // Remove productKey from updates if it exists
       const { productKey, ...updates } = productData;
-      const response = await dealsAPI.updateProduct(productCode.trim(), updates);
+      const targetDb = searchDb === 'hotDeal' ? 'deals' : 'productdeals';
+      const response = await dealsAPI.updateProduct(productCode.trim(), updates, targetDb);
       if (response.data.success) {
         addNotification({ type: 'success', message: 'Product updated successfully', source: 'Update Product', page: 'Dashboard' });
         // Refresh product data
@@ -197,27 +208,47 @@ const Dashboard: React.FC = () => {
       <div className="dashboard-section">
         <h2>Process Product</h2>
         <div style={{ marginBottom: '20px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
-          <div style={{ marginBottom: '15px' }}>
-            <label htmlFor="product-url" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-              Product URL:
-            </label>
-            <input
-              id="product-url"
-              type="text"
-              value={productUrl}
-              onChange={(e) => setProductUrl(e.target.value)}
-              placeholder="Enter product URL (e.g., https://www.amazon.in/...)"
-              style={{
-                width: '100%',
-                padding: '10px',
-                fontSize: '14px',
-                border: '1px solid #ccc',
-                borderRadius: '4px',
-                boxSizing: 'border-box'
-              }}
-              disabled={isProcessing}
-            />
-          </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="product-url" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
+                Platform & Product Code (or URL):
+              </label>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <select
+                  value={processPlatform}
+                  onChange={(e) => setProcessPlatform(e.target.value)}
+                  disabled={isProcessing}
+                  style={{
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    backgroundColor: 'white',
+                    width: '150px'
+                  }}
+                >
+                  <option value="Amazon">Amazon</option>
+                  <option value="Flipkart">Flipkart</option>
+                  <option value="Myntra">Myntra</option>
+                  <option value="Ajio">Ajio</option>
+                </select>
+                <input
+                  id="product-url"
+                  type="text"
+                  value={productUrl}
+                  onChange={(e) => setProductUrl(e.target.value)}
+                  placeholder="Enter code (e.g., B08N5WRWNW) or full URL"
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    fontSize: '14px',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px',
+                    boxSizing: 'border-box'
+                  }}
+                  disabled={isProcessing}
+                />
+              </div>
+            </div>
           
           <div style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <input

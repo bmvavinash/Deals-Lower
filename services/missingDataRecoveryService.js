@@ -224,7 +224,8 @@ class MissingDataRecoveryService {
       // Load page configuration
       let pageConfig = {};
       try {
-        pageConfig = await loadConfig(platform, 'searchPage');
+        const configPath = `./PageConfig/${platform}PageConfig.js`;
+        pageConfig = await loadConfig(configPath);
       } catch (error) {
         logger.warn('Failed to load page config, using default', { 
           platform, 
@@ -235,14 +236,13 @@ class MissingDataRecoveryService {
       // Scrape the page with enhanced selectors
       let scrapedData = null;
       try {
-        scrapedData = await scrapePage(
+        const rawProducts = await scrapePage(
           sourceUrl,
-          'searchPage',
           driver,
-          platform,
-          selectors,
-          pageConfig
+          pageConfig,
+          'searchPage'
         );
+        scrapedData = { products: rawProducts || [] };
       } catch (error) {
         logger.error('Failed to scrape page for recovery', { 
           sourceUrl, 

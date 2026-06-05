@@ -15,9 +15,9 @@ export const dealsAPI = {
   getAll: (params?: { dealType?: string; platform?: string; date?: string; limit?: number; offset?: number }) =>
     api.get('/deals', { params }),
   getByCode: (productCode: string, db?: string) =>
-    api.get(`/deals/${productCode}`, { params: { db } }),
+    api.get(`/deals/${encodeURIComponent(productCode)}`, { params: { db } }),
   getNotifications: (productCode: string) =>
-    api.get(`/deals/notifications/${productCode}`),
+    api.get(`/deals/notifications/${encodeURIComponent(productCode)}`),
   triggerBulkUpdate: (sourceType?: string, targetDb?: string) =>
     api.post('/deals/manual-trigger', { sourceType, targetDb }),
   triggerTelegramBot: () =>
@@ -25,7 +25,7 @@ export const dealsAPI = {
   bulkRefreshTimestamps: (options: { source: 'productdeals' | 'deals' | 'both'; limit?: number; order?: 'newest' | 'oldest' }) =>
     api.post('/deals/bulk-refresh-timestamps', options),
   retriggerProduct: (productCode: string, db?: string) =>
-    api.post(`/deals/${productCode}/retrigger`, {}, { params: { db } }),
+    api.post(`/deals/${encodeURIComponent(productCode)}/retrigger`, {}, { params: { db } }),
   retriggerToday: (fields: string[], priority?: string) =>
     api.post('/deals/retrigger-today', { fields, priority }),
   processProduct: (url: string, postProduct: boolean = false) =>

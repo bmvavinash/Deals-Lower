@@ -1,7 +1,8 @@
 const { getModuleLogger } = require('../logger/logger');
-const { getAllProductDeals, updateProductDeal } = require('../database/firebaseDB/productDealsDB');
+const { getAllProductDeals, updateProductDeal, productDealsDB } = require('../database/firebaseDB/productDealsDB');
 const { initializeDriver, closeDriver } = require('./batchProductExtractor');
-const { amazonPageConfig } = require('../PageConfig/amazonPageConfig');
+const { scrapeProduct } = require('../scrappers/amazon');
+const { postProcessProductData } = require('../pageScheduler');
 
 const logger = getModuleLogger('idleEnrichmentProcessor');
 
@@ -27,17 +28,18 @@ class IdleEnrichmentProcessor {
             batchSize = 10,
             delayBetweenProducts = 2000,
             maxProducts = 100,
-            onlyMissingFields = true
+            onlyMissingFields = true,
+            targetDb = 'productdeals'
         } = options;
 
-        logger.info('Starting idle-time enrichment processing', { batchSize, delayBetweenProducts, maxProducts, onlyMissingFields });
+        logger.info('Starting idle-time enrichment processing', { batchSize, delayBetweenProducts, maxProducts, onlyMissingFields, targetDb });
 
         try {
             this.isProcessing = true;
             this.driver = await initializeDriver();
 
             // Get products that need enrichment
-            const productsToEnrich = await this.getProductsForEnrichment(onlyMissingFields, maxProducts);
+            const productsToEnrich = await this.getProductsForEnrichment(onlyMissingFields, maxProducts, targetDb);
             logger.info(`Found ${productsToEnrich.length} products for enrichment`);
 
             if (productsToEnrich.length === 0) {
@@ -57,7 +59,7 @@ class IdleEnrichmentProcessor {
                     }
 
                     try {
-                        await this.enrichProduct(product);
+                        await this.enrichProduct(product, targetDb);
                         this.processedCount++;
                         
                         // Add delay between products to avoid overwhelming the server
@@ -108,9 +110,9 @@ class IdleEnrichmentProcessor {
     /**
      * Get products that need enrichment
      */
-    async getProductsForEnrichment(onlyMissingFields = true, maxProducts = 100) {
+    async getProductsForEnrichment(onlyMissingFields = true, maxProducts = 100, targetDb = 'productdeals') {
         try {
-            const allProducts = await getAllProductDeals();
+            const allProducts = await getAllProductDeals(targetDb);
             const productsArray = Object.entries(allProducts).map(([id, product]) => ({
                 id,
                 ...product
@@ -136,45 +138,74 @@ class IdleEnrichmentProcessor {
      * Check if product has missing fields
      */
     hasMissingFields(product) {
-        const criticalFields = [
-            'title', 'price', 'originalPrice', 'discountPercentage', 
-            'rating', 'ratingsCount', 'brand', 'category'
-        ];
-
-        return criticalFields.some(field => {
+        const criticalFields = ['title', 'brand'];
+        
+        const isMissingCritical = criticalFields.some(field => {
             const value = product[field];
             return !value || value === '' || value === 'undefined' || value === 'NA';
         });
+        
+        if (isMissingCritical) return true;
+        
+        // Check price
+        const price = product.price;
+        if (!price || price === '' || price === 'undefined' || price === 'NA') return true;
+        
+        // Check originalPrice / mrp
+        const mrp = product.originalPrice || product.mrp;
+        if (!mrp || mrp === '' || mrp === 'undefined' || mrp === 'NA') return true;
+        
+        // Check discount / discountPercentage
+        const discount = product.discountPercentage || product.discount;
+        if (!discount || discount === '' || discount === 'undefined' || discount === 'NA') return true;
+        
+        // Check rating
+        const rating = product.rating;
+        if (!rating || rating === '' || rating === 'undefined' || rating === 'NA') return true;
+        
+        // Check ratingsCount / reviewsCount
+        const ratingsCount = product.ratingsCount || product.reviewsCount;
+        if (!ratingsCount || ratingsCount === '' || ratingsCount === 'undefined' || ratingsCount === 'NA') return true;
+        
+        // Check categoryGroup
+        if (!product.categoryGroup) return true;
+        
+        return false;
     }
 
     /**
      * Enrich a single product with detailed information
      */
-    async enrichProduct(product) {
+    async enrichProduct(product, targetDb = 'productdeals') {
         if (!product.productUrl) {
             logger.warn(`Product ${product.id} has no product URL, skipping`);
             return;
         }
 
-        logger.info(`Enriching product: ${product.id}`, { url: product.productUrl });
+        const platform = product.storeType ? product.storeType.toLowerCase() : 'amazon';
+        logger.info(`Enriching product: ${product.id}`, { url: product.productUrl, platform });
 
         try {
             // Navigate to product page
             await this.driver.get(product.productUrl);
             await this.sleep(2000); // Wait for page to load
 
-            // Extract detailed product information
-            const enrichedData = await this.extractProductDetails();
+            // Scrape detailed product information
+            const enrichedData = await scrapeProduct(product.productUrl, platform, this.driver);
             
-            // Update product with enriched data
-            await this.updateProductWithEnrichedData(product.id, enrichedData);
-            
-            this.updatedCount++;
-            logger.info(`Successfully enriched product: ${product.id}`);
+            if (enrichedData && Object.keys(enrichedData).length > 0) {
+                // Update product with enriched data
+                await this.updateProductWithEnrichedData(product.id, enrichedData, targetDb);
+                this.updatedCount++;
+                logger.info(`Successfully enriched product: ${product.id}`);
+            } else {
+                logger.warn(`Scraped data is empty for product: ${product.id}`);
+                this.errorCount++;
+            }
 
         } catch (error) {
             logger.error(`Failed to enrich product ${product.id}:`, error);
-            throw error;
+            this.errorCount++;
         }
     }
 
@@ -331,11 +362,10 @@ class IdleEnrichmentProcessor {
     /**
      * Update product with enriched data
      */
-    async updateProductWithEnrichedData(productId, enrichedData) {
+    async updateProductWithEnrichedData(productId, enrichedData, targetDb = 'productdeals') {
         try {
             // Get existing product data
-            const existingProduct = await getAllProductDeals();
-            const product = existingProduct[productId];
+            const product = await productDealsDB.getProduct(productId, targetDb);
             
             if (!product) {
                 logger.warn(`Product ${productId} not found in database`);
@@ -343,14 +373,24 @@ class IdleEnrichmentProcessor {
             }
 
             // Merge enriched data with existing data
-            const updatedProduct = {
+            let updatedProduct = {
                 ...product,
                 ...enrichedData,
                 updateTimestamp: new Date().toISOString()
             };
 
+            // Calculate missing pricing fields
+            try {
+                updatedProduct = postProcessProductData(updatedProduct, product.storeType || 'Amazon');
+            } catch (postError) {
+                logger.warn('Error running postProcessProductData in updateProductWithEnrichedData', { 
+                    productId, 
+                    error: postError.message 
+                });
+            }
+
             // Update the product
-            await updateProductDeal(productId, updatedProduct);
+            await updateProductDeal(productId, updatedProduct, targetDb);
             logger.info(`Updated product ${productId} with enriched data`);
 
         } catch (error) {

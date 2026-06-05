@@ -36,7 +36,7 @@ interface BannerStats {
 
 const DealsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('deals');
-  const [filters, setFilters] = useState({ dealType: '', platform: '', date: '', limit: 100, offset: 0 });
+  const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', limit: 100, offset: 0 });
   const [newsFilters, setNewsFilters] = useState({ limit: 20, offset: 0, category: '', sortBy: 'publishDate', order: 'desc' });
   const [reviewsFilters, setReviewsFilters] = useState({ limit: 20, offset: 0, productName: '', minRating: '', sortBy: 'publishDate', order: 'desc' });
   
@@ -82,6 +82,33 @@ const DealsPage: React.FC = () => {
   const [isNewsScraping, setIsNewsScraping] = useState(false);
   const [showRetriggerModal, setShowRetriggerModal] = useState(false);
   const [isRetriggering, setIsRetriggering] = useState(false);
+  const [productCodeSearch, setProductCodeSearch] = useState('');
+  const [isSearchingCode, setIsSearchingCode] = useState(false);
+  const [productCodeResult, setProductCodeResult] = useState<any>(null);
+
+  const handleSearchByProductCode = async () => {
+    if (!productCodeSearch.trim()) {
+      setProductCodeResult(null);
+      return;
+    }
+    
+    try {
+      setIsSearchingCode(true);
+      const targetDb = filters.dealType === 'hotDeal' ? 'deals' : 'productdeals';
+      const response = await dealsAPI.getByCode(productCodeSearch.trim(), targetDb);
+      
+      if (response.data && (response.data.data || response.data)) {
+        setProductCodeResult(response.data.data || response.data);
+      } else {
+        setProductCodeResult(null);
+      }
+    } catch (error) {
+      console.error('Error searching product code:', error);
+      setProductCodeResult(null);
+    } finally {
+      setIsSearchingCode(false);
+    }
+  };
   const [isExtractingBanners, setIsExtractingBanners] = useState(false);
   const [isTriggeringBanners, setIsTriggeringBanners] = useState(false);
   const [bannerExtractionResult, setBannerExtractionResult] = useState<{ extracted: number; stored: number; duplicates: number } | null>(null);
@@ -987,6 +1014,23 @@ const DealsPage: React.FC = () => {
 
   return (
     <div className="deals-page">
+      {(dealsLoading || isSearchingCode || isTriggeringBanners) && (
+        <div className="global-loading-overlay" style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(255, 255, 255, 0.7)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 9999
+        }}>
+          <div className="spinner" style={{ fontSize: '3rem', marginBottom: '10px' }}>↻</div>
+          <h2>Loading...</h2>
+        </div>
+      )}
+
+      <div className="view-mode-selector">
       <div className="page-header">
         <h1>Deals Management</h1>
         <div className="trigger-buttons">
@@ -1101,32 +1145,79 @@ const DealsPage: React.FC = () => {
           🖼️ Banners
         </button>
       </div>
+      </div>
 
       {/* Deals View */}
       {viewMode === 'deals' && (
-        <>
-          <div className="deals-view-header">
-            <DealFilters filters={filters} onFilterChange={handleFilterChange} />
-            <button 
-              onClick={handleTriggerBanners} 
-              className="trigger-button banner-trigger-button"
-              disabled={isTriggeringBanners}
-              title="Display banners from all platforms (Amazon, Flipkart, Myntra, Ajio) - Uses headless browser (no Chrome 9222)"
-            >
-              {isTriggeringBanners ? '⏳ Loading...' : '🚀 Display Banners'}
-            </button>
+        <div className="deals-page-layout">
+          <div className="deals-sidebar">
+            <DealFilters filters={filters} onFilterChange={handleFilterChange} isLoading={dealsLoading} />
           </div>
-          {dealsLoading && <div className="loading">Loading deals...</div>}
-          {dealsError && <div className="error">Error loading deals: {String(dealsError)}</div>}
-          {dealsData && (
-            <DealList 
-              deals={(dealsData.data as any).data || []} 
-              database={(dealsData.data as any).database}
-              pagination={(dealsData.data as any).pagination}
-              onPageChange={(offset) => setFilters({ ...filters, offset })}
-            />
-          )}
-        </>
+          
+          <div className="deals-main-content">
+            <div className="deals-view-header search-section" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
+              <div className="product-code-search" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                <input 
+                  type="text" 
+                  placeholder="Search by Product Code..." 
+                  value={productCodeSearch}
+                  onChange={(e) => setProductCodeSearch(e.target.value)}
+                  className="filter-input"
+                  style={{ width: '250px', padding: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSearchByProductCode()}
+                />
+                <button 
+                  onClick={handleSearchByProductCode}
+                  className="trigger-button"
+                  disabled={isSearchingCode}
+                  style={{ padding: '10px 16px', backgroundColor: '#3498db' }}
+                >
+                  {isSearchingCode ? (
+                    <><span className="spinner">↻</span> Searching...</>
+                  ) : '🔍 Search'}
+                </button>
+                {productCodeResult && (
+                  <button 
+                    onClick={() => { setProductCodeSearch(''); setProductCodeResult(null); }}
+                    className="trigger-button"
+                    style={{ padding: '10px 16px', backgroundColor: '#e74c3c' }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              
+              <button 
+                onClick={handleTriggerBanners} 
+                className="trigger-button banner-trigger-button"
+                disabled={isTriggeringBanners}
+                title="Display banners from all platforms"
+              >
+                {isTriggeringBanners ? (
+                  <><span className="spinner">↻</span> Loading...</>
+                ) : '🖼️ Display Banners'}
+              </button>
+            </div>
+            
+            {dealsLoading && !productCodeResult && <div className="loading"><span className="spinner">↻</span> Loading deals...</div>}
+            {dealsError && <div className="error">Error loading deals: {String(dealsError)}</div>}
+            {productCodeResult ? (
+              <DealList 
+                deals={[productCodeResult]} 
+                database={filters.dealType === 'hotDeal' ? 'deals' : 'productdeals'}
+                pagination={{ total: 1, limit: 1, offset: 0, hasMore: false }}
+                onPageChange={() => {}}
+              />
+            ) : dealsData && (
+              <DealList 
+                deals={(dealsData.data as any).data || []} 
+                database={(dealsData.data as any).database}
+                pagination={(dealsData.data as any).pagination}
+                onPageChange={(offset) => setFilters({ ...filters, offset })}
+              />
+            )}
+          </div>
+        </div>
       )}
 
       {/* News View */}

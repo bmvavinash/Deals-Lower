@@ -158,7 +158,7 @@ async function runTelegramBot() {
     logger.info('🔄 Starting continuous Telegram message processing...');
     
     let loopCount = 0;
-    const maxLoops = 100; // Run for 100 loops or until stopped
+    const maxLoops = 1000; // Run for 1000 loops or until stopped
     
     while (loopCount < maxLoops) {
       try {

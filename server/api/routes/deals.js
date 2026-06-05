@@ -1,7 +1,5 @@
 const express = require('express');
 const fs = require('fs');
-const express = require('express');
-const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
@@ -9,7 +7,8 @@ const { notificationTrackingDB } = require('../../../database/firebaseDB/notific
 const { runBulkUpdateAll } = require('../../../scripts/bulkUpdateAllPlatforms');
 const { getModuleLogger } = require('../../../logger/logger');
 const cacheService = require('../../../services/cacheService');
-const { getformattedDate, getISTTimestamp } = require('../../../utils/commonUtils');
+const { getformattedDate, getISTTimestamp, getCode } = require('../../../utils/commonUtils');
+const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
 const { Builder } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 require('chromedriver');
@@ -46,6 +45,16 @@ function isProcessRunning(pid) {
 let globalDriver = null;
 
 async function getOrCreateDriver() {
+  if (globalDriver) {
+    try {
+      // Test if the session is still valid
+      await globalDriver.getTitle();
+    } catch (e) {
+      logger.warn('Driver connection lost or invalid session id, recreating session...');
+      globalDriver = null;
+    }
+  }
+
   if (!globalDriver) {
     try {
       let options = new chrome.Options();
@@ -126,25 +135,70 @@ router.post('/process-product', async (req, res) => {
     const todayJsonData = todayJsonDataResult?.data || todayJsonDataResult || {};
     const len = jsonDataResult?.len || 0;
 
-    logger.info('Calling getProductDetails', { url: resolvedUrl, postProduct, len });
+    // Check if we can resolve productCode. If not, process as listing/search page.
+    const { storeMap } = require('../../../config/const');
+    const storeKey = resolvePlatformFromUrl(resolvedUrl);
+    let productCode = null;
+    if (storeKey && storeMap && storeMap[storeKey]) {
+      productCode = storeMap[storeKey].getCode(resolvedUrl);
+    }
 
-    // Process the product using resolved URL (same as handleProductProcessing -> processProduct -> getProductDetails)
-    // getProductDetails expects driver to already be on the page, which we've done above
-    const result = await getProductDetails(
-      driver,
-      resolvedUrl, // Use resolved URL
-      '', // text
-      len,  // Use actual len
-      accessToken,
-      jsonData,
-      todayJsonData,
-      postProduct, // postProduct flag
-      '', // username
-      false, // generateLink
-      '' // shortUrl
-    );
-    
-    logger.info('getProductDetails returned', { result });
+    let result;
+    if (productCode) {
+      logger.info('Calling getProductDetails for single product', { url: resolvedUrl, productCode });
+      result = await getProductDetails(
+        driver,
+        resolvedUrl, // Use resolved URL
+        '', // text
+        len,  // Use actual len
+        accessToken,
+        jsonData,
+        todayJsonData,
+        postProduct, // postProduct flag
+        '', // username
+        false, // generateLink
+        '' // shortUrl
+      );
+      logger.info('getProductDetails returned', { result });
+    } else {
+      if (global.isCrawlingListingPage) {
+        logger.info('Bulk extraction already in progress, returning 429');
+        return res.status(429).json({
+          success: false,
+          status: 'busy',
+          message: 'A search or listing page bulk extraction is already in progress. Please try again in a few minutes.'
+        });
+      }
+
+      logger.info('No productCode resolved, starting search/listing page bulk extraction in background', { url: resolvedUrl });
+      global.isCrawlingListingPage = true;
+
+      // Run in background
+      (async () => {
+        try {
+          const { extractAndStoreFromUrl } = require('../../../dataSources/batchProductExtractor');
+          const batchResult = await extractAndStoreFromUrl(
+            driver,
+            resolvedUrl,
+            'telegram', // sourceType to trigger grouping/categorization
+            '', // categoryKey
+            null, // ctx
+            'productdeals' // targetDb
+          );
+          logger.info('Search/listing page bulk extraction completed in background', { batchResult });
+        } catch (bgErr) {
+          logger.error('Search/listing page bulk extraction in background failed', { error: bgErr.message, stack: bgErr.stack });
+        } finally {
+          global.isCrawlingListingPage = false;
+        }
+      })();
+
+      return res.status(202).json({
+        success: true,
+        status: 'processing',
+        message: 'Search/listing page bulk extraction started in the background.'
+      });
+    }
 
     // Determine status based on result
     let status = 'success';
@@ -641,9 +695,20 @@ router.post('/bulk-refresh-timestamps', async (req, res) => {
  */
 router.get('/:productCode', async (req, res, next) => {
   try {
-    const { productCode } = req.params;
+    let { productCode } = req.params;
     const { db = 'deals' } = req.query;
     const targetDb = db === 'productdeals' ? 'productdeals' : 'deals';
+    
+    // If it looks like a URL, extract the product code
+    if (productCode && (productCode.startsWith('http://') || productCode.startsWith('https://'))) {
+      const storeKey = resolvePlatformFromUrl(productCode);
+      if (storeKey) {
+        const extracted = getCode(productCode, storeKey);
+        if (extracted && extracted.isValid && extracted.value) {
+          productCode = extracted.value;
+        }
+      }
+    }
     
     if (!productCode) {
       return res.status(400).json({
@@ -654,25 +719,36 @@ router.get('/:productCode', async (req, res, next) => {
 
     logger.info('Fetching product by code', { productCode, targetDb });
 
-    const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
+    let ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
     const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
     
-    // Try to get by productCode field first
-    let snapshot = await ref.orderByChild('productCode').equalTo(productCode).once('value');
-    let product = null;
-    let productKey = null;
-
-    if (snapshot.exists()) {
-      const products = snapshot.val();
-      productKey = Object.keys(products)[0];
-      product = products[productKey];
-    } else {
-      // Fallback: try direct key lookup
-      snapshot = await ref.child(safeKey).once('value');
+    // Helper function to search in a specific ref
+    const searchInRef = async (dbRef) => {
+      let snapshot = await dbRef.orderByChild('productCode').equalTo(productCode).once('value');
       if (snapshot.exists()) {
-        productKey = safeKey;
-        product = snapshot.val();
+        const products = snapshot.val();
+        return { key: Object.keys(products)[0], data: products[Object.keys(products)[0]] };
       }
+      // Fallback: try direct key lookup
+      snapshot = await dbRef.child(safeKey).once('value');
+      if (snapshot.exists()) {
+        return { key: safeKey, data: snapshot.val() };
+      }
+      return null;
+    };
+
+    let result = await searchInRef(ref);
+    let product = result?.data;
+    let productKey = result?.key;
+
+    if (!product) {
+      // Try the other database
+      const otherTargetDb = targetDb === 'deals' ? 'productdeals' : 'deals';
+      logger.info('Product not found in primary DB, checking fallback DB', { productCode, fallbackDb: otherTargetDb });
+      ref = otherTargetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
+      result = await searchInRef(ref);
+      product = result?.data;
+      productKey = result?.key;
     }
 
     if (!product) {
@@ -702,7 +778,7 @@ router.get('/:productCode', async (req, res, next) => {
  * Body: { ...product attributes to update }
  * Query params: db (deals|productdeals)
  */
-router.put/:productCode', async (req, res, next) => {
+router.put('/:productCode', async (req, res, next) => {
   try {
     const { productCode } = req.params;
     const { db = 'deals' } = req.query;
@@ -815,22 +891,43 @@ router.delete('/:productCode', async (req, res, next) => {
  */
 router.post('/:productCode/retrigger', async (req, res) => {
   try {
-    const { productCode } = req.params;
-    const db = req.query.db || 'productdeals';
-    const product = await productDealsDB.getProduct(productCode, db);
+    let { productCode } = req.params;
+    let db = req.query.db || 'productdeals';
+
+    // If it looks like a URL, extract the product code
+    if (productCode && (productCode.startsWith('http://') || productCode.startsWith('https://'))) {
+      const storeKey = resolvePlatformFromUrl(productCode);
+      if (storeKey) {
+        const extracted = getCode(productCode, storeKey);
+        if (extracted && extracted.isValid && extracted.value) {
+          productCode = extracted.value;
+        }
+      }
+    }
+    let product = await productDealsDB.getProduct(productCode, db);
     
     if (!product || !product.productUrl) {
-      return res.status(404).json({ success: false, error: 'Product or URL not found' });
+      // Try the other database if not found
+      db = db === 'productdeals' ? 'deals' : 'productdeals';
+      product = await productDealsDB.getProduct(productCode, db);
+      if (!product || !product.productUrl) {
+        return res.status(404).json({ success: false, error: 'Product or URL not found in any database' });
+      }
     }
     
     const driver = global.driver || await getOrCreateDriver();
     const { scrapeProduct } = require('../../../scrappers/amazon');
     const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
+    const { getformattedDate } = require('../../../utils/commonUtils');
     
     const platform = resolvePlatformFromUrl(product.productUrl) || 'amazon';
     
+    // IMPORTANT: We must navigate to the product URL before scraping!
+    await driver.get(product.productUrl);
+    
     const extractedData = await scrapeProduct(
       product.productUrl, 
+
       platform, 
       driver, 
       product.productText || product.title || "", 
@@ -843,6 +940,7 @@ router.post('/:productCode/retrigger', async (req, res) => {
         const updatedProduct = {
           ...product,
           ...extractedData,
+          date: getformattedDate(),
           updateTimestamp: getISTTimestamp(),
           updatedAt: getISTTimestamp(),
           updatedatetime: Date.now()

@@ -30,7 +30,11 @@ async function loadConfigJson(configPath) {
 }
 
 async function loadConfig(configPath) {
-    return require(configPath); // Use require to load a JavaScript module
+    const path = require('path');
+    if (path.isAbsolute(configPath)) {
+        return require(configPath);
+    }
+    return require(path.resolve(__dirname, configPath)); // Resolve relative to this file's directory
 }
 
 async function scrapePage(url, driver, config, pageType) {
@@ -245,6 +249,7 @@ async function extractFlipkartProduct(driver, selectors, row, col, storeKey) {
 
 async function scrapeGeneral(driver, pageConfig, storeKey) {
     const products = [];
+    const workingSelectorCache = {};
     
     logger.info('Starting general scraping', { storeKey, baseSelector: pageConfig.baseSelector });
     
@@ -375,7 +380,7 @@ async function scrapeGeneral(driver, pageConfig, storeKey) {
 
     let pageExtracted = 0;
     for (const element of baseElements) {
-        const productData = await extractGeneralProduct(element, pageConfig.selectors, storeKey);
+        const productData = await extractGeneralProduct(element, pageConfig.selectors, storeKey, workingSelectorCache);
         if (productData) {
             products.push(productData);
             pageExtracted += 1;
@@ -439,7 +444,7 @@ async function scrapeGeneral(driver, pageConfig, storeKey) {
             logger.info('Extracting after pagination', { tiles: baseElements.length, page: page + 2 });
             let extractedThisPage = 0;
             for (const element of baseElements) {
-                const productData = await extractGeneralProduct(element, pageConfig.selectors, storeKey);
+                const productData = await extractGeneralProduct(element, pageConfig.selectors, storeKey, workingSelectorCache);
                 if (productData) { products.push(productData); extractedThisPage += 1; }
                 
                 // Force garbage collection every 10 products to prevent memory buildup
@@ -513,7 +518,7 @@ function generateExtractionSummary(products, storeKey) {
     return summary;
 }
 
-async function extractGeneralProduct(element, selectors, storeKey) {
+async function extractGeneralProduct(element, selectors, storeKey, cache = {}) {
     const productData = {};
     
     logger.debug(`Starting extraction for ${storeKey} product`);
@@ -525,38 +530,68 @@ async function extractGeneralProduct(element, selectors, storeKey) {
             // Handle array of selector configs
             const configs = Array.isArray(selectorConfigs) ? selectorConfigs : [selectorConfigs];
             
-            for (const config of configs) {
+            // Try the cached working selector first
+            const cachedIndex = cache[key];
+            if (cachedIndex !== undefined && cachedIndex < configs.length) {
+                const config = configs[cachedIndex];
                 const result = await extractWithConfig(element, config, storeKey);
                 
                 if (result.isValid && result.value) {
                     if (result.value === "FALLBACK_NEEDED" && config.type === "fallback") {
-                        // Handle fallback to another field
                         const fallbackValue = productData[config.field];
                         if (fallbackValue && fallbackValue !== "N/A" && fallbackValue !== "") {
-                            // Apply validation if specified
                             if (config.validate && typeof config.validate === 'function') {
                                 const validationResult = config.validate(fallbackValue);
                                 if (validationResult && validationResult !== 'N/A') {
                                     productData[key] = validationResult;
-                                    logger.debug(`Fallback extraction with validation for ${key} using ${config.field} for ${storeKey}:`, { 
-                                        originalValue: fallbackValue, 
-                                        validatedValue: validationResult 
-                                    });
                                     extracted = true;
-                                    break;
                                 }
                             } else {
                                 productData[key] = fallbackValue;
-                                logger.debug(`Fallback extraction for ${key} using ${config.field} for ${storeKey}:`, { value: fallbackValue });
                                 extracted = true;
-                                break;
                             }
                         }
-                } else {
+                    } else {
                         productData[key] = result.value;
-                        logger.debug(`Successfully extracted ${key} for ${storeKey}:`, { value: result.value });
                         extracted = true;
-                        break;
+                    }
+                }
+            }
+            
+            // If the cached selector didn't work (or wasn't cached yet), try all selectors in order
+            if (!extracted) {
+                for (let i = 0; i < configs.length; i++) {
+                    if (i === cachedIndex) continue; // Already tried
+                    const config = configs[i];
+                    const result = await extractWithConfig(element, config, storeKey);
+                    
+                    if (result.isValid && result.value) {
+                        if (result.value === "FALLBACK_NEEDED" && config.type === "fallback") {
+                            // Handle fallback to another field
+                            const fallbackValue = productData[config.field];
+                            if (fallbackValue && fallbackValue !== "N/A" && fallbackValue !== "") {
+                                // Apply validation if specified
+                                if (config.validate && typeof config.validate === 'function') {
+                                    const validationResult = config.validate(fallbackValue);
+                                    if (validationResult && validationResult !== 'N/A') {
+                                        productData[key] = validationResult;
+                                        extracted = true;
+                                        cache[key] = i; // Cache this working selector index
+                                        break;
+                                    }
+                                } else {
+                                    productData[key] = fallbackValue;
+                                    extracted = true;
+                                    cache[key] = i; // Cache this working selector index
+                                    break;
+                                }
+                            }
+                        } else {
+                            productData[key] = result.value;
+                            extracted = true;
+                            cache[key] = i; // Cache this working selector index
+                            break;
+                        }
                     }
                 }
             }
@@ -652,6 +687,12 @@ async function extractWithConfig(element, selectorConfig, storeKey) {
                 const childElement = await element.findElement(By.css(selectorConfig.selector));
                 if (selectorConfig.attribute) {
                     extractedValue = await childElement.getAttribute(selectorConfig.attribute);
+                    if (selectorConfig.extractImageFromStyle && extractedValue) {
+                        const match = extractedValue.match(/url\(['"]?(.*?)['"]?\)/);
+                        if (match && match[1]) {
+                            extractedValue = match[1];
+                        }
+                    }
                 } else {
                     extractedValue = await childElement.getText();
                 }
@@ -674,6 +715,12 @@ async function extractWithConfig(element, selectorConfig, storeKey) {
                 const childElement = await element.findElement(By.xpath(selectorConfig.selector));
                 if (selectorConfig.attribute) {
                     extractedValue = await childElement.getAttribute(selectorConfig.attribute);
+                    if (selectorConfig.extractImageFromStyle && extractedValue) {
+                        const match = extractedValue.match(/url\(['"]?(.*?)['"]?\)/);
+                        if (match && match[1]) {
+                            extractedValue = match[1];
+                        }
+                    }
                 } else {
                     extractedValue = await childElement.getText();
                 }
@@ -783,16 +830,27 @@ function postProcessProductData(productData, storeKey) {
     };
     const toPercentNumber = (val) => {
         if (val === undefined || val === null) return NaN;
-        const m = String(val).match(/([0-9]{1,3})(?:\.[0-9]+)?/);
-        return m ? parseFloat(m[1]) : NaN;
+        const str = String(val);
+        // Only treat as percentage if it contains '%' or doesn't look like a currency/flat amount
+        if (str.includes('%')) {
+            const m = str.match(/([0-9]{1,3})(?:\.[0-9]+)?/);
+            return m ? parseFloat(m[1]) : NaN;
+        }
+        return NaN;
     };
 
     let priceNum = toNumber(processed.price);
     let mrpNum = toNumber(processed.mrp);
     let discPct = toPercentNumber(processed.discount);
 
-    // If price and mrp present, compute discount
-    if (!isNaN(priceNum) && !isNaN(mrpNum) && isNaN(discPct) && mrpNum > 0 && priceNum <= mrpNum) {
+    // If MRP is less than price, correct it to be equal to price
+    if (!isNaN(priceNum) && !isNaN(mrpNum) && mrpNum < priceNum) {
+        processed.mrp = String(priceNum);
+        mrpNum = priceNum;
+    }
+
+    // If price and mrp present, compute/correct discount
+    if (!isNaN(priceNum) && !isNaN(mrpNum) && mrpNum > 0 && priceNum <= mrpNum) {
         const pct = Math.round((1 - (priceNum / mrpNum)) * 100);
         if (pct >= 0 && pct <= 100) {
             processed.discount = `${pct}%`;
@@ -808,6 +866,15 @@ function postProcessProductData(productData, storeKey) {
                 processed.mrp = String(mrpCalc);
                 mrpNum = mrpCalc;
             }
+        }
+    }
+    // Default fallback: if mrp is still missing but price is present, set mrp to price and discount to 0%
+    if (!isNaN(priceNum) && isNaN(mrpNum)) {
+        processed.mrp = String(priceNum);
+        mrpNum = priceNum;
+        if (isNaN(discPct)) {
+            processed.discount = "0%";
+            discPct = 0;
         }
     }
     // If mrp and discount present, compute price
@@ -849,5 +916,6 @@ async function extractText(element, type, selector) {
 // Export the functions for use in other files
 module.exports = {
     loadConfig,
-    scrapePage
+    scrapePage,
+    postProcessProductData
 };

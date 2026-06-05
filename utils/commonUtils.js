@@ -182,21 +182,38 @@ function validateRatingsCount(value) {
     };
 }
 
-// Function to extract discount percentage from text like "(35% off)"
+// Function to extract discount percentage from text like "(35% off)", "35% off", "-35%" etc.
 function validateDiscountPercentage(value) {
     if (!value) return { isValid: false, value: "" };
     
     logger.debug("Extracting discount from:", value);
     
-    // Extract percentage from text like "(35% off)"
-    const discountMatch = value.match(/\((\d+)%\s*off\)/);
-    if (discountMatch) {
-        const discount = parseInt(discountMatch[1], 10);
-        logger.debug("Discount extracted:", discount);
-        return {
-            isValid: true,
-            value: discount
-        };
+    // 1. Try format with percent and "off", e.g., "(35% off)" or "35% off"
+    let match = value.match(/(\d+)\s*%\s*off/i);
+    if (!match) {
+        // 2. Try simple percentage like "-35%" or "35%"
+        match = value.match(/[-]?(\d+)\s*%/);
+    }
+    if (!match) {
+        // 3. Try parenthesized format "(35% off)"
+        match = value.match(/\((\d+)%\s*off\)/);
+    }
+    if (!match) {
+        // 4. Try just a number if the string contains "off"
+        if (value.toLowerCase().includes('off')) {
+            match = value.match(/(\d+)/);
+        }
+    }
+    
+    if (match) {
+        const discount = parseInt(match[1], 10);
+        if (!isNaN(discount) && discount >= 0 && discount <= 100) {
+            logger.debug("Discount extracted:", discount);
+            return {
+                isValid: true,
+                value: discount
+            };
+        }
     }
     
     logger.debug("No discount found in:", value);
@@ -248,6 +265,48 @@ function validateText(value) {
         value: cleanedValue
     };
 }
+
+function validateBrand(value) {
+    if (!value || typeof value !== 'string') {
+        return { isValid: false, value: "" };
+    }
+    let cleaned = value.replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+    // Remove "Visit the ... Store" or "Brand: ..." prefixes/suffixes
+    cleaned = cleaned.replace(/^Visit the\s+/i, "");
+    cleaned = cleaned.replace(/\s+Store$/i, "");
+    cleaned = cleaned.replace(/^Brand:\s+/i, "");
+    
+    // Sometimes it's like "Brand: Visit the Apple Store"
+    cleaned = cleaned.replace(/^Visit the\s+/i, "");
+    cleaned = cleaned.replace(/\s+Store$/i, "");
+    
+    cleaned = cleaned.trim();
+    
+    // If it's too long, contains parentheses/brackets/commas/pipes/hyphens,
+    // or has more than 3 words, it's highly likely to be a title fallback.
+    // In that case, extract the first word (or 2 words if first is very short) as brand.
+    const wordCount = cleaned.split(/\s+/).length;
+    if (cleaned.length > 30 || wordCount > 3 || cleaned.includes('(') || cleaned.includes('[') || cleaned.includes(',') || cleaned.includes('|')) {
+        const firstWordMatch = cleaned.match(/^([A-Za-z0-9.]+)/);
+        if (firstWordMatch) {
+            let firstWord = firstWordMatch[1];
+            // If first word is short (e.g. U.S., W., Dr.) or common, and there are more words, include the second word
+            const remaining = cleaned.substring(firstWord.length).trim();
+            const nextWordMatch = remaining.match(/^([A-Za-z0-9.]+)/);
+            if ((firstWord.length <= 3 || firstWord.toLowerCase() === 'allen' || firstWord.toLowerCase() === 'peter' || firstWord.toLowerCase() === 'tommy') && nextWordMatch) {
+                cleaned = firstWord + " " + nextWordMatch[1];
+            } else {
+                cleaned = firstWord;
+            }
+        }
+    }
+    
+    return {
+        isValid: cleaned.length > 0,
+        value: cleaned
+    };
+}
+
 
 function getAjioCode(url) {
     const match = url.match(/\/p\/([^/?]+)/);
@@ -1008,6 +1067,7 @@ module.exports = {
     formatProductInfo,
     validateDiscount,
     validateText,
+    validateBrand,
     validateMRP,
     validateRatingsCount,
     shortenProductText,

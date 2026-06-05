@@ -287,8 +287,8 @@ async function readJsonFile(filePath) {
 }
 
 // Processes a single product and logs missed links if necessary
-async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username, generateLink,shortUrl="") {
-  let isProductPosted = await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink,shortUrl);
+async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username, generateLink,shortUrl="", categoryOverride = null) {
+  let isProductPosted = await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink,shortUrl, categoryOverride);
   if (isProductPosted === productStatus.PRODUCT_CREATED) {
     len += 1;
   } else if (isProductPosted === productStatus.PRODUCT_ERROR) {
@@ -397,21 +397,15 @@ async function processHoldProducts(driver, len, accessToken, jsonData, todayJson
     const product = holdProducts.shift(); // Remove the first product
     try {
       await driver.get(product?.productUrl);
-      await processProduct(driver, product?.productUrl, product?.name || product?.urltext, len, accessToken, jsonData, todayJsonData, false);
+      await processProduct(driver, product?.productUrl, product?.name || product?.urltext, len, accessToken, jsonData, todayJsonData, false, undefined, undefined, undefined, product?.categoryOverride);
       console.log(`Processed held product: ${product.name}`);
+      saveHoldProducts();
     } catch (error) {
       console.error('Error processing held product:', product.name, error.message);
       holdProducts.push(product); // Re-add product if processing fails
+      saveHoldProducts();
     }
   }
-
-  // Save updated holdProducts to file
-  // try {
-  //   fs.writeFileSync(holdProductsFilePath, JSON.stringify(holdProducts, null, 2));
-  //   console.log('Updated hold products saved to file.');
-  // } catch (error) {
-  //   console.error('Error saving updated holdProducts to file:', error.message);
-  // }
 }
 
 // Processes messages from the bot's queue

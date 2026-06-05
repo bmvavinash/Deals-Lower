@@ -74,12 +74,22 @@ async function getExtrapeUrl(driver, url, timeout = 30000) {
 
         if (urlField) {
             try {
+                // Remove wzrk overlay if present
+                await driver.executeScript("var overlays = document.querySelectorAll('.wzrk-overlay, [id^=\"wzrk\"]'); overlays.forEach(el => el.remove());");
+                // Wait briefly for UI to settle
+                await new Promise(r => setTimeout(r, 500));
+                
                 await urlField.click();
                 await urlField.clear();
                 await urlField.sendKeys(url);
             } catch (error) {
-                console.warn("[extrape] Error entering URL:", error.message);
-                return '';
+                console.warn("[extrape] Normal input failed, trying JS fallback. Error:", error.message);
+                try {
+                    await driver.executeScript("arguments[0].value = arguments[1]; arguments[0].dispatchEvent(new Event('input', { bubbles: true })); arguments[0].dispatchEvent(new Event('change', { bubbles: true }));", urlField, url);
+                } catch (jsError) {
+                    console.warn("[extrape] Error entering URL via JS:", jsError.message);
+                    return '';
+                }
             }
         } else {
             console.warn("[extrape] Could not find URL input field");
@@ -117,8 +127,13 @@ async function getExtrapeUrl(driver, url, timeout = 30000) {
             try {
                 await generateButton.click();
             } catch (error) {
-                console.warn("[extrape] Error clicking generate button:", error.message);
-                return '';
+                console.warn("[extrape] Normal click failed, trying JS click. Error:", error.message);
+                try {
+                    await driver.executeScript("arguments[0].click();", generateButton);
+                } catch (jsError) {
+                    console.warn("[extrape] JS click also failed:", jsError.message);
+                    return '';
+                }
             }
         } else {
             console.warn("[extrape] Could not find generate button");

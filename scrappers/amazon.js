@@ -9,7 +9,7 @@ const ajioConfig = require("../config/ajioConfig");
 const myntraConfig = require("../config/myntraConfig");
 const { decode } = require('html-entities');
 const { getModuleLogger } = require("../logger/logger");
-
+const { determineHierarchy } = require("../utils/categoryHierarchy");
 
 const logger = getModuleLogger('amazon');
 
@@ -424,6 +424,10 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
       price: product.price,
       offersCount: product.offers?.length || 0
     });
+
+    const hierarchyInfo = determineHierarchy(product.category, product.title, product.brand);
+    product.hierarchicalCategory = hierarchyInfo.hierarchicalCategory;
+    product.hierarchicalKey = hierarchyInfo.hierarchicalKey;
 
     return product;
   } catch (e) { logger.error(`[${platform}] Error in scrap Product:`, { error: e.message, stack: e.stack, url }); }

@@ -1,10 +1,16 @@
-const { validatePrice, validateDiscount, validateText } = require("../utils/commonUtils");
+const { validatePrice, validateDiscount, validateText, validateBrand } = require("../utils/commonUtils");
 
 module.exports = {
   brand: [
-    { type: "id", selector: "bylineInfo", validator: validateText },
-    { type: "css", selector: "#bylineInfo", validator: validateText },
-    { type: "css", selector: ".contributorNameID", validator: validateText },
+    { type: "id", selector: "bylineInfo", validator: validateBrand },
+    { type: "css", selector: "#bylineInfo", validator: validateBrand },
+    { type: "css", selector: ".contributorNameID", validator: validateBrand },
+    { type: "css", selector: "a#bylineInfo", validator: validateBrand },
+    { type: "css", selector: "#brand", validator: validateBrand },
+    { type: "css", selector: "#brandByline", validator: validateBrand },
+    { type: "css", selector: ".po-brand span", validator: validateBrand },
+    { type: "css", selector: "a.a-link-normal.bylineInfo", validator: validateBrand },
+    { type: "css", selector: "#bylineInfo_feature_div a", validator: validateBrand },
   ],
   title: [
     { type: "id", selector: "productTitle", validator: validateText },
@@ -210,14 +216,6 @@ module.exports = {
       offerContentSelectorFull: ".offers-items-content .a-truncate.a-size-base",
       offerContentSelectorCut: ".offers-items-content .a-truncate-cut",
       classifyEmi: true
-    },
-    {
-      type: "css-bankoffers",
-      selector: ".a-section.a-spacing-none .a-size-base",
-      offerTypeSelector: "h6",
-      offerContentSelectorFull: ".a-section.a-spacing-none .a-size-base",
-      offerContentSelectorCut: ".a-section.a-spacing-none .a-size-base",
-      classifyEmi: false
     }
   ],
   asin: [

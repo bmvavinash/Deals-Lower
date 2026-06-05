@@ -12,7 +12,7 @@ const { resolvePlatformFromUrl } = require("../utils/platformUtils");
 
 const logger = getModuleLogger('handleProductProcessing');
 
-async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username, generateLink, shortUrl = "") {
+async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username, generateLink, shortUrl = "", categoryOverride = null) {
   const isProductPosted = await getProductDetails(
     driver,
     link,
@@ -24,7 +24,8 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
     postProduct,
     username,
     constants.generateLink,
-    shortUrl
+    shortUrl,
+    categoryOverride
   );
 
   if (isProductPosted === productStatus.PRODUCT_ERROR) {
@@ -41,7 +42,7 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
   return searchStatus.SEARCH_ERROR;
 }
 
-async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username = "", generateLink = false) {
+async function handleProductProcessing(driver, link, text, len, accessToken, jsonData, todayJsonData, username = "", generateLink = false, categoryOverride = null) {
   try {
     if (!storeMap || typeof storeMap !== 'object') {
       logger.error('storeMap unavailable in handleProductProcessing');
@@ -113,7 +114,7 @@ async function handleProductProcessing(driver, link, text, len, accessToken, jso
         }
       }
       
-      const status = await processProduct(driver, resolvedUrl, text, len, accessToken, jsonData, todayJsonData, true, username, generateLink, finalShortUrl);
+      const status = await processProduct(driver, resolvedUrl, text, len, accessToken, jsonData, todayJsonData, true, username, generateLink, finalShortUrl, categoryOverride);
       return status;
     }
 

@@ -3,6 +3,7 @@ const { By, Key, Builder, Button, until } = require("selenium-webdriver");
 
 const { validatePrice, validateDiscount } = require("../utils/commonUtils");
 const { getExtrapeUrl } = require('../affiliate/extrape');
+const { determineHierarchy } = require("../utils/categoryHierarchy");
 
 async function scrapeFlipkartProduct(url, text, driver) {
     // driver.get(url);
@@ -112,6 +113,11 @@ async function scrapeFlipkartProduct(url, text, driver) {
         // product.brand = await extractAttribute(driver, flipkartConfig.brand);
         // Log product or further processing
         // console.log("Product is ", product);
+
+        const hierarchyInfo = determineHierarchy(product.category, product.title, product.brand);
+        product.hierarchicalCategory = hierarchyInfo.hierarchicalCategory;
+        product.hierarchicalKey = hierarchyInfo.hierarchicalKey;
+
         return product;
     } catch(e) {
         console.log("Error in Scrap Flipkart Product ",e);
