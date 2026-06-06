@@ -209,8 +209,12 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     }
   }
 
+  const hasImage = product?.photo || (Array.isArray(product?.images) && product.images.length > 0) || (typeof product?.images === 'string' && product.images.length > 0);
+  const hasValidPriceOrStock = product?.price > 0 || (product?.stockStatus && product?.stockStatus.includes("OUT OF STOCK"));
+
   if (
-    (product?.price > 0 || (product?.stockStatus && product?.stockStatus.includes("OUT OF STOCK"))) &&
+    hasValidPriceOrStock &&
+    hasImage &&
     (
         (
             product.storeType !== "Amazon" &&
@@ -298,23 +302,29 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
       }
     }
     else {
-      logger.warn(`\nFirebase Post Invalid details: ${link}`, { 
+      logger.error(`\n[VALIDATION FAILED] Product blocked from DB insertion: ${link}`, { 
         functionName: 'getProductDetails',
+        productUrl: link,
+        searchUrl: shortUrl || link,
         productCode: product?.productCode,
         storeType: product?.storeType,
         price: product?.price,
+        hasPrice: !!(product?.price > 0),
+        hasImage: !!hasImage,
         hasAffiliateLink: !!(product?.links?.avinashbmv),
         hasAffiliateLinkINR: !!(product?.links?.avinashbmvINR),
         hasProductUrl: !!product?.productUrl,
         username: username,
-        validationReason: !(product?.price > 0 || (product?.stockStatus && product?.stockStatus.includes("OUT OF STOCK"))) 
+        validationReason: !hasValidPriceOrStock 
           ? 'Missing price or invalid stock status' 
-          : product.storeType === "Amazon" 
-            ? (!product?.productCode ? 'Missing productCode' : (!product?.links?.avinashbmv && !product?.productUrl ? 'Missing affiliate link and productUrl' : 'Other Amazon validation issue'))
-            : product.storeType !== "Amazon"
-              ? (username === "dealsglobalhub" ? (!product?.links?.avinashbmv && !product?.links?.avinashbmvINR ? 'Missing affiliate links' : 'Other non-Amazon validation issue') : (!link && !shortUrl ? 'Missing link or shortUrl' : 'Other validation issue'))
-              : 'Unknown validation failure'
-      })
+          : !hasImage 
+            ? 'Missing product image (photo/images)'
+            : product.storeType === "Amazon" 
+              ? (!product?.productCode ? 'Missing productCode' : (!product?.links?.avinashbmv && !product?.productUrl ? 'Missing affiliate link and productUrl' : 'Other Amazon validation issue'))
+              : product.storeType !== "Amazon"
+                ? (username === "dealsglobalhub" ? (!product?.links?.avinashbmv && !product?.links?.avinashbmvINR ? 'Missing affiliate links' : 'Other non-Amazon validation issue') : (!link && !shortUrl ? 'Missing link or shortUrl' : 'Other validation issue'))
+                : 'Unknown validation failure'
+      });
 
       // Validation failed, so it's an error
       postStatus = productStatus.PRODUCT_ERROR;
