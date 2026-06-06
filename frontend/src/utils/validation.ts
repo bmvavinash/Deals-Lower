@@ -103,8 +103,8 @@ const getCanonicalProductCode = (product: any): string | undefined => {
 const buildProductUrl = (product: any): string | null => {
   if (!product) return null;
   const urlSources = [
-    product.links?.avinashbmvINR,
     product.links?.avinashbmv,
+    product.links?.avinashbmvINR,
     product.productUrl,
   ];
   
@@ -122,8 +122,8 @@ const buildProductUrl = (product: any): string | null => {
   let isShortlinkFound = false;
 
   const allUrls = [
-    product.links?.avinashbmvINR,
     product.links?.avinashbmv,
+    product.links?.avinashbmvINR,
     product.productUrl
   ].filter(url => url && typeof url === 'string' && url.trim() !== '');
 

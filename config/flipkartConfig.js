@@ -107,6 +107,12 @@ module.exports = {
       selector: '.index-tableContainer .index-row',
       keySelector: '.index-rowKey',
       valueSelector: '.index-rowValue',
+    },
+    {
+      type: 'css-table',
+      selector: '._3k-BhJ table tbody tr, ._14cfVK table tbody tr',
+      keySelector: 'td._1hKmbr, td._2418kt',
+      valueSelector: 'li._21Ahn-, td.URwL2w'
     }
   ],
   productCode: [

@@ -191,6 +191,33 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
     } else {
       product.productTable = {};
     }
+
+    // --- Model Number Extraction for Cross-Platform Comparison ---
+    product.modelNumber = "";
+    const modelKeys = ['model number', 'item model number', 'model name', 'part number', 'model'];
+    
+    // Check productTable (Amazon)
+    if (product.productTable && typeof product.productTable === 'object') {
+      for (const key of Object.keys(product.productTable)) {
+        if (modelKeys.includes(key.toLowerCase().trim())) {
+          product.modelNumber = String(product.productTable[key]).trim();
+          break;
+        }
+      }
+    }
+    
+    // Check specifications (Flipkart / Amazon)
+    if (!product.modelNumber && product.specifications && typeof product.specifications === 'object') {
+      // Handle array of objects if css-table returned array
+      const specsObj = Array.isArray(product.specifications) ? Object.assign({}, ...product.specifications) : product.specifications;
+      for (const key of Object.keys(specsObj)) {
+        if (modelKeys.includes(key.toLowerCase().trim())) {
+          product.modelNumber = String(specsObj[key]).trim();
+          break;
+        }
+      }
+    }
+    logger.debug(`[${platform}] Extracted Model Number: ${product.modelNumber}`);
     
     // Common attributes for all platforms
     try { product.promoInfo = await extractMultiple(driver, config?.promoInfo); } catch (e) { logger.error(`[${platform}] promoInfo error:`, { error: e.message, stack: e.stack }); product.promoInfo = []; }

@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const net = require('net');
 const { initializeBot, setDriver, getNewBotMessages, kickOffQueueProcessing } = require('./dataSources/autoTelegramAll');
 const { handleProductProcessing } = require('./dataSources/handleProductProcessing');

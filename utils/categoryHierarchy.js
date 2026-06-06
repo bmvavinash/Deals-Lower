@@ -14,7 +14,7 @@ function determineHierarchy(category, title = '', brand = '') {
     // 1. Determine Main Category
     if (textToAnalyze.match(/\b(clothing|apparel|fashion|wear|dress|dresses|shirt|shirts|pant|pants|shoe|shoes|sandal|sandals|kurta|kurtas|gown|gowns|jean|jeans)\b/)) {
         mainCategory = 'Fashion';
-    } else if (textToAnalyze.match(/\b(phone|phones|smartphone|smartphones|laptop|laptops|earphone|earphones|headphone|headphones|watch|watches|electronics|tv|camera|cameras|speaker|speakers)\b/)) {
+    } else if (textToAnalyze.match(/\b(phone|phones|smartphone|smartphones|laptop|laptops|earphone|earphones|headphone|headphones|watch|watches|electronics|tv|camera|cameras|speaker|speakers|air conditioner|air conditioners|ac|cooler|coolers|air cooler|geyser|geysers|heater|heaters|washing machine|refrigerator)\b/)) {
         mainCategory = 'Electronics';
     } else if (textToAnalyze.match(/\b(kitchen|home|furniture|decor|bed|sofa|dining|appliance|appliances)\b/)) {
         mainCategory = 'Home & Kitchen';
@@ -85,14 +85,22 @@ function determineHierarchy(category, title = '', brand = '') {
         else if (textToAnalyze.match(/laptop|macbook/)) subcategory = 'Laptops';
         else if (textToAnalyze.match(/earphone|headphone|earbud/)) subcategory = 'Audio';
         else if (textToAnalyze.match(/watch|smartwatch/)) subcategory = 'Wearables';
+        else if (textToAnalyze.match(/tv|television/)) subcategory = 'Televisions';
+        else if (textToAnalyze.match(/air conditioner|ac\b/)) { subcategory = 'Home Appliances'; style = 'Air Conditioners'; }
+        else if (textToAnalyze.match(/cooler|air cooler/)) { subcategory = 'Home Appliances'; style = 'Air Coolers'; }
+        else if (textToAnalyze.match(/geyser|heater|water heater/)) { subcategory = 'Home Appliances'; style = 'Geysers'; }
+        else if (textToAnalyze.match(/washing machine/)) { subcategory = 'Home Appliances'; style = 'Washing Machines'; }
+        else if (textToAnalyze.match(/refrigerator|fridge/)) { subcategory = 'Home Appliances'; style = 'Refrigerators'; }
     }
 
     const hierarchicalCategory = { mainCategory, subcategory, style, gender };
     
     // Construct strict hierarchical string for UI grouping
     let hierarchicalKey = `${mainCategory}_${subcategory}`;
-    if (mainCategory === 'Fashion') {
-        hierarchicalKey = `${mainCategory}_${gender}_${subcategory}_${style}`;
+    if (mainCategory === 'Fashion' || (mainCategory === 'Electronics' && subcategory === 'Home Appliances')) {
+        hierarchicalKey = mainCategory === 'Fashion' 
+            ? `${mainCategory}_${gender}_${subcategory}_${style}`
+            : `${mainCategory}_${subcategory}_${style}`;
     }
 
     return {

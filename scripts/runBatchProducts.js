@@ -6,9 +6,15 @@ const logger = getModuleLogger('runBatchProducts');
 const DEFAULT_SEEDS = [
 	// Amazon
 	'https://www.amazon.in/s?k=mobile+phones',
+	'https://www.amazon.in/s?k=air+conditioners',
+	'https://www.amazon.in/s?k=air+coolers',
+	'https://www.amazon.in/s?k=geysers',
 	'https://www.amazon.in/bestsellers',
 	// Flipkart
 	'https://www.flipkart.com/search?q=mobile',
+	'https://www.flipkart.com/search?q=air+conditioners',
+	'https://www.flipkart.com/search?q=air+coolers',
+	'https://www.flipkart.com/search?q=geysers',
 	// Myntra
 	'https://www.myntra.com/men-tshirts',
 	// Ajio
