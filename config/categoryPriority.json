@@ -1,0 +1,115 @@
+{
+  "maxPagesToScrape": 2,
+  "defaultPlatforms": ["amazon", "flipkart"],
+  "categories": [
+    {
+      "id": "electronics",
+      "name": "Electronics",
+      "priority": 1,
+      "platforms": ["amazon", "flipkart"],
+      "subcategories": [
+        { "id": "air_conditioners", "name": "Air Conditioners", "priority": 1, "searchTerm": "split air conditioner", "searchTermAlt": ["inverter ac 1.5 ton", "window ac"] },
+        { "id": "coolers", "name": "Air Coolers", "priority": 2, "searchTerm": "air coolers", "searchTermAlt": ["desert cooler", "tower cooler"] },
+        { "id": "laptops", "name": "Laptops", "priority": 3, "searchTerm": "laptops", "searchTermAlt": ["gaming laptop", "business laptop i5"] },
+        { "id": "mobiles", "name": "Mobiles", "priority": 4, "searchTerm": "smartphones under 20000", "searchTermAlt": ["5g smartphone", "iphone"] },
+        { "id": "tvs", "name": "Televisions", "priority": 5, "searchTerm": "smart tv 43 inch", "searchTermAlt": ["4k tv 55 inch", "led tv"] },
+        { "id": "headphones", "name": "Headphones & Earbuds", "priority": 6, "searchTerm": "wireless earbuds", "searchTermAlt": ["bluetooth headphones", "noise cancelling headphones"] },
+        { "id": "cameras", "name": "Cameras", "priority": 7, "searchTerm": "dslr camera", "searchTermAlt": ["mirrorless camera", "action camera"] },
+        { "id": "monitors", "name": "Monitors", "priority": 8, "searchTerm": "computer monitor 27 inch", "searchTermAlt": ["gaming monitor 144hz"] },
+        { "id": "tablets", "name": "Tablets", "priority": 9, "searchTerm": "tablets", "searchTermAlt": ["ipad", "android tablet"] },
+        { "id": "smartwatches", "name": "Smartwatches", "priority": 10, "searchTerm": "smartwatch", "searchTermAlt": ["fitness tracker", "smart band"] }
+      ]
+    },
+    {
+      "id": "home-appliances",
+      "name": "Home Appliances",
+      "priority": 2,
+      "platforms": ["amazon", "flipkart"],
+      "subcategories": [
+        { "id": "washing_machines", "name": "Washing Machines", "priority": 1, "searchTerm": "washing machine", "searchTermAlt": ["front load washing machine", "top load washing machine"] },
+        { "id": "refrigerators", "name": "Refrigerators", "priority": 2, "searchTerm": "refrigerator", "searchTermAlt": ["double door refrigerator", "single door fridge"] },
+        { "id": "geysers", "name": "Geysers & Water Heaters", "priority": 3, "searchTerm": "geyser water heater", "searchTermAlt": ["instant geyser", "storage water heater"] },
+        { "id": "vacuum_cleaners", "name": "Vacuum Cleaners", "priority": 4, "searchTerm": "vacuum cleaner", "searchTermAlt": ["robot vacuum cleaner", "handheld vacuum"] },
+        { "id": "microwave", "name": "Microwave Ovens", "priority": 5, "searchTerm": "microwave oven", "searchTermAlt": ["convection microwave", "solo microwave"] },
+        { "id": "air_purifiers", "name": "Air Purifiers", "priority": 6, "searchTerm": "air purifier", "searchTermAlt": ["hepa air purifier"] }
+      ]
+    },
+    {
+      "id": "fashion",
+      "name": "Fashion",
+      "priority": 3,
+      "platforms": ["amazon", "flipkart", "myntra", "ajio"],
+      "subcategories": [
+        { "id": "men_tshirts", "name": "Men's T-Shirts", "priority": 1, "searchTerm": "men tshirts" },
+        { "id": "women_dresses", "name": "Women's Dresses", "priority": 2, "searchTerm": "women dresses" },
+        { "id": "men_jeans", "name": "Men's Jeans", "priority": 3, "searchTerm": "men jeans" },
+        { "id": "women_kurtas", "name": "Women's Kurtas", "priority": 4, "searchTerm": "women kurta sets" },
+        { "id": "men_shoes", "name": "Men's Shoes", "priority": 5, "searchTerm": "men casual shoes", "searchTermAlt": ["men sports shoes", "men formal shoes"] },
+        { "id": "women_shoes", "name": "Women's Shoes", "priority": 6, "searchTerm": "women sandals", "searchTermAlt": ["women heels", "women sneakers"] },
+        { "id": "watches", "name": "Watches", "priority": 7, "searchTerm": "watches for men", "searchTermAlt": ["watches for women", "analog watch"] },
+        { "id": "bags", "name": "Bags & Backpacks", "priority": 8, "searchTerm": "backpacks", "searchTermAlt": ["laptop bags", "women handbags"] }
+      ]
+    },
+    {
+      "id": "home-kitchen",
+      "name": "Home & Kitchen",
+      "priority": 4,
+      "platforms": ["amazon", "flipkart"],
+      "subcategories": [
+        { "id": "furniture", "name": "Furniture", "priority": 1, "searchTerm": "study table", "searchTermAlt": ["office chair", "bookshelf"] },
+        { "id": "kitchen_appliances", "name": "Kitchen Appliances", "priority": 2, "searchTerm": "mixer grinder", "searchTermAlt": ["induction cooktop", "electric kettle"] },
+        { "id": "bedding", "name": "Bedding", "priority": 3, "searchTerm": "bedsheets", "searchTermAlt": ["pillows", "mattress"] },
+        { "id": "storage", "name": "Storage & Organization", "priority": 4, "searchTerm": "storage organizer", "searchTermAlt": ["wardrobe organizer", "shoe rack"] },
+        { "id": "cookware", "name": "Cookware", "priority": 5, "searchTerm": "non stick cookware set", "searchTermAlt": ["pressure cooker", "kadhai"] }
+      ]
+    },
+    {
+      "id": "beauty-personal-care",
+      "name": "Beauty & Personal Care",
+      "priority": 5,
+      "platforms": ["amazon", "flipkart", "myntra"],
+      "subcategories": [
+        { "id": "skincare", "name": "Skincare", "priority": 1, "searchTerm": "face wash", "searchTermAlt": ["moisturizer", "sunscreen spf 50"] },
+        { "id": "haircare", "name": "Hair Care", "priority": 2, "searchTerm": "shampoo", "searchTermAlt": ["hair oil", "hair dryer"] },
+        { "id": "makeup", "name": "Makeup", "priority": 3, "searchTerm": "lipstick", "searchTermAlt": ["foundation", "mascara"] },
+        { "id": "fragrance", "name": "Fragrance", "priority": 4, "searchTerm": "perfume for men", "searchTermAlt": ["perfume for women", "deodorant"] },
+        { "id": "grooming", "name": "Men's Grooming", "priority": 5, "searchTerm": "trimmer for men", "searchTermAlt": ["electric shaver", "beard grooming kit"] }
+      ]
+    },
+    {
+      "id": "sports-fitness",
+      "name": "Sports & Fitness",
+      "priority": 6,
+      "platforms": ["amazon", "flipkart"],
+      "subcategories": [
+        { "id": "gym_equipment", "name": "Gym Equipment", "priority": 1, "searchTerm": "dumbbells", "searchTermAlt": ["yoga mat", "resistance band"] },
+        { "id": "running_shoes", "name": "Running Shoes", "priority": 2, "searchTerm": "running shoes men", "searchTermAlt": ["running shoes women"] },
+        { "id": "cricket", "name": "Cricket", "priority": 3, "searchTerm": "cricket bat", "searchTermAlt": ["cricket shoes", "cricket kit"] },
+        { "id": "cycling", "name": "Cycling", "priority": 4, "searchTerm": "bicycle", "searchTermAlt": ["cycling helmet", "cycle accessories"] }
+      ]
+    },
+    {
+      "id": "books-stationery",
+      "name": "Books & Stationery",
+      "priority": 7,
+      "platforms": ["amazon", "flipkart"],
+      "subcategories": [
+        { "id": "fiction", "name": "Fiction", "priority": 1, "searchTerm": "bestseller fiction books" },
+        { "id": "non_fiction", "name": "Non-Fiction", "priority": 2, "searchTerm": "self help books" },
+        { "id": "academic", "name": "Academic", "priority": 3, "searchTerm": "competitive exam books" },
+        { "id": "office_supplies", "name": "Office Supplies", "priority": 4, "searchTerm": "office stationery set" }
+      ]
+    },
+    {
+      "id": "baby-kids",
+      "name": "Baby & Kids",
+      "priority": 8,
+      "platforms": ["amazon", "flipkart"],
+      "subcategories": [
+        { "id": "baby_care", "name": "Baby Care", "priority": 1, "searchTerm": "baby diapers", "searchTermAlt": ["baby lotion", "baby wipes"] },
+        { "id": "kids_clothing", "name": "Kids Clothing", "priority": 2, "searchTerm": "kids clothing", "searchTermAlt": ["boys tshirts", "girls dresses"] },
+        { "id": "toys", "name": "Toys", "priority": 3, "searchTerm": "toys for kids", "searchTermAlt": ["educational toys", "building blocks"] }
+      ]
+    }
+  ]
+}

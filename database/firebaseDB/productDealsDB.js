@@ -74,6 +74,7 @@ class ProductDealsDB {
 	constructor() {
 		this.productdealsRef = db.ref('productdeals'); // For bulk website updates
 		this.dealsRef = db.ref('deals'); // For Telegram processing
+		this.staticRef = db.ref('productdeals_static'); // For static categorization
 		this.ref = this.dealsRef; // Default to deals for backward compatibility
 	}
 
@@ -89,7 +90,7 @@ class ProductDealsDB {
 			let updatedCount = 0;
 			const now = getISTTimestamp();
 			
-			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
 			// Only fetch the existing records for the products we are updating to avoid downloading the entire node
 			const existingRecords = {};
 			const fetchPromises = products.map(async (product) => {
@@ -403,7 +404,10 @@ class ProductDealsDB {
 					date: product.date || now.slice(0, 10),
 					datetime: product.datetime || new Date().getTime(),
 					updatedatetime: new Date().getTime(),
-					updatedAt: now
+					updatedAt: now,
+					
+					// Extracted attributes
+					attributes: product.attributes || null
 				};
 				
 				updates[safeKey] = normalized;
@@ -513,7 +517,7 @@ class ProductDealsDB {
 
 	async getProduct(productCode, targetDb = 'deals') {
 		try {
-			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
 			const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
 			const snapshot = await targetRef.child(safeKey).once('value');
 			
@@ -539,7 +543,7 @@ class ProductDealsDB {
 	// Method for individual product updates during idle time
 	async updateIndividualProduct(productCode, updates, targetDb = 'deals') {
 		try {
-			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
 			const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
 			
 			const updateData = {
@@ -561,7 +565,7 @@ class ProductDealsDB {
 	// Method to get products for idle processing
 	async getProductsForIdleProcessing(targetDb = 'deals', limit = 10) {
 		try {
-			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
 			const snapshot = await targetRef.orderByChild('updateTimestamp').limitToFirst(limit).once('value');
 			const products = snapshot.val() || {};
 			
@@ -581,7 +585,7 @@ class ProductDealsDB {
 	// Method to get products with deal timers for expiry tracking
 	async getProductsWithTimers(targetDb = 'deals') {
 		try {
-			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
 			const snapshot = await targetRef.orderByChild('timer').startAt('').endAt('\uf8ff').once('value');
 			const products = snapshot.val() || {};
 			
@@ -599,7 +603,7 @@ class ProductDealsDB {
 
 	async getAllProductDeals(targetDb = 'deals') {
 		try {
-			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : this.dealsRef;
+			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
 			const snapshot = await targetRef.once('value');
 			return snapshot.val() || {};
 		} catch (error) {

@@ -61,6 +61,8 @@ const executionRoutes = require('./routes/execution');
 const newsRoutes = require('./routes/news');
 const bannersRoutes = require('./routes/banners');
 const dadExpensesRoutes = require('./routes/dadExpenses');
+const categoryPriorityRoutes = require('./routes/categoryPriority');
+const commandsRoutes = require('./routes/commands');
 
 const app = express();
 const PORT = constants.frontend?.apiPort || 3001;
@@ -99,6 +101,8 @@ app.use('/api/execution', executionRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/banners', bannersRoutes);
 app.use('/api/dad-expenses', dadExpensesRoutes);
+app.use('/api/category-priority', categoryPriorityRoutes);
+app.use('/api/commands', commandsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

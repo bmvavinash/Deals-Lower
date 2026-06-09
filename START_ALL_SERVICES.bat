@@ -27,9 +27,9 @@ timeout /t 2 /nobreak >nul
 echo ✅ Execution Monitor API started
 echo.
 
-REM Start Frontend (Port 3000)
-echo [4/4] Starting Frontend Server (Port 3000)...
-start "Frontend Server - Port 3000" cmd /k "cd /d "%~dp0frontend" && npm run dev"
+REM Start Frontend (Port 5173)
+echo [4/4] Starting Frontend Server (Port 5173)...
+start "Frontend Server - Port 5173" cmd /k "cd /d "%~dp0frontend" && npm run dev"
 echo ✅ Frontend Server starting
 echo.
 
@@ -40,7 +40,7 @@ echo.
 echo Service URLs:
 echo   Backend API:        http://localhost:3001
 echo   Execution Monitor:  http://localhost:3002
-echo   Frontend:           http://localhost:3000
+echo   Frontend:           http://localhost:5173
 echo.
 echo Next Steps:
 echo   1. Start Chrome Debugger: start_chrome_debug.bat

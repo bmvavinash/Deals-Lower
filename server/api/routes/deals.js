@@ -249,6 +249,61 @@ router.post('/process-product', async (req, res) => {
 });
 
 /**
+ * POST /api/deals/link
+ * Manually link two products by assigning them the same matchId
+ * Body: { sourceProductCode: string, targetProductCode: string }
+ */
+router.post('/link', async (req, res) => {
+  try {
+    const { sourceProductCode, targetProductCode } = req.body;
+    
+    if (!sourceProductCode || !targetProductCode) {
+      return res.status(400).json({ success: false, error: 'Both source and target product codes are required' });
+    }
+
+    // Generate a unified manual match ID
+    const manualMatchId = `MANUAL_LINK_${Date.now()}`;
+    
+    // Update in both DBs (deals and productdeals) to be thorough
+    const dbs = [productDealsDB.dealsRef, productDealsDB.productdealsRef];
+    
+    let updated = 0;
+    for (const ref of dbs) {
+      for (const pCode of [sourceProductCode, targetProductCode]) {
+        const safeKey = String(pCode).replace(/[.#$/\[\]]/g, '_');
+        
+        // Try safeKey directly
+        let snapshot = await ref.child(safeKey).once('value');
+        if (snapshot.exists()) {
+          await ref.child(safeKey).update({ matchId: manualMatchId });
+          updated++;
+          continue;
+        }
+        
+        // Try query by productCode
+        snapshot = await ref.orderByChild('productCode').equalTo(pCode).once('value');
+        if (snapshot.exists()) {
+          const products = snapshot.val();
+          const key = Object.keys(products)[0];
+          await ref.child(key).update({ matchId: manualMatchId });
+          updated++;
+        }
+      }
+    }
+
+    if (updated === 0) {
+      return res.status(404).json({ success: false, error: 'Could not find one or both products in the database' });
+    }
+
+    res.json({ success: true, message: `Successfully linked ${updated} product records`, matchId: manualMatchId });
+
+  } catch (error) {
+    logger.error('Error linking products', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to link products' });
+  }
+});
+
+/**
  * POST /api/deals/manual-trigger
  * Manually trigger bulk update for all platforms
  * Body: { sourceType?: string, targetDb?: string }

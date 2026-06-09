@@ -8,6 +8,9 @@ import SchedulerPage from './pages/SchedulerPage';
 import AnalyticsPage from './pages/AnalyticsPage';
 import ExecutionMonitor from './pages/ExecutionMonitor';
 import DadExpensesPage from './pages/DadExpensesPage';
+import CategoryPriorityPage from './pages/CategoryPriorityPage';
+import ProductMatchingPage from './pages/ProductMatchingPage';
+import CommandsPage from './pages/CommandsPage';
 import { NotificationProvider } from './context/NotificationContext';
 import Toaster from './components/Notifications/Toaster';
 import NotificationQueue from './components/Notifications/NotificationQueue';
@@ -26,6 +29,9 @@ function App() {
             <Route path="/scheduler" element={<SchedulerPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/execution" element={<ExecutionMonitor />} />
+            <Route path="/category-priority" element={<CategoryPriorityPage />} />
+            <Route path="/product-matching" element={<ProductMatchingPage />} />
+            <Route path="/commands" element={<CommandsPage />} />
             <Route path="/others/dad-expenses" element={<DadExpensesPage />} />
           </Routes>
         </MainLayout>

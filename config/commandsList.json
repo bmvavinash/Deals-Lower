@@ -1,0 +1,38 @@
+[
+  {
+    "id": "run-batch-products-website",
+    "name": "Global Scraper (All Categories)",
+    "command": "node scripts/runBatchProducts.js website",
+    "purpose": "Executes the global scraper to populate missing products for all categories across all supported platforms. Useful for initial data population or massive refreshes."
+  },
+  {
+    "id": "dry-run-stale-products",
+    "name": "Dry Run: Stale Products Detection",
+    "command": "node scripts/updateStaleProducts.js --dry-run",
+    "purpose": "Verifies which products are considered stale (no updatedAt or older than 7 days) without actually updating them. Good for checking the detection logic."
+  },
+  {
+    "id": "update-stale-products",
+    "name": "Update Stale Products",
+    "command": "node scripts/updateStaleProducts.js",
+    "purpose": "Runs the stale product updater to find older products and re-scrape their specific URLs. This ensures the database doesn't have outdated prices."
+  },
+  {
+    "id": "run-telegram-bot",
+    "name": "Start Telegram Bot",
+    "command": "node run_telegram_bot.js",
+    "purpose": "Starts the Telegram Bot to listen for incoming deal messages on Telegram and process their links using Selenium."
+  },
+  {
+    "id": "start-deals-api",
+    "name": "Start Deals API",
+    "command": "npm run api",
+    "purpose": "Starts the Deals API backend server."
+  },
+  {
+    "id": "start-deals-frontend",
+    "name": "Start Deals Frontend",
+    "command": "npm run frontend",
+    "purpose": "Starts the DealsOptimised Admin frontend."
+  }
+]
