@@ -111,5 +111,10 @@ export const bannersAPI = {
   extract: () => api.post('/banners/extract')
 };
 
+// Categories API
+export const categoriesAPI = {
+  getHierarchy: () => api.get('/categories/hierarchy')
+};
+
 export default api;
 

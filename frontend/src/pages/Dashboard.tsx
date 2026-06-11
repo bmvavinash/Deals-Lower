@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery } from 'react-query';
 import { analyticsAPI, schedulerAPI, bannersAPI, dealsAPI } from '../services/api';
 import { useNotification } from '../context/NotificationContext';
+import CategoryMatcher from '../components/CategoryMatcher';
 import './Dashboard.css';
 
 const Dashboard: React.FC = () => {
@@ -22,6 +23,7 @@ const Dashboard: React.FC = () => {
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [searchDb, setSearchDb] = useState<'productdeals' | 'hotDeal'>('productdeals');
   
   const { addNotification } = useNotification();
   
@@ -331,24 +333,32 @@ const Dashboard: React.FC = () => {
 
 
           {productData && (
-            <div style={{
-              marginTop: '20px',
-              padding: '20px',
-              border: '1px solid #ddd',
-              borderRadius: '8px',
-              backgroundColor: '#fff',
-              maxHeight: '600px',
-              overflowY: 'auto'
-            }}>
-              <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#333' }}>Product Details</h3>
-              
-              <div style={{ display: 'grid', gap: '15px' }}>
-                {Object.entries(productData).map(([key, value]) => {
-                  // Skip productKey as it's not editable
-                  if (key === 'productKey') return null;
-                  
-                  const isObject = typeof value === 'object' && value !== null && !Array.isArray(value);
-                  const isArray = Array.isArray(value);
+              <div style={{
+                marginTop: '20px',
+                padding: '15px',
+                backgroundColor: 'white',
+                borderRadius: '8px',
+                boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                maxHeight: '600px',
+                overflowY: 'auto'
+              }}>
+                <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#333' }}>Product Details</h3>
+                
+                <CategoryMatcher 
+                  productData={productData} 
+                  onChange={handleProductFieldChange} 
+                />
+                
+                <div style={{ display: 'grid', gap: '15px' }}>
+                  {Object.entries(productData).map(([key, value]) => {
+                    // Skip productKey as it's not editable
+                    if (key === 'productKey') return null;
+                    
+                    // Skip category fields as they are handled by CategoryMatcher
+                    if (['category', 'subCategory', 'categoryGroup', 'style'].includes(key)) return null;
+                    
+                    const isObject = typeof value === 'object' && value !== null && !Array.isArray(value);
+                    const isArray = Array.isArray(value);
                   
                   return (
                     <div key={key} style={{ borderBottom: '1px solid #eee', paddingBottom: '10px' }}>
