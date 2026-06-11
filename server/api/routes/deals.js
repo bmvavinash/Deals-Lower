@@ -427,10 +427,10 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, date, limit = 100, offset = 0 } = req.query;
+    const { dealType, platform, date, categoryGroup, limit = 100, offset = 0 } = req.query;
     
     // Create cache key
-    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${limit}_${offset}`;
+    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${limit}_${offset}`;
     
     // Check cache first (increased TTL to 10 minutes for deals)
     const cached = cacheService.get(cacheKey);
@@ -468,6 +468,13 @@ router.get('/', async (req, res, next) => {
     if (platform) {
       dealsArray = dealsArray.filter(deal => 
         deal.storeType?.toLowerCase() === platform.toLowerCase()
+      );
+    }
+
+    // Filter by categoryGroup if specified
+    if (categoryGroup) {
+      dealsArray = dealsArray.filter(deal => 
+        deal.categoryGroup === categoryGroup
       );
     }
 

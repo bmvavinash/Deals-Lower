@@ -22,6 +22,7 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
   const [isRetriggering, setIsRetriggering] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
   const [showSimilarModal, setShowSimilarModal] = useState(false);
   const { addNotification } = useNotification();
   
@@ -46,6 +47,7 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
     c3: deal.category?.c3 || '',
     c4: deal.category?.c4 || '',
     c5: deal.category?.c5 || '',
+    categoryGroup: deal.categoryGroup || '',
     isDeal: deal.isDeal !== undefined ? deal.isDeal : true,
     isDisplay: deal.isDisplay !== undefined ? deal.isDisplay : true
   });
@@ -82,6 +84,47 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
     }
   };
 
+  const handleCategoryChange = async (newCategory: string) => {
+    if (!deal.productCode) return;
+    
+    setIsUpdatingCategory(true);
+    try {
+      const updates = {
+        categoryGroup: newCategory,
+        updatedAt: new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().replace('Z', '+05:30')
+      };
+      
+      await dealsAPI.updateProduct(deal.productCode, updates, database || 'productdeals');
+      
+      // Update local states
+      setDeal(prev => ({
+        ...prev,
+        categoryGroup: newCategory
+      }));
+      setEditForm(prev => ({
+        ...prev,
+        categoryGroup: newCategory
+      }));
+      
+      addNotification({ 
+        type: 'success', 
+        message: `Category updated to "${newCategory}" successfully!`, 
+        source: 'Category Matching', 
+        page: 'Deals' 
+      });
+    } catch (error) {
+      console.error("Failed to update category:", error);
+      addNotification({ 
+        type: 'error', 
+        message: 'Failed to update category.', 
+        source: 'Category Matching', 
+        page: 'Deals' 
+      });
+    } finally {
+      setIsUpdatingCategory(false);
+    }
+  };
+
   const handleSaveEdit = async () => {
     if (!editForm.productCode) {
       addNotification({ type: 'error', message: 'Product Code is required to save updates.', source: 'Edit Product', page: 'Deals' });
@@ -102,6 +145,7 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
         brand: editForm.brand,
         productCode: editForm.productCode,
         productUrl: editForm.productUrl,
+        categoryGroup: editForm.categoryGroup,
         isDeal: editForm.isDeal,
         isDisplay: editForm.isDisplay,
         updatedAt: new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().replace('Z', '+05:30')
@@ -180,6 +224,43 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
             {deal.productId && (
               <span className="deal-id">ID: {deal.productId}</span>
             )}
+          </div>
+          
+          {/* Category Override Select */}
+          <div className="deal-category-override" style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#555' }}>Category Matching:</span>
+            <select
+              value={deal.categoryGroup || ''}
+              onChange={(e) => handleCategoryChange(e.target.value)}
+              disabled={isUpdatingCategory}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: '1px solid #ddd',
+                fontSize: '12px',
+                backgroundColor: '#fff',
+                cursor: 'pointer',
+                maxWidth: '180px'
+              }}
+            >
+              <option value="" disabled>Select Category</option>
+              <option value="fashion">Fashion</option>
+              <option value="electronics">Electronics</option>
+              <option value="accessories">Accessories</option>
+              <option value="sports-fitness">Sports & Fitness</option>
+              <option value="home-kitchen">Home & Kitchen</option>
+              <option value="beauty-personal-care">Beauty & Personal Care</option>
+              <option value="baby-kids">Baby & Kids</option>
+              <option value="books-stationery">Books & Stationery</option>
+              <option value="grocery">Grocery</option>
+              <option value="automotive">Automotive</option>
+              <option value="tools-hardware">Tools & Hardware</option>
+              <option value="pet-supplies">Pet Supplies</option>
+              <option value="music-entertainment">Music & Entertainment</option>
+              <option value="deals">Deals</option>
+              <option value="home">Home</option>
+            </select>
+            {isUpdatingCategory && <span style={{ fontSize: '12px', color: '#666' }}>Updating...</span>}
           </div>
           
           <div className={`deal-validation-badge ${validation.isValid ? 'badge-valid' : 'badge-blocked'}`}>
@@ -294,6 +375,39 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
           </div>
 
           {/* Categories */}
+          <div className="edit-form-group">
+            <label>Category Group (Website Matching)</label>
+            <select
+              value={editForm.categoryGroup}
+              onChange={e => handleInputChange('categoryGroup', e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                borderRadius: '4px',
+                border: '1px solid #ddd',
+                fontSize: '14px',
+                backgroundColor: '#fff',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="">None</option>
+              <option value="fashion">Fashion</option>
+              <option value="electronics">Electronics</option>
+              <option value="accessories">Accessories</option>
+              <option value="sports-fitness">Sports & Fitness</option>
+              <option value="home-kitchen">Home & Kitchen</option>
+              <option value="beauty-personal-care">Beauty & Personal Care</option>
+              <option value="baby-kids">Baby & Kids</option>
+              <option value="books-stationery">Books & Stationery</option>
+              <option value="grocery">Grocery</option>
+              <option value="automotive">Automotive</option>
+              <option value="tools-hardware">Tools & Hardware</option>
+              <option value="pet-supplies">Pet Supplies</option>
+              <option value="music-entertainment">Music & Entertainment</option>
+              <option value="deals">Deals</option>
+              <option value="home">Home</option>
+            </select>
+          </div>
           <div className="edit-form-group">
             <label>Category (c1)</label>
             <input type="text" value={editForm.c1} onChange={e => handleInputChange('c1', e.target.value)} />

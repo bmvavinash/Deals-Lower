@@ -12,7 +12,7 @@ const api = axios.create({
 
 // Deals API
 export const dealsAPI = {
-  getAll: (params?: { dealType?: string; platform?: string; date?: string; limit?: number; offset?: number }) =>
+  getAll: (params?: { dealType?: string; platform?: string; date?: string; categoryGroup?: string; limit?: number; offset?: number }) =>
     api.get('/deals', { params }),
   getByCode: (productCode: string, db?: string) =>
     api.get(`/deals/${encodeURIComponent(productCode)}`, { params: { db } }),

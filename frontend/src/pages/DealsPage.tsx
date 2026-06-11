@@ -11,6 +11,25 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 type ViewMode = 'deals' | 'news' | 'reviews' | 'banners';
 
+const CATEGORIES = [
+  { id: '', label: 'All Categories' },
+  { id: 'fashion', label: 'Fashion' },
+  { id: 'electronics', label: 'Electronics' },
+  { id: 'accessories', label: 'Accessories' },
+  { id: 'sports-fitness', label: 'Sports & Fitness' },
+  { id: 'home-kitchen', label: 'Home & Kitchen' },
+  { id: 'beauty-personal-care', label: 'Beauty & Personal Care' },
+  { id: 'baby-kids', label: 'Baby & Kids' },
+  { id: 'books-stationery', label: 'Books & Stationery' },
+  { id: 'grocery', label: 'Grocery' },
+  { id: 'automotive', label: 'Automotive' },
+  { id: 'tools-hardware', label: 'Tools & Hardware' },
+  { id: 'pet-supplies', label: 'Pet Supplies' },
+  { id: 'music-entertainment', label: 'Music & Entertainment' },
+  { id: 'deals', label: 'Deals' },
+  { id: 'home', label: 'Home' }
+];
+
 interface Banner {
   id: string;
   title?: string;
@@ -36,7 +55,7 @@ interface BannerStats {
 
 const DealsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('deals');
-  const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', limit: 100, offset: 0 });
+  const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', categoryGroup: '', limit: 100, offset: 0 });
   const [newsFilters, setNewsFilters] = useState({ limit: 20, offset: 0, category: '', sortBy: 'publishDate', order: 'desc' });
   const [reviewsFilters, setReviewsFilters] = useState({ limit: 20, offset: 0, productName: '', minRating: '', sortBy: 'publishDate', order: 'desc' });
   
@@ -1155,6 +1174,19 @@ const DealsPage: React.FC = () => {
           </div>
           
           <div className="deals-main-content">
+            {/* Category Filter Pills Bar */}
+            <div className="category-filter-bar">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat.id}
+                  className={`category-pill ${filters.categoryGroup === cat.id ? 'active' : ''}`}
+                  onClick={() => handleFilterChange({ categoryGroup: cat.id })}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+
             <div className="deals-view-header search-section" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
               <div className="product-code-search" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <input 

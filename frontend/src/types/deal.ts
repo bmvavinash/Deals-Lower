@@ -8,11 +8,14 @@ export interface Deal {
   photo: string;
   productUrl: string;
   storeType: string;
+  categoryGroup?: string;
   category?: {
     mainCategory?: string;
     c1?: string;
     c2?: string;
     c3?: string;
+    c4?: string;
+    c5?: string;
   };
   notificationStatus?: NotificationStatus;
   [key: string]: any;
