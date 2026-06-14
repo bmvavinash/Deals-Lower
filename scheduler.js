@@ -32,7 +32,7 @@ const logger = getModuleLogger('scheduler');
 // let productCounter = 0;
 // const PRODUCT_LIMIT = 30;
 
-async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="", categoryOverride = null) {
+async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="", categoryOverride = null, errorContext = {}) {
 
   let postflag = false;
   let postStatus = "";
@@ -212,29 +212,37 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
   const hasImage = product?.photo || (Array.isArray(product?.images) && product.images.length > 0) || (typeof product?.images === 'string' && product.images.length > 0);
   const hasValidPriceOrStock = product?.price > 0 || (product?.stockStatus && product?.stockStatus.includes("OUT OF STOCK"));
 
-  if (
-    hasValidPriceOrStock &&
-    hasImage &&
-    (
-        (
-            product.storeType !== "Amazon" &&
-            (
-                (
-                    username === "dealsglobalhub" &&
-                    (product?.links?.avinashbmv || product?.links?.avinashbmvINR)
-                ) ||
-                (
-                    username !== "dealsglobalhub" &&
-                    (link || shortUrl)
-                )
-            )
-        ) ||
-        (
-            product.storeType === "Amazon" &&
-            (product?.productCode && (product?.links?.avinashbmv || product?.productUrl))
-        )
-    )
-) {
+  let isValid = false;
+  let reason = '';
+
+  if (!hasValidPriceOrStock) {
+    reason = 'Missing price or invalid stock status';
+  } else if (!hasImage) {
+    reason = 'Missing product image (photo/images)';
+  } else if (product.storeType === "Amazon") {
+    if (!product?.productCode) reason = 'Missing productCode';
+    else if (!product?.links?.avinashbmv && !product?.productUrl) reason = 'Missing affiliate link and productUrl';
+  } else {
+    if (username === "dealsglobalhub" && !product?.links?.avinashbmv && !product?.links?.avinashbmvINR) {
+      reason = 'Missing affiliate links';
+    } else if (username !== "dealsglobalhub" && !link && !shortUrl) {
+      reason = 'Missing link or shortUrl';
+    }
+  }
+
+  if (!reason) {
+    isValid = true;
+  } else {
+    // If it is coming from the process product (errorContext is passed), do not block it. Save it but set display to false.
+    if (errorContext) {
+      logger.warn(`\n[VALIDATION BYPASSED] Product failed validation but bypassing for API request. Setting isDisplay = false: ${link}`, { reason });
+      product.isDisplay = false;
+      errorContext.reason = reason;
+      isValid = true;
+    }
+  }
+
+  if (isValid) {
     // if (product?.price > 0 && (product.storeType != "Amazon" (product?.links?.avinashbmv != "" || product?.links?.avinashbmvINR != "")) ) {
       // postflag = await firebasepost(product, access_token, env);
       // Telegram flow -> deals node
@@ -315,16 +323,12 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
         hasAffiliateLinkINR: !!(product?.links?.avinashbmvINR),
         hasProductUrl: !!product?.productUrl,
         username: username,
-        validationReason: !hasValidPriceOrStock 
-          ? 'Missing price or invalid stock status' 
-          : !hasImage 
-            ? 'Missing product image (photo/images)'
-            : product.storeType === "Amazon" 
-              ? (!product?.productCode ? 'Missing productCode' : (!product?.links?.avinashbmv && !product?.productUrl ? 'Missing affiliate link and productUrl' : 'Other Amazon validation issue'))
-              : product.storeType !== "Amazon"
-                ? (username === "dealsglobalhub" ? (!product?.links?.avinashbmv && !product?.links?.avinashbmvINR ? 'Missing affiliate links' : 'Other non-Amazon validation issue') : (!link && !shortUrl ? 'Missing link or shortUrl' : 'Other validation issue'))
-                : 'Unknown validation failure'
+        validationReason: reason || 'Unknown validation failure'
       });
+
+      if (errorContext) {
+        errorContext.reason = reason || 'Unknown validation failure';
+      }
 
       // Validation failed, so it's an error
       postStatus = productStatus.PRODUCT_ERROR;

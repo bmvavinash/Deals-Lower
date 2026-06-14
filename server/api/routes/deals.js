@@ -144,6 +144,7 @@ router.post('/process-product', async (req, res) => {
     }
 
     let result;
+    let errorContext = {};
     if (productCode) {
       logger.info('Calling getProductDetails for single product', { url: resolvedUrl, productCode });
       result = await getProductDetails(
@@ -157,9 +158,11 @@ router.post('/process-product', async (req, res) => {
         postProduct, // postProduct flag
         '', // username
         false, // generateLink
-        '' // shortUrl
+        '', // shortUrl
+        null, // categoryOverride
+        errorContext // errorContext
       );
-      logger.info('getProductDetails returned', { result });
+      logger.info('getProductDetails returned', { result, errorContext });
     } else {
       if (global.isCrawlingListingPage) {
         logger.info('Bulk extraction already in progress, returning 429');
@@ -207,8 +210,8 @@ router.post('/process-product', async (req, res) => {
 
     if (result === productStatus.PRODUCT_ERROR) {
       status = 'error';
-      message = 'Failed to process product';
-      error = 'Product processing encountered an error';
+      message = errorContext.reason ? `Failed: ${errorContext.reason}` : 'Failed to process product';
+      error = errorContext.reason || 'Product processing encountered an error';
     } else if (result === productStatus.PRODUCT_EXCLUDED) {
       status = 'excluded';
       message = 'Product excluded (Affiliate policy)';

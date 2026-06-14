@@ -13,7 +13,6 @@ const Dashboard: React.FC = () => {
   
   // Product processing state
   const [productUrl, setProductUrl] = useState('');
-  const [processPlatform, setProcessPlatform] = useState('Amazon');
   const [postProduct, setPostProduct] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   
@@ -42,7 +41,7 @@ const Dashboard: React.FC = () => {
     if (!productUrl.trim()) {
       addNotification({
         type: 'error',
-        message: 'Product URL or Code is required',
+        message: 'Product URL is required',
         source: 'Process Product',
         page: 'Dashboard'
       });
@@ -51,10 +50,7 @@ const Dashboard: React.FC = () => {
 
     let urlToProcess = productUrl.trim();
     if (!urlToProcess.startsWith('http')) {
-      if (processPlatform === 'Amazon') urlToProcess = `https://www.amazon.in/dp/${urlToProcess}`;
-      else if (processPlatform === 'Flipkart') urlToProcess = `https://www.flipkart.com/p/item?pid=${urlToProcess}`;
-      else if (processPlatform === 'Myntra') urlToProcess = `https://www.myntra.com/${urlToProcess}`;
-      else if (processPlatform === 'Ajio') urlToProcess = `https://www.ajio.com/search/?text=${urlToProcess}`;
+      urlToProcess = `https://${urlToProcess}`;
     }
 
     setIsProcessing(true);
@@ -212,33 +208,15 @@ const Dashboard: React.FC = () => {
         <div style={{ marginBottom: '20px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
             <div style={{ marginBottom: '15px' }}>
               <label htmlFor="product-url" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                Platform & Product Code (or URL):
+                Product URL (or Short URL):
               </label>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <select
-                  value={processPlatform}
-                  onChange={(e) => setProcessPlatform(e.target.value)}
-                  disabled={isProcessing}
-                  style={{
-                    padding: '10px',
-                    fontSize: '14px',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px',
-                    backgroundColor: 'white',
-                    width: '150px'
-                  }}
-                >
-                  <option value="Amazon">Amazon</option>
-                  <option value="Flipkart">Flipkart</option>
-                  <option value="Myntra">Myntra</option>
-                  <option value="Ajio">Ajio</option>
-                </select>
                 <input
                   id="product-url"
                   type="text"
                   value={productUrl}
                   onChange={(e) => setProductUrl(e.target.value)}
-                  placeholder="Enter code (e.g., B08N5WRWNW) or full URL"
+                  placeholder="Enter full URL or short URL (e.g., https://amzn.to/...)"
                   style={{
                     width: '100%',
                     padding: '10px',
