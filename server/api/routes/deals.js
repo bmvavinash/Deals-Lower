@@ -393,8 +393,9 @@ router.get('/', async (req, res, next) => {
       // Use native Firebase querying to fetch by date
       snapshot = await ref.orderByChild('date').equalTo(date).once('value');
     } else {
-      // Use native Firebase querying to fetch a larger pool (5000) to account for potential invalid items
-      snapshot = await ref.orderByChild('datetime').limitToLast(5000).once('value');
+      // Use native Firebase querying to fetch a dynamic pool size to account for potential invalid items
+      const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
+      snapshot = await ref.orderByChild('datetime').limitToLast(poolSize).once('value');
     }
     let deals = snapshot.val() || {};
     
@@ -439,16 +440,18 @@ router.get('/', async (req, res, next) => {
     const total = dealsArray.length;
     const paginated = dealsArray.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
 
-    // Get notification statuses for paginated deals
-    const dealsWithNotifications = await Promise.all(
-      paginated.map(async (deal) => {
-        const notificationStatus = await notificationTrackingDB.getNotificationStatus(deal.productCode);
-        return {
-          ...deal,
-          notificationStatus: notificationStatus || null
-        };
-      })
-    );
+    // Get notification statuses for paginated deals in a single batch query
+    const notificationSnapshot = await notificationTrackingDB.ref.once('value');
+    const allNotifications = notificationSnapshot.val() || {};
+
+    const dealsWithNotifications = paginated.map((deal) => {
+      const safeKey = String(deal.productCode).replace(/[.#$/\[\]]/g, '_');
+      const notificationStatus = allNotifications[safeKey] || null;
+      return {
+        ...deal,
+        notificationStatus: notificationStatus
+      };
+    });
 
     const response = {
       success: true,

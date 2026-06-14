@@ -185,6 +185,47 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
     try { product.sizes = await extractMultiple(driver, config?.sizes); } catch (e) { logger.error(`[${platform}] sizes error:`, { error: e.message, stack: e.stack }); product.sizes = []; }
     try { product.specifications = await extractMultiple(driver, config?.specifications); } catch (e) { logger.error(`[${platform}] specifications error:`, { error: e.message, stack: e.stack }); product.specifications = {}; }
     
+    // Flipkart fallback: extract "Product highlights" via JS injection when specs are empty
+    if (platform === 'flipkart') {
+      const specsEmpty = !product.specifications || 
+        (typeof product.specifications === 'object' && Object.keys(product.specifications).length === 0) ||
+        (Array.isArray(product.specifications) && product.specifications.length === 0);
+      
+      if (specsEmpty) {
+        try {
+          const highlights = await driver.executeScript(`
+            try {
+              const header = document.evaluate("//div[text()='Product highlights' or text()='Highlights']", document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+              if (!header) return null;
+              let container = header.parentElement;
+              let limit = 0;
+              while (container && !container.innerText.includes("All details") && limit < 10) {
+                container = container.parentElement;
+                limit++;
+              }
+              if (!container) return null;
+              const items = [];
+              const divs = container.querySelectorAll("div");
+              for (let div of divs) {
+                const text = div.innerText.trim();
+                if (text && div.children.length === 0 && text !== "Product highlights" && text !== "All details" && text !== "Highlights") {
+                  items.push(text);
+                }
+              }
+              return items.length > 0 ? items : null;
+            } catch (err) { return null; }
+          `);
+          
+          if (highlights && Array.isArray(highlights) && highlights.length > 0) {
+            logger.info(`[flipkart] Extracted ${highlights.length} product highlights as specs fallback`);
+            product.specifications = highlights;
+          }
+        } catch (hlErr) {
+          logger.warn(`[flipkart] Highlights extraction fallback failed: ${hlErr.message}`);
+        }
+      }
+    }
+    
     // Amazon-specific: productTable
     if (platform === "amazon") {
       try { product.productTable = await extractMultiple(driver, config?.productTable); } catch (e) { logger.error(`[${platform}] productTable error:`, { error: e.message, stack: e.stack }); product.productTable = {}; }

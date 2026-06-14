@@ -257,8 +257,14 @@ function validateText(value) {
     if (!value || typeof value !== 'string') {
         return { isValid: false, value: "" };
     }
+    // Strip HTML tags first
+    let cleanedValue = value.replace(/<[^>]*>/g, "");
+    
+    // Clean trailing "...more" pattern (case insensitive)
+    cleanedValue = cleanedValue.replace(/\.\.\.\s*more\s*$/i, "").trim();
+
     // Replace "&amp;" with "&", normalize spaces, and remove hyphens
-    let cleanedValue = value.replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/-/g, "").trim();
+    cleanedValue = cleanedValue.replace(/&amp;/g, "&").replace(/\s+/g, " ").replace(/-/g, "").trim();
     
     return {
         isValid: cleanedValue.length > 0,

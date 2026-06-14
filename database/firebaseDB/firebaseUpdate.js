@@ -7,7 +7,7 @@ const config = require('../../config/config.js');
 const { productStatus } = require('../../config/const.js');
 const { getModuleLogger } = require("../../logger/logger.js");
 const { detectChanges, areChangesSignificant, logChanges } = require("../../utils/changeDetection.js");
-const { getISTTimestamp } = require('../../utils/commonUtils');
+const { getISTTimestamp, validateText } = require('../../utils/commonUtils');
 
 env=constants.env
 
@@ -104,6 +104,21 @@ var ref = database.ref(db, '/deals');
 // Function to update a record
 async function updateProduct(productCode, updatedData, access_token="", env="stage") {
   try {
+    if (updatedData) {
+      if (updatedData.title) {
+        const cleanRes = validateText(updatedData.title);
+        updatedData.title = cleanRes.value || updatedData.title;
+      }
+      if (updatedData.productText) {
+        const cleanRes = validateText(updatedData.productText);
+        updatedData.productText = cleanRes.value || updatedData.productText;
+      }
+      if (updatedData.urltext) {
+        const cleanRes = validateText(updatedData.urltext);
+        updatedData.urltext = cleanRes.value || updatedData.urltext;
+      }
+    }
+
     // Get a reference to the product node
       const productRef = db.ref('deals/' + productCode); // Directly use the ref from the admin.database() instance
       // const productRef = db.ref(productCode); 
