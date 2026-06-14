@@ -65,6 +65,7 @@ const dadExpensesRoutes = require('./routes/dadExpenses');
 const categoryPriorityRoutes = require('./routes/categoryPriority');
 const commandsRoutes = require('./routes/commands');
 const categoriesRoutes = require('./routes/categories');
+const matchingConfigRoutes = require('./routes/matchingConfig');
 
 const app = express();
 const PORT = constants.frontend?.apiPort || 3001;
@@ -106,6 +107,7 @@ app.use('/api/dad-expenses', dadExpensesRoutes);
 app.use('/api/category-priority', categoryPriorityRoutes);
 app.use('/api/commands', commandsRoutes);
 app.use('/api/categories', categoriesRoutes);
+app.use('/api/matching-config', matchingConfigRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

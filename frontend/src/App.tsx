@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from './components/Layout/MainLayout';
 import Dashboard from './pages/Dashboard';
 import DealsPage from './pages/DealsPage';
+import MatchingConfigPage from './pages/MatchingConfigPage';
 import StocksPage from './pages/StocksPage';
 import LogsPage from './pages/LogsPage';
 import SchedulerPage from './pages/SchedulerPage';
@@ -24,6 +25,7 @@ function App() {
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/deals" element={<DealsPage />} />
+            <Route path="/matching-config" element={<MatchingConfigPage />} />
             <Route path="/stocks" element={<StocksPage />} />
             <Route path="/logs" element={<LogsPage />} />
             <Route path="/scheduler" element={<SchedulerPage />} />
