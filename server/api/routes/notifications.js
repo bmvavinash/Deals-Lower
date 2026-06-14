@@ -98,8 +98,30 @@ router.get('/stats', async (req, res, next) => {
   }
 });
 
-module.exports = router;
+/**
+ * GET /api/notifications/config
+ * Get notification configuration for frontend
+ */
+router.get('/config', (req, res, next) => {
+  try {
+    const constants = require('../../../../config/constants');
+    const notifs = constants.notifications || {};
+    
+    res.json({
+      success: true,
+      data: {
+        enableWhatsapp: !!notifs.enableWhatsapp,
+        enableTelegram: !!notifs.enableTelegram,
+        enableFavoritesService: !!notifs.enableFavoritesService
+      }
+    });
+  } catch (error) {
+    logger.error('Error fetching notification config', { error: error.message });
+    next(error);
+  }
+});
 
+module.exports = router;
 
 
 

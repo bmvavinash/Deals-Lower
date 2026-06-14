@@ -4,9 +4,11 @@ import { categoriesAPI } from '../services/api';
 interface CategoryMatcherProps {
   productData: any;
   onChange: (field: string, value: string) => void;
+  onSave?: () => void;
+  isSaving?: boolean;
 }
 
-const CategoryMatcher: React.FC<CategoryMatcherProps> = ({ productData, onChange }) => {
+const CategoryMatcher: React.FC<CategoryMatcherProps> = ({ productData, onChange, onSave, isSaving }) => {
   const [hierarchy, setHierarchy] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -162,6 +164,27 @@ const CategoryMatcher: React.FC<CategoryMatcherProps> = ({ productData, onChange
           />
         )}
       </div>
+
+      {onSave && (
+        <div style={{ marginTop: '15px' }}>
+          <button 
+            onClick={onSave}
+            disabled={isSaving}
+            style={{
+              padding: '10px 15px',
+              backgroundColor: isSaving ? '#ccc' : '#4CAF50',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isSaving ? 'not-allowed' : 'pointer',
+              fontWeight: 'bold',
+              width: '100%'
+            }}
+          >
+            {isSaving ? 'Saving...' : 'Submit Categories'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

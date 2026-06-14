@@ -14,7 +14,7 @@ function determineHierarchy(category, title = '', brand = '') {
     // 1. Determine Main Category
     if (textToAnalyze.match(/\b(clothing|apparel|fashion|wear|dress|dresses|shirt|shirts|pant|pants|shoe|shoes|sandal|sandals|kurta|kurtas|gown|gowns|jean|jeans)\b/)) {
         mainCategory = 'Fashion';
-    } else if (textToAnalyze.match(/\b(phone|phones|smartphone|smartphones|laptop|laptops|earphone|earphones|headphone|headphones|watch|watches|electronics|tv|camera|cameras|speaker|speakers|air conditioner|air conditioners|ac|cooler|coolers|air cooler|geyser|geysers|heater|heaters|washing machine|refrigerator)\b/)) {
+    } else if (textToAnalyze.match(/\b(phone|phones|smartphone|smartphones|laptop|laptops|earphone|earphones|headphone|headphones|watch|watches|electronics|tv|camera|cameras|speaker|speakers|air conditioner|air conditioners|ac|cooler|coolers|air cooler|geyser|geysers|heater|heaters|washing machine|refrigerator|monitor|monitors)\b/)) {
         mainCategory = 'Electronics';
     } else if (textToAnalyze.match(/\b(kitchen|home|furniture|decor|bed|sofa|dining|appliance|appliances)\b/)) {
         mainCategory = 'Home & Kitchen';
@@ -92,7 +92,8 @@ function determineHierarchy(category, title = '', brand = '') {
         else if (textToAnalyze.match(/earphone|headphone|earbud|speaker|audio/)) subcategory = 'Audio';
         else if (textToAnalyze.match(/watch|smartwatch/)) subcategory = 'Wearables';
         else if (textToAnalyze.match(/tv|television/)) subcategory = 'Televisions';
-        else if (textToAnalyze.match(/air conditioner|ac\b/)) { subcategory = 'Air Conditioners'; style = 'Split AC'; }
+        else if (textToAnalyze.match(/monitor/)) subcategory = 'Monitors';
+        else if (textToAnalyze.match(/air conditioner|\bac\b/)) { subcategory = 'Air Conditioners'; style = 'Split AC'; }
         else if (textToAnalyze.match(/cooler|air cooler/)) { subcategory = 'Air Coolers'; style = 'Desert Cooler'; }
         else if (textToAnalyze.match(/washing machine/)) { subcategory = 'Washing Machines'; style = 'Front Load'; }
         else if (textToAnalyze.match(/geyser|water heater/)) { subcategory = 'Geysers'; style = 'Water Heater'; }

@@ -10,8 +10,9 @@ const HARDCODED_CATEGORIES = {
         'Audio',
         'Wearables',
         'Televisions',
-        'Cameras'
-        ,'Others'
+        'Cameras',
+        'Monitors',
+        'Others'
     ],
     'Fashion': [
         'Dresses',
@@ -73,7 +74,7 @@ const KEYWORD_MAP = {
     'fridge': 'Refrigerators', 'refrigerator': 'Refrigerators',
     'washing machine': 'Washing Machines', 'washer': 'Washing Machines',
     'mobile': 'Mobiles', 'smartphone': 'Mobiles', 'phone': 'Mobiles', 'iphone': 'Mobiles',
-    'laptop': 'Laptops', 'macbook': 'Laptops', 'notebook': 'Laptops', 'monitor': 'Laptops', 'desktop': 'Laptops', 'tablet': 'Laptops', 'ipad': 'Laptops', 'tab': 'Laptops',
+    'laptop': 'Laptops', 'macbook': 'Laptops', 'notebook': 'Laptops', 'monitor': 'Monitors', 'desktop': 'Laptops', 'tablet': 'Laptops', 'ipad': 'Laptops', 'tab': 'Laptops',
     'tv': 'Televisions', 'television': 'Televisions', 'smart tv': 'Televisions', 'qled': 'Televisions', 'oled': 'Televisions',
     'headphone': 'Audio', 'earphone': 'Audio', 'speaker': 'Audio', 'soundbar': 'Audio', 'earbuds': 'Audio', 'earbud': 'Audio', 'earpod': 'Audio', 'airpod': 'Audio', 'tws': 'Audio', 'neckband': 'Audio', 'buds': 'Audio',
     'watch': 'Wearables', 'smartwatch': 'Wearables', 'fitness band': 'Wearables',

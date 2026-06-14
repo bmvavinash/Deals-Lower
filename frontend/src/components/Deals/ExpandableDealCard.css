@@ -37,6 +37,8 @@
   font-weight: 600;
   color: #333;
   line-height: 1.4;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .deal-info {
@@ -44,6 +46,7 @@
   gap: 12px;
   align-items: center;
   margin-bottom: 8px;
+  flex-wrap: wrap;
 }
 
 .deal-price {
@@ -227,9 +230,13 @@
 }
 
 .validation-reasons {
-  margin-top: 6px;
-  font-size: 0.8rem;
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 0.85rem;
   color: #c62828;
+  background-color: #ffebee;
+  border-left: 4px solid #c62828;
+  border-radius: 4px;
 }
 
 .validation-reasons ul {

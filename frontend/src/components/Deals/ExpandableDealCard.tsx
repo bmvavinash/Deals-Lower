@@ -264,7 +264,7 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
           </div>
           
           <div className={`deal-validation-badge ${validation.isValid ? 'badge-valid' : 'badge-blocked'}`}>
-            {validation.isValid ? '✓ Active (Displays on Website)' : '⚠️ Blocked from Website'}
+            {validation.isValid ? '✓ Displayed in Website' : '⚠️ Not Displayed in Website'}
           </div>
           {!validation.isValid && (
             <div className="validation-reasons">

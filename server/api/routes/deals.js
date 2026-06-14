@@ -427,10 +427,10 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, date, categoryGroup, limit = 100, offset = 0 } = req.query;
+    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0 } = req.query;
     
     // Create cache key
-    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${limit}_${offset}`;
+    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}`;
     
     // Check cache first (increased TTL to 10 minutes for deals)
     const cached = cacheService.get(cacheKey);
@@ -475,6 +475,13 @@ router.get('/', async (req, res, next) => {
     if (categoryGroup) {
       dealsArray = dealsArray.filter(deal => 
         deal.categoryGroup === categoryGroup
+      );
+    }
+
+    // Filter by staticSubcategory if specified
+    if (staticSubcategory) {
+      dealsArray = dealsArray.filter(deal => 
+        deal.staticSubcategory?.toLowerCase() === staticSubcategory.toLowerCase()
       );
     }
 
@@ -747,6 +754,68 @@ router.post('/bulk-refresh-timestamps', async (req, res) => {
       error: error.message,
       timestamp: new Date().toISOString()
     });
+  }
+});
+
+/**
+ * GET /api/deals/search
+ * Global search across the lightweight search index
+ * Query params: q (search query), limit, offset
+ */
+router.get('/search', async (req, res, next) => {
+  try {
+    const { q, limit = 20, offset = 0 } = req.query;
+    
+    if (!q || q.trim() === '') {
+      return res.status(400).json({ success: false, error: 'Search query is required' });
+    }
+
+    const query = q.toLowerCase().trim();
+    
+    // Fetch the lightweight index
+    const snapshot = await productDealsDB.searchIndexRef.once('value');
+    const indexData = snapshot.val() || {};
+    
+    // Filter the index in-memory
+    const matchedKeys = [];
+    Object.entries(indexData).forEach(([key, data]) => {
+      if ((data.t && data.t.includes(query)) || 
+          (data.b && data.b.includes(query)) || 
+          (data.c && data.c.includes(query))) {
+        matchedKeys.push(key);
+      }
+    });
+    
+    // Paginate matched keys
+    const total = matchedKeys.length;
+    const paginatedKeys = matchedKeys.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    
+    // Fetch full deal details for paginated keys
+    // We will search both deals and productdeals to be safe, starting with productdeals
+    const fetchDeal = async (key) => {
+      let doc = await productDealsDB.productdealsRef.child(key).once('value');
+      if (!doc.exists()) {
+        doc = await productDealsDB.dealsRef.child(key).once('value');
+      }
+      return doc.exists() ? { productCode: key, ...doc.val() } : null;
+    };
+    
+    const fullDeals = await Promise.all(paginatedKeys.map(fetchDeal));
+    const validDeals = fullDeals.filter(d => d !== null);
+
+    res.json({
+      success: true,
+      data: validDeals,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + parseInt(limit) < total
+      }
+    });
+  } catch (error) {
+    logger.error('Error in global search', { error: error.message, stack: error.stack });
+    next(error);
   }
 });
 

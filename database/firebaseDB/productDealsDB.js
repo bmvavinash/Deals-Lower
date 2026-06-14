@@ -75,10 +75,13 @@ class ProductDealsDB {
 		this.productdealsRef = db.ref('productdeals'); // For bulk website updates
 		this.dealsRef = db.ref('deals'); // For Telegram processing
 		this.staticRef = db.ref('productdeals_static'); // For static categorization
+		this.searchIndexRef = db.ref('search_index'); // For global search
+		this.customSubcategoriesRef = db.ref('custom_subcategories'); // For dynamic custom subcategories
 		this.ref = this.dealsRef; // Default to deals for backward compatibility
 	}
 
 	async bulkUpsertProducts(products, targetDb = 'deals') {
+		let isIndexUpdated = false;
 		try {
 			if (!Array.isArray(products) || products.length === 0) {
 				logger.warn('bulkUpsertProducts called with empty products array');
@@ -86,6 +89,7 @@ class ProductDealsDB {
 			}
 
 			const updates = {};
+			const searchIndexUpdates = {};
 			let createdCount = 0;
 			let updatedCount = 0;
 			const now = getISTTimestamp();
@@ -411,9 +415,27 @@ class ProductDealsDB {
 				};
 				
 				updates[safeKey] = normalized;
+				
+				searchIndexUpdates[safeKey] = {
+					t: normalized.title ? String(normalized.title).toLowerCase() : "",
+					b: normalized.brand ? String(normalized.brand).toLowerCase() : "",
+					c: normalized.categoryGroup || "",
+					s: normalized.storeType || "",
+					p: normalized.price || ""
+				};
 			}
 
 			await targetRef.update(updates);
+			
+			if (Object.keys(searchIndexUpdates).length > 0) {
+				try {
+					await this.searchIndexRef.update(searchIndexUpdates);
+					isIndexUpdated = true;
+				} catch (searchErr) {
+					logger.error('Failed to update search index', { error: searchErr.message });
+				}
+			}
+			
 			const totalCount = Object.keys(updates).length;
 			const failedCount = products.length - totalCount;
 			
@@ -436,6 +458,15 @@ class ProductDealsDB {
 				updated: 0,
 				failed: products.length
 			};
+		} finally {
+			if (isIndexUpdated) {
+				try {
+					const { uploadSearchIndexToR2 } = require('../../scripts/uploadSearchIndexToR2');
+					uploadSearchIndexToR2().catch(err => logger.error('Cloudflare R2 index upload failed (background finally)', { error: err.message }));
+				} catch (r2Err) {
+					logger.warn('Could not load Cloudflare R2 upload script in finally', { error: r2Err.message });
+				}
+			}
 		}
 	}
 
@@ -554,6 +585,34 @@ class ProductDealsDB {
 			};
 			
 			await targetRef.child(safeKey).update(updateData);
+			
+			if (targetDb === 'productdeals') {
+				try {
+					await this.staticRef.child(safeKey).update(updateData);
+				} catch (staticErr) {
+					logger.error('Failed to double-update productdeals_static', { productCode, error: staticErr.message });
+				}
+			}
+			
+			const searchUpdate = {};
+			if (updates.title) searchUpdate.t = String(updates.title).toLowerCase();
+			if (updates.brand) searchUpdate.b = String(updates.brand).toLowerCase();
+			if (updates.categoryGroup) searchUpdate.c = updates.categoryGroup;
+			if (updates.storeType) searchUpdate.s = updates.storeType;
+			if (updates.price) searchUpdate.p = updates.price;
+			
+			if (Object.keys(searchUpdate).length > 0) {
+				try {
+					await this.searchIndexRef.child(safeKey).update(searchUpdate);
+					
+					// Trigger Cloudflare R2 upload in background
+					try {
+						const { uploadSearchIndexToR2 } = require('../../scripts/uploadSearchIndexToR2');
+						uploadSearchIndexToR2().catch(() => {});
+					} catch (r2Err) {}
+				} catch (err) {}
+			}
+			
 			logger.info(`Individual product updated in ${targetDb}`, { productCode: safeKey });
 			return { status: 200, message: 'Product updated successfully' };
 		} catch (error) {

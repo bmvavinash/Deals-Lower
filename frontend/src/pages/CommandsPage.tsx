@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import './CommandsPage.css';
-
 const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:3001';
 
 interface Command {

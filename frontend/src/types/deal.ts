@@ -9,6 +9,8 @@ export interface Deal {
   productUrl: string;
   storeType: string;
   categoryGroup?: string;
+  staticCategory?: string;
+  staticSubcategory?: string;
   category?: {
     mainCategory?: string;
     c1?: string;

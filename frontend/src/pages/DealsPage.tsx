@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from 'react-query';
-import { dealsAPI, newsAPI } from '../services/api';
+import { dealsAPI, newsAPI, categoriesAPI } from '../services/api';
 import DealList from '../components/Deals/DealList';
 import DealFilters from '../components/Deals/DealFilters';
+import CategoryMatcher from '../components/CategoryMatcher';
 import { useNotification } from '../context/NotificationContext';
 import './DealsPage.css';
 import './Banners.css';
@@ -11,24 +12,64 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 type ViewMode = 'deals' | 'news' | 'reviews' | 'banners';
 
-const CATEGORIES = [
-  { id: '', label: 'All Categories' },
-  { id: 'fashion', label: 'Fashion' },
-  { id: 'electronics', label: 'Electronics' },
-  { id: 'accessories', label: 'Accessories' },
-  { id: 'sports-fitness', label: 'Sports & Fitness' },
-  { id: 'home-kitchen', label: 'Home & Kitchen' },
-  { id: 'beauty-personal-care', label: 'Beauty & Personal Care' },
-  { id: 'baby-kids', label: 'Baby & Kids' },
-  { id: 'books-stationery', label: 'Books & Stationery' },
-  { id: 'grocery', label: 'Grocery' },
-  { id: 'automotive', label: 'Automotive' },
-  { id: 'tools-hardware', label: 'Tools & Hardware' },
-  { id: 'pet-supplies', label: 'Pet Supplies' },
-  { id: 'music-entertainment', label: 'Music & Entertainment' },
-  { id: 'deals', label: 'Deals' },
-  { id: 'home', label: 'Home' }
-];
+const CATEGORY_MAP: Record<string, { label: string; subcategories: string[] }> = {
+  'electronics': {
+    label: 'Electronics',
+    subcategories: ['Air Conditioners', 'Geysers', 'Air Coolers', 'Refrigerators', 'Washing Machines', 'Mobiles', 'Laptops', 'Audio', 'Wearables', 'Televisions', 'Cameras', 'Monitors', 'Others']
+  },
+  'fashion': {
+    label: 'Fashion',
+    subcategories: ['Dresses', 'Kurtas', 'T-Shirts', 'Shirts', 'Jeans', 'Pants', 'Shoes', 'Sandals', 'Accessories', 'Innerwear', 'Others']
+  },
+  'home-kitchen': {
+    label: 'Home & Kitchen',
+    subcategories: ['Kitchen Appliances', 'Cookware', 'Furniture', 'Home Decor', 'Others']
+  },
+  'beauty-personal-care': {
+    label: 'Beauty & Personal Care',
+    subcategories: ['Skincare', 'Haircare', 'Makeup', 'Fragrances', 'Bath & Body', 'Others']
+  },
+  'books-stationery': {
+    label: 'Books & Stationery',
+    subcategories: ['Fiction', 'Non-Fiction', 'Academic', 'Stationery', 'Others']
+  },
+  'sports-fitness': {
+    label: 'Sports & Fitness',
+    subcategories: ['Equipment', 'Clothing', 'Footwear', 'Accessories', 'Others']
+  },
+  'baby-kids': {
+    label: 'Baby & Kids',
+    subcategories: ['Toys', 'Clothing', 'Footwear', 'Baby Care', 'Others']
+  },
+  'grocery': {
+    label: 'Grocery',
+    subcategories: ['Others']
+  },
+  'automotive': {
+    label: 'Automotive',
+    subcategories: ['Others']
+  },
+  'tools-hardware': {
+    label: 'Tools & Hardware',
+    subcategories: ['Others']
+  },
+  'pet-supplies': {
+    label: 'Pet Supplies',
+    subcategories: ['Others']
+  },
+  'music-entertainment': {
+    label: 'Music & Entertainment',
+    subcategories: ['Others']
+  },
+  'deals': {
+    label: 'Deals',
+    subcategories: ['Others']
+  },
+  'home': {
+    label: 'Home',
+    subcategories: ['Others']
+  }
+};
 
 interface Banner {
   id: string;
@@ -55,15 +96,63 @@ interface BannerStats {
 
 const DealsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('deals');
-  const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', categoryGroup: '', limit: 100, offset: 0 });
+  const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', categoryGroup: '', staticSubcategory: '', limit: 100, offset: 0, q: '' });
   const [newsFilters, setNewsFilters] = useState({ limit: 20, offset: 0, category: '', sortBy: 'publishDate', order: 'desc' });
   const [reviewsFilters, setReviewsFilters] = useState({ limit: 20, offset: 0, productName: '', minRating: '', sortBy: 'publishDate', order: 'desc' });
   
   const { addNotification } = useNotification();
+  const [categoryMap, setCategoryMap] = useState<Record<string, { label: string; subcategories: string[] }>>(CATEGORY_MAP);
+
+  const CATEGORIES = [
+    { id: '', label: 'All Categories' },
+    ...Object.entries(categoryMap).map(([id, info]) => ({
+      id,
+      label: info.label
+    }))
+  ];
+
+  // Fetch custom categories on mount and merge them
+  useEffect(() => {
+    const fetchCustomCategories = async () => {
+      try {
+        const response = await categoriesAPI.getCustom();
+        if (response.data && response.data.success) {
+          const customData = response.data.data;
+          setCategoryMap(prev => {
+            const updated = { ...prev };
+            Object.entries(customData).forEach(([group, subs]) => {
+              if (updated[group] && Array.isArray(subs)) {
+                const currentSubs = updated[group].subcategories;
+                const newSubs = [...currentSubs];
+                subs.forEach((sub: string) => {
+                  if (!newSubs.includes(sub)) {
+                    const othersIndex = newSubs.indexOf('Others');
+                    if (othersIndex !== -1) {
+                      newSubs.splice(othersIndex, 0, sub);
+                    } else {
+                      newSubs.push(sub);
+                    }
+                  }
+                });
+                updated[group] = {
+                  ...updated[group],
+                  subcategories: newSubs
+                };
+              }
+            });
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch custom categories:', err);
+      }
+    };
+    fetchCustomCategories();
+  }, []);
   // Deals query
   const { data: dealsData, isLoading: dealsLoading, error: dealsError, refetch: refetchDeals } = useQuery(
     ['deals', filters],
-    () => dealsAPI.getAll(filters),
+    () => filters.q ? dealsAPI.searchGlobal(filters) : dealsAPI.getAll(filters),
     { keepPreviousData: true, enabled: viewMode === 'deals' }
   );
 
@@ -1180,41 +1269,61 @@ const DealsPage: React.FC = () => {
                 <button
                   key={cat.id}
                   className={`category-pill ${filters.categoryGroup === cat.id ? 'active' : ''}`}
-                  onClick={() => handleFilterChange({ categoryGroup: cat.id })}
+                  onClick={() => handleFilterChange({ categoryGroup: cat.id, staticSubcategory: '' })}
                 >
                   {cat.label}
                 </button>
               ))}
             </div>
 
+            {/* Subcategory Filter Pills Bar */}
+            {filters.categoryGroup && categoryMap[filters.categoryGroup] && (
+              <div className="subcategory-filter-bar" style={{ display: 'flex', gap: '8px', overflowX: 'auto', padding: '5px 0 12px 0', marginBottom: '15px', borderBottom: '1px dashed #eee' }}>
+                <button
+                  className={`category-pill ${filters.staticSubcategory === '' ? 'active' : ''}`}
+                  onClick={() => handleFilterChange({ staticSubcategory: '' })}
+                  style={{ fontSize: '12px', padding: '6px 12px' }}
+                >
+                  All Subcategories
+                </button>
+                {categoryMap[filters.categoryGroup].subcategories.map((sub) => (
+                  <button
+                    key={sub}
+                    className={`category-pill ${filters.staticSubcategory === sub ? 'active' : ''}`}
+                    onClick={() => handleFilterChange({ staticSubcategory: sub })}
+                    style={{ fontSize: '12px', padding: '6px 12px' }}
+                  >
+                    {sub}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="deals-view-header search-section" style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
               <div className="product-code-search" style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                 <input 
                   type="text" 
-                  placeholder="Search by Product Code..." 
+                  placeholder="Enter Product Code..." 
                   value={productCodeSearch}
                   onChange={(e) => setProductCodeSearch(e.target.value)}
-                  className="filter-input"
-                  style={{ width: '250px', padding: '10px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  style={{ padding: '6px 10px', borderRadius: '4px', border: '1px solid #ddd', fontSize: '14px' }}
                   onKeyDown={(e) => e.key === 'Enter' && handleSearchByProductCode()}
                 />
                 <button 
                   onClick={handleSearchByProductCode}
                   className="trigger-button"
+                  style={{ padding: '6px 12px', fontSize: '14px' }}
                   disabled={isSearchingCode}
-                  style={{ padding: '10px 16px', backgroundColor: '#3498db' }}
                 >
-                  {isSearchingCode ? (
-                    <><span className="spinner">↻</span> Searching...</>
-                  ) : '🔍 Search'}
+                  {isSearchingCode ? 'Searching...' : 'Find Code'}
                 </button>
                 {productCodeResult && (
                   <button 
                     onClick={() => { setProductCodeSearch(''); setProductCodeResult(null); }}
-                    className="trigger-button"
-                    style={{ padding: '10px 16px', backgroundColor: '#e74c3c' }}
+                    className="btn-cancel"
+                    style={{ padding: '6px 12px', fontSize: '14px', height: 'auto' }}
                   >
-                    Clear
+                    Clear Search
                   </button>
                 )}
               </div>
@@ -1232,15 +1341,31 @@ const DealsPage: React.FC = () => {
             </div>
             
             {dealsLoading && !productCodeResult && <div className="loading"><span className="spinner">↻</span> Loading deals...</div>}
-            {dealsError && <div className="error">Error loading deals: {String(dealsError)}</div>}
+            {!!dealsError && <div className="error">Error loading deals: {String(dealsError)}</div>}
             {productCodeResult ? (
-              <DealList 
-                deals={[productCodeResult]} 
-                database={filters.dealType === 'hotDeal' ? 'deals' : 'productdeals'}
-                pagination={{ total: 1, limit: 1, offset: 0, hasMore: false }}
-                onPageChange={() => {}}
-              />
-            ) : dealsData && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <CategoryMatcher 
+                  productData={productCodeResult}
+                  onChange={(field, value) => setProductCodeResult({ ...productCodeResult, [field]: value })}
+                  onSave={async () => {
+                    try {
+                      const db = filters.dealType === 'hotDeal' ? 'deals' : 'productdeals';
+                      await dealsAPI.updateProduct(productCodeResult.productCode, productCodeResult, db);
+                      addNotification({ type: 'success', message: 'Categories updated successfully!', source: 'Category Matcher', page: 'Deals' });
+                    } catch (error) {
+                      console.error('Failed to update categories:', error);
+                      addNotification({ type: 'error', message: 'Failed to update categories.', source: 'Category Matcher', page: 'Deals' });
+                    }
+                  }}
+                />
+                <DealList 
+                  deals={[productCodeResult]} 
+                  database={filters.dealType === 'hotDeal' ? 'deals' : 'productdeals'}
+                  pagination={{ total: 1, limit: 1, offset: 0, hasMore: false }}
+                  onPageChange={() => {}}
+                />
+              </div>
+            ) : !!dealsData && (
               <DealList 
                 deals={(dealsData.data as any).data || []} 
                 database={(dealsData.data as any).database}

@@ -106,9 +106,9 @@ const NewsPage: React.FC = () => {
       </div>
 
       {isLoading && <div className="loading">Loading news...</div>}
-      {error && <div className="error">Error loading news: {String(error)}</div>}
+      {!!error && <div className="error">Error loading news: {String(error)}</div>}
 
-      {data && (
+      {!!data && (
         <>
           <div className="news-list">
             {(data.data as any)?.data?.map((article: NewsArticle) => (

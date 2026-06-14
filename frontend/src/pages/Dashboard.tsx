@@ -347,6 +347,8 @@ const Dashboard: React.FC = () => {
                 <CategoryMatcher 
                   productData={productData} 
                   onChange={handleProductFieldChange} 
+                  onSave={handleUpdateProduct}
+                  isSaving={isUpdating}
                 />
                 
                 <div style={{ display: 'grid', gap: '15px' }}>

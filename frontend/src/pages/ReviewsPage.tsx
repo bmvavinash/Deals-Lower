@@ -136,9 +136,9 @@ const ReviewsPage: React.FC = () => {
       </div>
 
       {isLoading && <div className="loading">Loading reviews...</div>}
-      {error && <div className="error">Error loading reviews: {String(error)}</div>}
+      {!!error && <div className="error">Error loading reviews: {String(error)}</div>}
 
-      {data && (
+      {!!data && (
         <>
           <div className="reviews-list">
             {(data.data as any)?.data?.map((review: ReviewArticle) => (
