@@ -410,6 +410,29 @@ class UserFavoritesDB {
     }
   }
 
+  async updateUserProfile(userId, profile) {
+    try {
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.users[userId]) {
+          data.users[userId] = { createdAt: Date.now(), favorites: {}, trackedProducts: {}, preferences: {}, channels: {} };
+        }
+        data.users[userId].profile = {
+          ...data.users[userId].profile,
+          ...profile
+        };
+        this.saveLocalData(data);
+        return true;
+      }
+
+      await db().ref(`${this.usersBase}/${userId}/profile`).update(profile);
+      return true;
+    } catch (error) {
+      console.error(`Error updating profile for user ${userId}:`, error);
+      return false;
+    }
+  }
+
   async updateUserChannels(userId, channels) {
     try {
       if (isLocalFallback) {

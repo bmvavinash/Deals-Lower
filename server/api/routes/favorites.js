@@ -178,4 +178,23 @@ router.put('/user/preferences', authenticateUser, async (req, res) => {
   }
 });
 
+// PUT /api/favorites/user/profile - Sync user profile details
+router.put('/user/profile', authenticateUser, async (req, res) => {
+  try {
+    const { profile } = req.body;
+    if (!profile) {
+      return res.status(400).json({ error: 'Profile data is required' });
+    }
+    const success = await userFavoritesDB.updateUserProfile(req.userId, profile);
+    if (success) {
+      res.json({ success: true, message: 'Profile synchronized successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to sync user profile' });
+    }
+  } catch (error) {
+    logger.error('Error syncing user profile', { error: error.message, userId: req.userId });
+    res.status(500).json({ error: 'Failed to sync user profile' });
+  }
+});
+
 module.exports = router;
