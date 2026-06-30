@@ -96,10 +96,18 @@ const UsersPage: React.FC = () => {
     const profile: UserProfile = u.profile || {};
     const tracked = u.trackedProducts || {};
     
-    let telegramConfigured = !!profile.telegramChatId;
-    let whatsappConfigured = !!profile.whatsappPhone;
+    // Resolve fields robustly across all nested schemas (profile, channels, preferences, root level)
+    const email = profile.email || u.email || 'N/A';
+    const displayName = profile.displayName || u.displayName || 'N/A';
+    const mobileNumber = profile.mobileNumber || u.mobileNumber || 'N/A';
+    
+    const telegramChatId = profile.telegramChatId || u.channels?.telegram?.chatId || u.preferences?.telegram?.chatId || u.telegramChatId || 'N/A';
+    const whatsappPhone = profile.whatsappPhone || u.channels?.whatsapp?.phone || u.preferences?.whatsapp?.phone || u.whatsappPhone || 'N/A';
 
-    // Check tracked products for active notification flags
+    let telegramConfigured = telegramChatId !== 'N/A';
+    let whatsappConfigured = whatsappPhone !== 'N/A';
+
+    // Also check tracked products for active notification flags
     Object.values(tracked).forEach((item: any) => {
       if (item.telegramEnabled || item.telegramChatId) telegramConfigured = true;
       if (item.whatsappEnabled || item.whatsappPhone) whatsappConfigured = true;
@@ -107,11 +115,11 @@ const UsersPage: React.FC = () => {
 
     return {
       uid,
-      email: profile.email || u.email || 'N/A',
-      displayName: profile.displayName || u.displayName || 'N/A',
-      mobileNumber: profile.mobileNumber || u.mobileNumber || 'N/A',
-      telegramChatId: profile.telegramChatId || 'N/A',
-      whatsappPhone: profile.whatsappPhone || 'N/A',
+      email,
+      displayName,
+      mobileNumber,
+      telegramChatId,
+      whatsappPhone,
       telegramConfigured,
       whatsappConfigured,
       favoritesCount: Object.keys(u.favorites || {}).length,

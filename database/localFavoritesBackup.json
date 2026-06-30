@@ -2,6 +2,11 @@
   "users": {
     "test-user-123": {
       "createdAt": 1782662597085,
+      "profile": {
+        "displayName": "Test User One",
+        "email": "test123@example.com",
+        "mobileNumber": "9876543210"
+      },
       "favorites": {
         "TEST_PROD_999": {
           "addedAt": 1782662597085,
@@ -21,6 +26,11 @@
     },
     "user_test_55115": {
       "createdAt": 1782673179128,
+      "profile": {
+        "displayName": "User Test 55115",
+        "email": "test55115@example.com",
+        "mobileNumber": "8888888888"
+      },
       "favorites": {},
       "trackedProducts": {
         "55115": {
@@ -35,6 +45,12 @@
     },
     "whatsapp-real-test-user": {
       "createdAt": 1782734471258,
+      "profile": {
+        "displayName": "WhatsApp Real Test User",
+        "email": "whatsapptest@example.com",
+        "mobileNumber": "919951797149",
+        "whatsappPhone": "919951797149"
+      },
       "favorites": {
         "TEST_WHATSAPP_PROD": {
           "addedAt": 1782734471260,
