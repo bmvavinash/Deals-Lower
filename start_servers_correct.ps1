@@ -1,5 +1,5 @@
 # Start Frontend Dashboard Servers - CORRECT PATHS
-$workspacePath = "C:\Users\avina\.cursor\worktrees\DealsOptimised\hqn"
+$workspacePath = $PSScriptRoot
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "Starting Frontend Dashboard System" -ForegroundColor Cyan

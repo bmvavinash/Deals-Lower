@@ -41,11 +41,29 @@ const containsPlatformKeywords = (url: string): boolean => {
 
 const cleanUrl = (url: string): string => {
   if (!url || typeof url !== 'string') return url;
-  let cleanedUrl = url.replace(/^@+/, '');
-  const doubleWrapperMatch = cleanedUrl.match(/^https?:\/\/inrdeals\.com\/avi646476329\/(https?:\/\/.+)$/);
-  if (doubleWrapperMatch) {
-    cleanedUrl = doubleWrapperMatch[1];
+
+  // Remove leading @ symbol
+  let cleanedUrl = url.replace(/^@+/, '').trim();
+
+  // Fix inrdeals.com wrapper issue (extract destination URL)
+  // Supports patterns with or without affiliate ID
+  const inrdealsPattern = /^https?:\/\/(?:www\.)?inrdeals\.com\/(?:[a-zA-Z0-9]+\/)?(.*)$/;
+  const match = cleanedUrl.match(inrdealsPattern);
+  if (match) {
+    let target = match[1];
+    // Decode in case the rest is URL encoded
+    try {
+      const decoded = decodeURIComponent(target);
+      if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+        target = decoded;
+      }
+    } catch (e) {
+      // Ignore decode error
+    }
+    // Recursively clean in case of double wrapping
+    return cleanUrl(target);
   }
+
   return cleanedUrl;
 };
 
@@ -103,8 +121,8 @@ const getCanonicalProductCode = (product: any): string | undefined => {
 const buildProductUrl = (product: any): string | null => {
   if (!product) return null;
   const urlSources = [
-    product.links?.avinashbmvINR,
     product.links?.avinashbmv,
+    product.links?.avinashbmvINR,
     product.productUrl,
   ];
   
@@ -122,8 +140,8 @@ const buildProductUrl = (product: any): string | null => {
   let isShortlinkFound = false;
 
   const allUrls = [
-    product.links?.avinashbmvINR,
     product.links?.avinashbmv,
+    product.links?.avinashbmvINR,
     product.productUrl
   ].filter(url => url && typeof url === 'string' && url.trim() !== '');
 
@@ -150,7 +168,7 @@ const buildProductUrl = (product: any): string | null => {
     return `https://www.amazon.in/dp/${productCode}/?tag=dealshubglo0c-21`;
   } else {
     if (productUrl && typeof productUrl === 'string') {
-      const cleanU = productUrl.replace(/^https?:\/\/inrdeals\.com\/avi646476329\//, '');
+      const cleanU = cleanUrl(productUrl);
       return `http://inrdeals.com/avi646476329/${cleanU}`;
     }
     return 'http://inrdeals.com/avi646476329/url';

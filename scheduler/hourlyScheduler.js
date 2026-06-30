@@ -113,6 +113,9 @@ class HourlyScheduler {
         // Schedule banner extraction every hour
         this.scheduleBannerExtraction();
 
+        // Schedule stale product update
+        this.scheduleStaleProductUpdate();
+
         this.isRunning = true;
         logger.info('Hourly scheduler started successfully');
     }
@@ -158,6 +161,35 @@ class HourlyScheduler {
         this.jobs.set('productExtraction', job);
         job.start();
         logger.info('Product extraction scheduled for every hour');
+    }
+
+    scheduleStaleProductUpdate() {
+        // Run once a day at 2 AM
+        const job = cron.schedule('0 2 * * *', async () => {
+            logger.info('Starting scheduled stale product update');
+            try {
+                const { exec } = require('child_process');
+                const path = require('path');
+                const scriptPath = path.join(__dirname, '../scripts/updateStaleProducts.js');
+                
+                exec(`node "${scriptPath}"`, (error, stdout, stderr) => {
+                    if (error) {
+                        logger.error('Stale product update failed', { error: error.message });
+                        return;
+                    }
+                    if (stderr) logger.warn('Stale product update warnings', { stderr });
+                    logger.info('Stale product update completed', { stdout });
+                });
+            } catch (error) {
+                logger.error('Scheduled stale product update failed:', error);
+            }
+        }, {
+            scheduled: false
+        });
+
+        this.jobs.set('staleProductUpdate', job);
+        job.start();
+        logger.info('Stale product update scheduled for 2 AM daily');
     }
 
     /**

@@ -18,9 +18,13 @@ const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
 if (!admin.apps.length) {
+  const databaseURL = DB_Name === 'lowerdealhub' 
+    ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+    : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+    
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
+    databaseURL: databaseURL
   });
 }
 
@@ -82,8 +86,11 @@ function getPreviousStateRef() {
  */
 async function loadState() {
   try {
+    console.log('[schedulerStateDB] loadState called');
     const stateRef = getStateRef();
+    console.log('[schedulerStateDB] calling once(value) on stateRef');
     const snapshot = await stateRef.once('value');
+    console.log('[schedulerStateDB] once(value) returned');
     
     if (snapshot.exists()) {
       const state = snapshot.val();

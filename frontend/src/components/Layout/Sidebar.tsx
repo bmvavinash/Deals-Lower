@@ -21,6 +21,10 @@ const Sidebar: React.FC = () => {
     { path: '/logs', label: 'Logs', icon: '📝' },
     { path: '/scheduler', label: 'Scheduler', icon: '⏰' },
     { path: '/analytics', label: 'Analytics', icon: '📊' },
+    { path: '/category-priority', label: 'Category Priority', icon: '📋' },
+    { path: '/product-matching', label: 'Product Matching', icon: '🔗' },
+    { path: '/commands', label: 'Commands', icon: '⚙️' },
+    { path: '/matching-config', label: 'Matching Config', icon: '⚙️' },
     {
       label: 'Others',
       icon: '📁',

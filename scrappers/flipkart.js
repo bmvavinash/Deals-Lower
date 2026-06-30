@@ -71,10 +71,9 @@ async function scrapeFlipkartProduct(url, text, driver) {
         
         try {
             prdCode = searchParams.get('pid');
-            product.productCode = prdCode.substr(0, 10);
-
-            // asin = url.substr(start, 10);
-
+            if (prdCode) {
+                product.productCode = prdCode;
+            }
          } catch(e) { console.log("Error in productCode",e);}
         try {product.productText = await extractAttribute(driver, flipkartConfig.productText); } catch(e) { console.log("Error in productText",e);}
         try {product.category = {} } catch(e) { console.log("Error in category",e);}

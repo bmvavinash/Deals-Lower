@@ -47,6 +47,22 @@ class FavoritesNotificationService {
     logger.info('Favorites notification service stopped');
   }
 
+  // Run once for orchestrator
+  async runOnce() {
+    if (!constants.notifications || constants.notifications.enableFavoritesService === false) {
+      logger.info('Favorites notification service disabled via config flag');
+      return { success: false, reason: 'disabled' };
+    }
+    try {
+      logger.info('Running favorites notification service one-time check');
+      await this.processFavoritesAndNotifications();
+      return { success: true };
+    } catch (error) {
+      logger.error('Error in runOnce', { error: error.message });
+      return { success: false, error: error.message };
+    }
+  }
+
   // Main processing function
   async processFavoritesAndNotifications() {
     const startTime = comprehensiveLoggingService.logFavoritesProcessingStart();
@@ -66,7 +82,7 @@ class FavoritesNotificationService {
 
       // 2. Process each user's favorites and notifications
       for (const user of users) {
-        const userStats = await this.processUserNotifications(user);
+        const userStats = await this.processUserNotifications(user) || {};
         totalFavorites += userStats.favorites || 0;
         totalNotifications += userStats.notifications || 0;
         priceTracking += userStats.priceTracking || 0;
@@ -128,13 +144,13 @@ class FavoritesNotificationService {
       // Check if user has notifications enabled
       if (!preferences.notifications?.enabled) {
         logger.debug(`Notifications disabled for user ${uid}`);
-        return;
+        return {};
       }
 
       // Check DND (Do Not Disturb)
       if (notifyService.isWithinDND(preferences)) {
         logger.debug(`User ${uid} is in DND period`);
-        return;
+        return {};
       }
 
       // 1. Price tracking notifications
@@ -146,8 +162,87 @@ class FavoritesNotificationService {
       // 3. Favorite deals expiring notifications
       await this.processFavoriteDealsExpiring(uid, preferences);
 
+      // 4. Favorite state changes (Price Drop and In-Stock Transitions)
+      await this.processFavoriteStateChanges(uid, preferences);
+
+      return {}; // return empty stats object to prevent undefined errors
     } catch (error) {
       logger.error(`Error processing notifications for user ${user.uid}`, { error: error.message });
+      return {};
+    }
+  }
+
+  // Process state changes for all favorites (price drop and out-of-stock -> in-stock)
+  async processFavoriteStateChanges(uid, preferences) {
+    try {
+      const favoritesData = await userFavoritesDB.getFavoriteProductsData(uid);
+      
+      for (const [productCode, favoriteData] of Object.entries(favoritesData)) {
+        const currentProduct = await this.getCurrentProductData(productCode);
+        if (!currentProduct) continue;
+
+        let needsUpdate = false;
+        let updateData = {};
+        
+        const currentPrice = parseFloat(currentProduct.price) || 0;
+        const previousPrice = parseFloat(favoriteData.lastCheckedPrice) || parseFloat(favoriteData.price) || 0;
+        const currentStockStatus = currentProduct.availability || 'in_stock';
+        const previousStockStatus = favoriteData.lastStockStatus || 'unknown';
+        const favPrefs = favoriteData.preferences || {};
+        const targetPrice = parseFloat(favPrefs.targetPrice) || 0;
+
+        let notifyChannels = { ...preferences?.notifications?.channels };
+        if (favPrefs.notifyTelegram !== undefined) notifyChannels.telegram = favPrefs.notifyTelegram;
+        if (favPrefs.notifyWhatsapp !== undefined) notifyChannels.whatsapp = favPrefs.notifyWhatsapp;
+        
+        const mergedPreferences = {
+           ...preferences,
+           notifications: {
+             ...preferences.notifications,
+             channels: notifyChannels
+           }
+        };
+
+        // Check for Price Drop
+        let priceAlert = false;
+        if (currentPrice > 0) {
+          if (targetPrice > 0 && currentPrice <= targetPrice && previousPrice > targetPrice) {
+            priceAlert = true;
+          } else if (previousPrice > 0 && currentPrice < previousPrice) {
+            const dropPercent = ((previousPrice - currentPrice) / previousPrice) * 100;
+            if (dropPercent >= 5) {
+              priceAlert = true;
+            }
+          }
+        }
+
+        if (priceAlert) {
+          const message = `📉 Price Dropped on Your Favorite!\n\n${currentProduct.title}\nOld Price: ₹${previousPrice}\nNew Price: ₹${currentPrice}\n${targetPrice > 0 ? `Target Price: ₹${targetPrice}\n` : ''}${currentProduct.productUrl || currentProduct.links?.avinashbmvINR || ''}`;
+          await this.sendNotification(uid, message, mergedPreferences, 'favorite_price_drop');
+        }
+
+        // Check for Stock Transition
+        if (previousStockStatus === 'out_of_stock' && currentStockStatus === 'in_stock') {
+          const message = `🎉 Back in Stock!\n\nYour favorite item is back:\n${currentProduct.title}\nPrice: ₹${currentPrice}\n${currentProduct.productUrl || currentProduct.links?.avinashbmvINR || ''}`;
+          await this.sendNotification(uid, message, mergedPreferences, 'favorite_back_in_stock');
+        }
+
+        // Always update the last checked states if they changed
+        if (previousPrice !== currentPrice) {
+          updateData.lastCheckedPrice = currentPrice;
+          needsUpdate = true;
+        }
+        if (previousStockStatus !== currentStockStatus) {
+          updateData.lastStockStatus = currentStockStatus;
+          needsUpdate = true;
+        }
+
+        if (needsUpdate) {
+          await userFavoritesDB.updateFavoriteStatus(uid, productCode, updateData);
+        }
+      }
+    } catch (error) {
+      logger.error(`Error processing favorite state changes for user ${uid}`, { error: error.message });
     }
   }
 

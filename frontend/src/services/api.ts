@@ -12,8 +12,10 @@ const api = axios.create({
 
 // Deals API
 export const dealsAPI = {
-  getAll: (params?: { dealType?: string; platform?: string; date?: string; limit?: number; offset?: number }) =>
+  getAll: (params?: { dealType?: string; platform?: string; date?: string; categoryGroup?: string; staticSubcategory?: string; limit?: number; offset?: number }) =>
     api.get('/deals', { params }),
+  searchGlobal: (params: { q: string; limit?: number; offset?: number }) =>
+    api.get('/deals/search', { params }),
   getByCode: (productCode: string, db?: string) =>
     api.get(`/deals/${encodeURIComponent(productCode)}`, { params: { db } }),
   getNotifications: (productCode: string) =>
@@ -109,6 +111,14 @@ export const executionAPI = {
 // Banners API
 export const bannersAPI = {
   extract: () => api.post('/banners/extract')
+};
+
+// Categories API
+export const categoriesAPI = {
+  getHierarchy: () => api.get('/categories/hierarchy'),
+  getCustom: () => api.get('/categories/custom'),
+  addCustom: (categoryGroup: string, subcategoryName: string) =>
+    api.post('/categories/custom', { categoryGroup, subcategoryName })
 };
 
 export default api;

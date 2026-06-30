@@ -186,6 +186,16 @@ class UserFavoritesDB {
     }
   }
 
+  async getFavoriteProductsData(userId) {
+    try {
+      const snapshot = await db().ref(`${this.usersBase}/${userId}/favorites`).once('value');
+      return snapshot.val() || {};
+    } catch (error) {
+      console.error(`Error getting favorite products data for user ${userId}:`, error);
+      return {};
+    }
+  }
+
   async getTrackedProducts(userId) {
     try {
       if (isLocalFallback) {
@@ -264,6 +274,19 @@ class UserFavoritesDB {
       return true;
     } catch (error) {
       console.error(`Error removing favorite for user ${userId}, product ${productCode}:`, error);
+      return false;
+    }
+  }
+
+  async updateFavoriteStatus(userId, productCode, statusData) {
+    try {
+      await db().ref(`${this.usersBase}/${userId}/favorites/${productCode}`).update({
+        ...statusData,
+        lastCheckedAt: Date.now()
+      });
+      return true;
+    } catch (error) {
+      console.error(`Error updating favorite status for user ${userId}, product ${productCode}:`, error);
       return false;
     }
   }

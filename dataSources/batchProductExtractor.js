@@ -137,6 +137,25 @@ function extractCategoryFromProductData(raw, sourceType, categoryFromKey) {
 	const description = (raw.description || '').toLowerCase();
 	const productUrl = (raw.productUrl || '').toLowerCase();
 	
+	if (categoryFromKey === 'air-conditioners' || categoryFromKey === 'air_conditioners') {
+		return { mainCategory: 'Electronics', subcategory: 'Air Conditioners', style: 'General' };
+	}
+	if (categoryFromKey === 'coolers') {
+		return { mainCategory: 'Electronics', subcategory: 'Air Coolers', style: 'General' };
+	}
+	if (categoryFromKey === 'laptops') {
+		return { mainCategory: 'Electronics', subcategory: 'Laptops', style: 'General' };
+	}
+	if (categoryFromKey === 'washing-machines' || categoryFromKey === 'washing_machines') {
+		return { mainCategory: 'Home Appliances', subcategory: 'Washing Machines', style: 'General' };
+	}
+	if (categoryFromKey === 'refrigerators') {
+		return { mainCategory: 'Home Appliances', subcategory: 'Refrigerators', style: 'General' };
+	}
+	if (categoryFromKey === 'tvs') {
+		return { mainCategory: 'Electronics', subcategory: 'Televisions', style: 'General' };
+	}
+	
 	// Extract category hints from URL
 	const urlCategoryHints = extractCategoryFromUrl(productUrl, sourceType);
 	
@@ -185,7 +204,7 @@ function isFootwear(allText, title, brand) {
 		'canvas', 'leather', 'rubber', 'synthetic', 'mesh', 'suede'
 	];
 	
-	return footwearKeywords.some(keyword => allText.includes(keyword));
+	return footwearKeywords.some(keyword => new RegExp('\\b' + keyword + '\\b', 'i').test(allText));
 }
 
 function extractFootwearCategory(allText, title, brand) {
@@ -247,7 +266,7 @@ function isElectronics(allText, title, brand) {
 		'electronic', 'digital', 'smart', 'tech', 'technology'
 	];
 	
-	return electronicsKeywords.some(keyword => allText.includes(keyword));
+	return electronicsKeywords.some(keyword => new RegExp('\\b' + keyword + '\\b', 'i').test(allText)) || allText.includes('ac ') || allText.includes('air conditioner');
 }
 
 function extractElectronicsCategory(allText, title, brand) {
@@ -299,7 +318,7 @@ function isFashion(allText, title, brand) {
 		'casual', 'formal', 'party', 'evening', 'work', 'office', 'business'
 	];
 	
-	return fashionKeywords.some(keyword => allText.includes(keyword));
+	return fashionKeywords.some(keyword => new RegExp('\\b' + keyword + '\\b', 'i').test(allText));
 }
 
 function extractFashionCategory(allText, title, brand) {
@@ -347,7 +366,7 @@ function isHomeGarden(allText, title, brand) {
 		'bedroom', 'bathroom', 'dining', 'office', 'storage', 'organizer', 'basket'
 	];
 	
-	return homeKeywords.some(keyword => allText.includes(keyword));
+	return homeKeywords.some(keyword => new RegExp('\\b' + keyword + '\\b', 'i').test(allText));
 }
 
 function extractHomeGardenCategory(allText, title, brand) {
@@ -378,7 +397,7 @@ function isBeautyPersonalCare(allText, title, brand) {
 		'skincare', 'hair care', 'nail', 'polish', 'perfume', 'fragrance', 'deodorant'
 	];
 	
-	return beautyKeywords.some(keyword => allText.includes(keyword));
+	return beautyKeywords.some(keyword => new RegExp('\\b' + keyword + '\\b', 'i').test(allText));
 }
 
 function extractBeautyCategory(allText, title, brand) {
@@ -409,7 +428,7 @@ function isSportsFitness(allText, title, brand) {
 		'equipment', 'gear', 'accessory', 'training', 'athletic', 'performance'
 	];
 	
-	return sportsKeywords.some(keyword => allText.includes(keyword));
+	return sportsKeywords.some(keyword => new RegExp('\\b' + keyword + '\\b', 'i').test(allText));
 }
 
 function extractSportsCategory(allText, title, brand) {
@@ -767,11 +786,12 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		});
 	}
 	
-	// Extract categoryGroup from categoryKey (format: platform_category)
+	// Extract categoryGroup from categoryKey (format: category_subcategory)
 	// categoryGroup should be lowercase, hyphenated (e.g., 'home-kitchen', 'beauty-personal-care')
 	let categoryGroup = '';
 	if (categoryKey && typeof categoryKey === 'string' && categoryKey.includes('_')) {
-		const categoryFromKey = categoryKey.split('_').pop() || '';
+		// categoryKey is like "electronics_air-conditioners", we want "electronics"
+		const categoryFromKey = categoryKey.split('_')[0] || '';
 		categoryGroup = categoryFromKey.toLowerCase();
 	} else {
 		// Fallback: try to derive from hierarchy or use default
@@ -865,9 +885,50 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		productUrl: productUrl
 	});
 
+	const { extractAttributes } = require('../utils/productAttributeExtractor');
+	const specsObj = raw.specifications || {};
+	const title = raw.name || raw.title || '';
+	const brand = (raw.brand || '').toUpperCase().replace(/\s+/g, '');
+	const attributes = extractAttributes(title, specsObj);
+
+	// Also check if extractAttributes found a model number from title/specs
+	const modelNumberFromSpecs = raw.modelNumber || attributes.modelNumber || '';
+
+	// Generate matchId for cross-platform grouping
+	// Priority: MODEL > GRP (brand+specs) > GEN (title hash)
+	let matchId = '';
+
+	if (modelNumberFromSpecs) {
+		// Strongest signal: exact model number (e.g., MODEL_MSA18K3FZAS, MODEL_B0D5J5V32Y)
+		matchId = `MODEL_${modelNumberFromSpecs.toUpperCase().replace(/\s+/g, '')}`;
+	} else if (brand && attributes.capacity && attributes.energyRating) {
+		// Appliances: SAMSUNG_1.5TON_3STAR
+		const inv = attributes.inverterType ? `_${attributes.inverterType.toUpperCase().replace(/\s+/g, '')}` : '';
+		matchId = `GRP_${brand}_${attributes.capacity.toUpperCase().replace(/\s+/g, '')}${inv}_${attributes.energyRating.toUpperCase().replace(/\s+/g, '')}`;
+	} else if (brand && attributes.capacity) {
+		// Appliances without rating: SAMSUNG_1.5TON
+		matchId = `GRP_${brand}_${attributes.capacity.toUpperCase().replace(/\s+/g, '')}`;
+	} else if (brand && attributes.ram && attributes.storage) {
+		// Laptops/Phones: LENOVO_16GB_512GB_15.6INCH
+		const screen = attributes.screenSize ? `_${attributes.screenSize.toUpperCase().replace(/\s+/g, '')}` : '';
+		matchId = `GRP_${brand}_${attributes.ram}_${attributes.storage}${screen}`;
+	} else if (brand && attributes.screenSize && attributes.processor) {
+		// Laptops with processor: HP_I512THGEN_15.6INCH
+		matchId = `GRP_${brand}_${attributes.processor.toUpperCase().replace(/\s+/g, '')}_${attributes.screenSize.toUpperCase().replace(/\s+/g, '')}`;
+	} else if (brand && attributes.screenSize) {
+		// TVs/Monitors: SAMSUNG_55INCH
+		matchId = `GRP_${brand}_${attributes.screenSize.toUpperCase().replace(/\s+/g, '')}`;
+	} else if (productCode && !productCode.startsWith('http') && productCode.length > 3) {
+		// Platform-specific product code (won't match across platforms)
+		matchId = `MATCH_${productCode}`;
+	} else {
+		// Generic fallback using title hash
+		matchId = `GEN_${Buffer.from(title.substring(0, 20)).toString('base64').replace(/[=+/]/g, '')}`;
+	}
+
 	const normalized = {
 		brand: raw.brand || '',
-		title: raw.name || raw.title || '',
+		title: title,
 		price: raw.discountedPrice || raw.price || '',
 		originalPrice: raw.originalPrice || raw.mrp || '',
 		discountPercentage: raw.discountPercentage || raw.discount || '',
@@ -878,6 +939,8 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		images: raw.images || [],
 		productCode,
 		productUrl,
+		matchId,
+		attributes,
 		links,
 		categoryKey,
 		categoryPath: raw.categoryPath || [],
@@ -1233,6 +1296,13 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 		}
 	}
 
+		// Enrich with static mapping
+		const { getStaticCategoryMapping } = require('../utils/staticCategoryMapping');
+		finalProductsToStore = finalProductsToStore.map(p => {
+			const staticInfo = getStaticCategoryMapping(p);
+			return { ...p, ...staticInfo };
+		});
+
 		let storedCount = 0;
 		let createdCount = 0;
 		let updatedCount = 0;
@@ -1245,6 +1315,15 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 			storedCount = result.count || finalProductsToStore.length;
 			createdCount = result.created || 0;
 			updatedCount = result.updated || 0;
+
+			// Also save to static categories node for UI consumption
+			if (targetDb === 'productdeals') {
+				await withTimeout(
+					productDealsDB.bulkUpsertProducts(finalProductsToStore, 'productdeals_static'),
+					(require('../config/constants').maxPlatformTimeoutMs || 900000),
+					'DB_UPSERT_STATIC'
+				);
+			}
 		} catch (e) {
 			if (ctx) ctx.failedCount += finalProductsToStore.length;
 			throw e;
@@ -1360,33 +1439,18 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 	// Context to persist summary details until termination
 	const ctx = { noProductUrls: [], pageTypeHits: {}, missingFieldLogs: [], errors: [], dedupedCount: 0, skippedUnchangedCount: 0, failedCount: 0 };
 	
-	// Extract platform and category from categoryKey (format: platform_category)
-	const [platform, category] = categoryKey.split('_');
-	// #region agent log
-	fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:961',message:'Platform extracted',data:{platform,category,categoryKey,storeMap_type:typeof storeMap,storeMap_isUndefined:storeMap===undefined,storeMap_hasPlatform:storeMap?!!storeMap[platform]:false},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-	// #endregion
-	logger.info('📦 Platform extracted from categoryKey', { platform, category, categoryKey });
+	// We no longer extract platform and category from categoryKey here
+	// because categoryKey can be 'electronics_air-conditioners'.
+	// Instead, extractAndStoreFromUrl will detect platform from the URL.
 	
 	// Validate storeMap is available before proceeding
 	if (!storeMap || typeof storeMap !== 'object') {
-		// #region agent log
-		fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:965',message:'storeMap validation failed',data:{storeMap_type:typeof storeMap,storeMap_value:storeMap,categoryKey,platform},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-		// #endregion
-		logger.error('❌ [ERROR] storeMap is not available in runBatch', {
-			storeMapType: typeof storeMap,
-			storeMapValue: storeMap,
-			categoryKey,
-			platform
-		});
+		logger.error('❌ [ERROR] storeMap is not available in runBatch');
 		throw new Error('storeMap configuration is not available in runBatch');
 	}
 	
-	// #region agent log
-	fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:976',message:'storeMap validated',data:{availablePlatforms:Object.keys(storeMap).join(','),hasPlatform:!!storeMap[platform],platform},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
-	// #endregion
 	logger.info('✅ storeMap validated', { 
-		availablePlatforms: Object.keys(storeMap),
-		hasPlatform: !!storeMap[platform]
+		availablePlatforms: Object.keys(storeMap)
 	});
 	
 	const { executionTracker } = require('../services/executionTracker');
@@ -1405,8 +1469,10 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 				driver = await initializeDriver();
 			}
 			
-			// Don't initialize with 0 - wait for actual extraction results
-			// This prevents showing 0/0 when extraction hasn't completed yet
+			// Detect platform from URL for tracker
+			const { resolvePlatformFromUrl } = require('../utils/platformUtils');
+			let platform = resolvePlatformFromUrl(url) || Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase())) || 'amazon';
+			let category = categoryKey;
 			
 			await driver.get(url);
 			await withTimeout(driver.wait(until.elementLocated(By.css('body')), 15000), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE_WAIT');

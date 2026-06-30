@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import ExpandableDealCard from './ExpandableDealCard';
 import { Deal } from '../../types/deal';
 import './DealList.css';

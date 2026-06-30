@@ -12,6 +12,13 @@ async function zerodhaHoldings(driver) {
         // Initialize an array to store the table data
         let tableData = [];
 
+        // Extract headers once outside the loop to improve performance
+        let headers = await driver.findElements(By.css('table thead tr th'));
+        let headerTexts = [];
+        for (let header of headers) {
+            headerTexts.push(await header.getText());
+        }
+
         // Loop through all rows
         for (let row of rows) {
             // Find all cells in the current row
@@ -21,11 +28,9 @@ async function zerodhaHoldings(driver) {
             // Loop through all cells and extract their text
             for (let i = 0; i < cells.length; i++) {
                 let cellText = await cells[i].getText();
-
-                // Optionally: use the header of the column as the key
-                // Find all header cells (assuming the first row contains headers)
-                let headers = await driver.findElements(By.css('table thead tr th'));
-                let headerText = await headers[i].getText();
+                
+                // Use the pre-fetched header text
+                let headerText = headerTexts[i] || `Column_${i}`;
                 
                 // Store the text in the rowData object
                 rowData[headerText] = cellText;

@@ -144,6 +144,7 @@ router.post('/process-product', async (req, res) => {
     }
 
     let result;
+    let errorContext = {};
     if (productCode) {
       logger.info('Calling getProductDetails for single product', { url: resolvedUrl, productCode });
       result = await getProductDetails(
@@ -157,9 +158,11 @@ router.post('/process-product', async (req, res) => {
         postProduct, // postProduct flag
         '', // username
         false, // generateLink
-        '' // shortUrl
+        '', // shortUrl
+        null, // categoryOverride
+        errorContext // errorContext
       );
-      logger.info('getProductDetails returned', { result });
+      logger.info('getProductDetails returned', { result, errorContext });
     } else {
       if (global.isCrawlingListingPage) {
         logger.info('Bulk extraction already in progress, returning 429');
@@ -207,8 +210,8 @@ router.post('/process-product', async (req, res) => {
 
     if (result === productStatus.PRODUCT_ERROR) {
       status = 'error';
-      message = 'Failed to process product';
-      error = 'Product processing encountered an error';
+      message = errorContext.reason ? `Failed: ${errorContext.reason}` : 'Failed to process product';
+      error = errorContext.reason || 'Product processing encountered an error';
     } else if (result === productStatus.PRODUCT_EXCLUDED) {
       status = 'excluded';
       message = 'Product excluded (Affiliate policy)';
@@ -245,6 +248,61 @@ router.post('/process-product', async (req, res) => {
       error: error.message,
       timestamp: new Date().toISOString()
     });
+  }
+});
+
+/**
+ * POST /api/deals/link
+ * Manually link two products by assigning them the same matchId
+ * Body: { sourceProductCode: string, targetProductCode: string }
+ */
+router.post('/link', async (req, res) => {
+  try {
+    const { sourceProductCode, targetProductCode } = req.body;
+    
+    if (!sourceProductCode || !targetProductCode) {
+      return res.status(400).json({ success: false, error: 'Both source and target product codes are required' });
+    }
+
+    // Generate a unified manual match ID
+    const manualMatchId = `MANUAL_LINK_${Date.now()}`;
+    
+    // Update in both DBs (deals and productdeals) to be thorough
+    const dbs = [productDealsDB.dealsRef, productDealsDB.productdealsRef];
+    
+    let updated = 0;
+    for (const ref of dbs) {
+      for (const pCode of [sourceProductCode, targetProductCode]) {
+        const safeKey = String(pCode).replace(/[.#$/\[\]]/g, '_');
+        
+        // Try safeKey directly
+        let snapshot = await ref.child(safeKey).once('value');
+        if (snapshot.exists()) {
+          await ref.child(safeKey).update({ matchId: manualMatchId });
+          updated++;
+          continue;
+        }
+        
+        // Try query by productCode
+        snapshot = await ref.orderByChild('productCode').equalTo(pCode).once('value');
+        if (snapshot.exists()) {
+          const products = snapshot.val();
+          const key = Object.keys(products)[0];
+          await ref.child(key).update({ matchId: manualMatchId });
+          updated++;
+        }
+      }
+    }
+
+    if (updated === 0) {
+      return res.status(404).json({ success: false, error: 'Could not find one or both products in the database' });
+    }
+
+    res.json({ success: true, message: `Successfully linked ${updated} product records`, matchId: manualMatchId });
+
+  } catch (error) {
+    logger.error('Error linking products', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to link products' });
   }
 });
 
@@ -372,10 +430,10 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, date, limit = 100, offset = 0 } = req.query;
+    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0 } = req.query;
     
     // Create cache key
-    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${limit}_${offset}`;
+    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}`;
     
     // Check cache first (increased TTL to 10 minutes for deals)
     const cached = cacheService.get(cacheKey);
@@ -393,8 +451,9 @@ router.get('/', async (req, res, next) => {
       // Use native Firebase querying to fetch by date
       snapshot = await ref.orderByChild('date').equalTo(date).once('value');
     } else {
-      // Use native Firebase querying to fetch a larger pool (5000) to account for potential invalid items
-      snapshot = await ref.orderByChild('datetime').limitToLast(5000).once('value');
+      // Use native Firebase querying to fetch a dynamic pool size to account for potential invalid items
+      const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
+      snapshot = await ref.orderByChild('datetime').limitToLast(poolSize).once('value');
     }
     let deals = snapshot.val() || {};
     
@@ -413,6 +472,20 @@ router.get('/', async (req, res, next) => {
     if (platform) {
       dealsArray = dealsArray.filter(deal => 
         deal.storeType?.toLowerCase() === platform.toLowerCase()
+      );
+    }
+
+    // Filter by categoryGroup if specified
+    if (categoryGroup) {
+      dealsArray = dealsArray.filter(deal => 
+        deal.categoryGroup === categoryGroup
+      );
+    }
+
+    // Filter by staticSubcategory if specified
+    if (staticSubcategory) {
+      dealsArray = dealsArray.filter(deal => 
+        deal.staticSubcategory?.toLowerCase() === staticSubcategory.toLowerCase()
       );
     }
 
@@ -439,16 +512,18 @@ router.get('/', async (req, res, next) => {
     const total = dealsArray.length;
     const paginated = dealsArray.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
 
-    // Get notification statuses for paginated deals
-    const dealsWithNotifications = await Promise.all(
-      paginated.map(async (deal) => {
-        const notificationStatus = await notificationTrackingDB.getNotificationStatus(deal.productCode);
-        return {
-          ...deal,
-          notificationStatus: notificationStatus || null
-        };
-      })
-    );
+    // Get notification statuses for paginated deals in a single batch query
+    const notificationSnapshot = await notificationTrackingDB.ref.once('value');
+    const allNotifications = notificationSnapshot.val() || {};
+
+    const dealsWithNotifications = paginated.map((deal) => {
+      const safeKey = String(deal.productCode).replace(/[.#$/\[\]]/g, '_');
+      const notificationStatus = allNotifications[safeKey] || null;
+      return {
+        ...deal,
+        notificationStatus: notificationStatus
+      };
+    });
 
     const response = {
       success: true,
@@ -685,6 +760,68 @@ router.post('/bulk-refresh-timestamps', async (req, res) => {
       error: error.message,
       timestamp: new Date().toISOString()
     });
+  }
+});
+
+/**
+ * GET /api/deals/search
+ * Global search across the lightweight search index
+ * Query params: q (search query), limit, offset
+ */
+router.get('/search', async (req, res, next) => {
+  try {
+    const { q, limit = 20, offset = 0 } = req.query;
+    
+    if (!q || q.trim() === '') {
+      return res.status(400).json({ success: false, error: 'Search query is required' });
+    }
+
+    const query = q.toLowerCase().trim();
+    
+    // Fetch the lightweight index
+    const snapshot = await productDealsDB.searchIndexRef.once('value');
+    const indexData = snapshot.val() || {};
+    
+    // Filter the index in-memory
+    const matchedKeys = [];
+    Object.entries(indexData).forEach(([key, data]) => {
+      if ((data.t && data.t.includes(query)) || 
+          (data.b && data.b.includes(query)) || 
+          (data.c && data.c.includes(query))) {
+        matchedKeys.push(key);
+      }
+    });
+    
+    // Paginate matched keys
+    const total = matchedKeys.length;
+    const paginatedKeys = matchedKeys.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    
+    // Fetch full deal details for paginated keys
+    // We will search both deals and productdeals to be safe, starting with productdeals
+    const fetchDeal = async (key) => {
+      let doc = await productDealsDB.productdealsRef.child(key).once('value');
+      if (!doc.exists()) {
+        doc = await productDealsDB.dealsRef.child(key).once('value');
+      }
+      return doc.exists() ? { productCode: key, ...doc.val() } : null;
+    };
+    
+    const fullDeals = await Promise.all(paginatedKeys.map(fetchDeal));
+    const validDeals = fullDeals.filter(d => d !== null);
+
+    res.json({
+      success: true,
+      data: validDeals,
+      pagination: {
+        total,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        hasMore: parseInt(offset) + parseInt(limit) < total
+      }
+    });
+  } catch (error) {
+    logger.error('Error in global search', { error: error.message, stack: error.stack });
+    next(error);
   }
 });
 

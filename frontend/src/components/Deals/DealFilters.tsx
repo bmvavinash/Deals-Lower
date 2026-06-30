@@ -8,6 +8,7 @@ interface DealFiltersProps {
     date: string;
     limit: number;
     offset: number;
+    q?: string;
   };
   onFilterChange: (filters: any) => void;
   isLoading?: boolean;
@@ -63,6 +64,18 @@ const DealFilters: React.FC<DealFiltersProps> = ({ filters, onFilterChange, isLo
             onChange={(e) => setLocalFilters({ ...localFilters, date: e.target.value })}
             className="date-filter"
             title="Filter by Date"
+          />
+        </div>
+
+        <div className="filter-group">
+          <label>Global Search:</label>
+          <input
+            type="text"
+            placeholder="Search deals..."
+            value={localFilters.q || ''}
+            onChange={(e) => setLocalFilters({ ...localFilters, q: e.target.value })}
+            className="search-filter"
+            title="Global search across all deals"
           />
         </div>
 

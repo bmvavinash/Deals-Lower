@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const express = require('express');
 const cors = require('cors');
 const { getModuleLogger } = require('../../logger/logger');
@@ -62,6 +63,10 @@ const newsRoutes = require('./routes/news');
 const bannersRoutes = require('./routes/banners');
 const dadExpensesRoutes = require('./routes/dadExpenses');
 const favoritesRoutes = require('./routes/favorites');
+const categoryPriorityRoutes = require('./routes/categoryPriority');
+const commandsRoutes = require('./routes/commands');
+const categoriesRoutes = require('./routes/categories');
+const matchingConfigRoutes = require('./routes/matchingConfig');
 
 const app = express();
 const PORT = constants.frontend?.apiPort || 3001;
@@ -101,6 +106,10 @@ app.use('/api/news', newsRoutes);
 app.use('/api/banners', bannersRoutes);
 app.use('/api/dad-expenses', dadExpensesRoutes);
 app.use('/api/favorites', favoritesRoutes);
+app.use('/api/category-priority', categoryPriorityRoutes);
+app.use('/api/commands', commandsRoutes);
+app.use('/api/categories', categoriesRoutes);
+app.use('/api/matching-config', matchingConfigRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

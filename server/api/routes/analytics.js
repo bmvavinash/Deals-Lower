@@ -4,7 +4,7 @@ const { getModuleLogger } = require('../../../logger/logger');
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
 const { notificationTrackingDB } = require('../../../database/firebaseDB/notificationTrackingDB');
 const { loadState, getStateSummary } = require('../../../database/firebaseDB/schedulerStateDB');
-const bannerManager = require('../../../bannerManager');
+const { bannerManager } = require('../../../bannerManager');
 const cacheService = require('../../../services/cacheService');
 
 const logger = getModuleLogger('analytics-api');

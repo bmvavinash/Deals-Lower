@@ -7,7 +7,7 @@ echo Workspace: C:\Users\avina\.cursor\worktrees\DealsOptimised\hqn
 echo.
 
 REM Change to the workspace directory
-cd /d "C:\Users\avina\.cursor\worktrees\DealsOptimised\hqn"
+cd /d "%~dp0"
 
 REM Stop existing Node processes
 echo [1/3] Stopping existing Node processes...
@@ -18,14 +18,14 @@ echo.
 
 REM Start Backend API Server (Port 3001)
 echo [2/3] Starting Backend API Server (Port 3001)...
-start "Backend API - Port 3001 (HQN)" cmd /k "cd /d "C:\Users\avina\.cursor\worktrees\DealsOptimised\hqn" && echo Starting Backend API on port 3001... && node server/api/index.js"
+start "Backend API - Port 3001" cmd /k "cd /d "%~dp0" && echo Starting Backend API on port 3001... && node server/api/index.js"
 timeout /t 5 /nobreak >nul
 echo ✅ Backend API Server started
 echo.
 
 REM Start Frontend Server (Port 5173)
 echo [3/3] Starting Frontend Server (Port 5173)...
-start "Frontend Server - Port 5173 (HQN)" cmd /k "cd /d "C:\Users\avina\.cursor\worktrees\DealsOptimised\hqn\frontend" && echo Starting Frontend on port 5173... && npm run dev"
+start "Frontend Server - Port 5173" cmd /k "cd /d "%~dp0frontend" && echo Starting Frontend on port 5173... && npm run dev"
 timeout /t 3 /nobreak >nul
 echo ✅ Frontend Server starting
 echo.
