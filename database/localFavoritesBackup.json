@@ -108,7 +108,38 @@
     },
     "7K279uQlSbNQPq6aBlslZlPPoXB2": {
       "createdAt": 1782841954964,
-      "favorites": {},
+      "favorites": {
+        "55115": {
+          "addedAt": 1782844239661,
+          "title": "55115",
+          "price": null,
+          "storeType": null
+        },
+        "55370": {
+          "addedAt": 1782844239661,
+          "title": "55370",
+          "price": null,
+          "storeType": null
+        },
+        "B0D6VJCZW3": {
+          "addedAt": 1782844239661,
+          "title": "B0D6VJCZW3",
+          "price": null,
+          "storeType": null
+        },
+        "B0CY8MHDH2": {
+          "title": "Sheesham Wood Study Table",
+          "price": 8999,
+          "storeType": "Amazon",
+          "addedAt": 1782844202365
+        },
+        "B0F24SFM4W": {
+          "title": "Sheesham Chair",
+          "price": 2499,
+          "storeType": "Flipkart",
+          "addedAt": 1782844202365
+        }
+      },
       "trackedProducts": {},
       "preferences": {},
       "channels": {},
@@ -124,10 +155,23 @@
       "lastSeen": [
         "B0CY8MHDH2",
         "B0F24SFM4W"
+      ],
+      "searches": [
+        "books"
       ]
     }
   },
   "favouritesByProduct": {
+    "55115": {
+      "7K279uQlSbNQPq6aBlslZlPPoXB2": {
+        "addedAt": 1782844239661
+      }
+    },
+    "55370": {
+      "7K279uQlSbNQPq6aBlslZlPPoXB2": {
+        "addedAt": 1782844239661
+      }
+    },
     "TEST_PROD_999": {
       "test-user-123": {
         "addedAt": 1782662597085
@@ -136,6 +180,21 @@
     "TEST_WHATSAPP_PROD": {
       "whatsapp-real-test-user": {
         "addedAt": 1782734471260
+      }
+    },
+    "B0D6VJCZW3": {
+      "7K279uQlSbNQPq6aBlslZlPPoXB2": {
+        "addedAt": 1782844239661
+      }
+    },
+    "B0CY8MHDH2": {
+      "7K279uQlSbNQPq6aBlslZlPPoXB2": {
+        "addedAt": 1782844202365
+      }
+    },
+    "B0F24SFM4W": {
+      "7K279uQlSbNQPq6aBlslZlPPoXB2": {
+        "addedAt": 1782844202365
       }
     }
   },
