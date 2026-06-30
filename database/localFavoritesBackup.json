@@ -82,6 +82,46 @@
           "phone": "919951797149"
         }
       }
+    },
+    "real-google-user-id-999": {
+      "createdAt": 1782841939255,
+      "favorites": {},
+      "trackedProducts": {},
+      "preferences": {},
+      "channels": {},
+      "profile": {
+        "uid": "real-google-user-id-999",
+        "email": "avinash.kumar@google.com",
+        "displayName": "Avinash Kumar",
+        "photoURL": "https://lh3.googleusercontent.com/avatar"
+      },
+      "searches": [
+        "books",
+        "laptops",
+        "furniture",
+        "shoes"
+      ],
+      "lastSeen": [
+        "55115",
+        "TEST_PROD_999"
+      ]
+    },
+    "7K279uQlSbNQPq6aBlslZlPPoXB2": {
+      "createdAt": 1782841954964,
+      "favorites": {},
+      "trackedProducts": {},
+      "preferences": {},
+      "channels": {},
+      "profile": {
+        "uid": "7K279uQlSbNQPq6aBlslZlPPoXB2",
+        "email": "avi2bmv@gmail.com",
+        "displayName": "avi bmv",
+        "photoURL": "https://lh3.googleusercontent.com/a/ACg8ocLoBJx51PpYukbcI8DJCDO2uXUdi840aCCcjDVuRJN8vIsnhA=s96-c"
+      },
+      "lastSeen": [
+        "B0CY8MHDH2",
+        "B0F24SFM4W"
+      ]
     }
   },
   "favouritesByProduct": {

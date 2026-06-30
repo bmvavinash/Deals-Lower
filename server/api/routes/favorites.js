@@ -180,6 +180,7 @@ router.put('/user/preferences', authenticateUser, async (req, res) => {
 
 // PUT /api/favorites/user/profile - Sync user profile details
 router.put('/user/profile', authenticateUser, async (req, res) => {
+  console.log(`📥 [API] PUT /user/profile called for user: ${req.userId}`, req.body);
   try {
     const { profile } = req.body;
     if (!profile) {
@@ -187,8 +188,10 @@ router.put('/user/profile', authenticateUser, async (req, res) => {
     }
     const success = await userFavoritesDB.updateUserProfile(req.userId, profile);
     if (success) {
+      console.log(`✅ [API] Profile synced successfully for user: ${req.userId}`);
       res.json({ success: true, message: 'Profile synchronized successfully' });
     } else {
+      console.log(`❌ [API] Failed to sync profile for user: ${req.userId}`);
       res.status(500).json({ error: 'Failed to sync user profile' });
     }
   } catch (error) {
@@ -199,6 +202,7 @@ router.put('/user/profile', authenticateUser, async (req, res) => {
 
 // PUT /api/favorites/user/searches - Sync user search queries
 router.put('/user/searches', authenticateUser, async (req, res) => {
+  console.log(`📥 [API] PUT /user/searches called for user: ${req.userId}`, req.body);
   try {
     const { searches } = req.body;
     if (!searches || !Array.isArray(searches)) {
@@ -206,8 +210,10 @@ router.put('/user/searches', authenticateUser, async (req, res) => {
     }
     const success = await userFavoritesDB.updateUserSearches(req.userId, searches);
     if (success) {
+      console.log(`✅ [API] Searches synced successfully for user: ${req.userId}`);
       res.json({ success: true, message: 'Searches synchronized successfully' });
     } else {
+      console.log(`❌ [API] Failed to sync searches for user: ${req.userId}`);
       res.status(500).json({ error: 'Failed to sync searches' });
     }
   } catch (error) {
@@ -218,6 +224,7 @@ router.put('/user/searches', authenticateUser, async (req, res) => {
 
 // PUT /api/favorites/user/last-seen - Sync user last seen products
 router.put('/user/last-seen', authenticateUser, async (req, res) => {
+  console.log(`📥 [API] PUT /user/last-seen called for user: ${req.userId}`, req.body);
   try {
     const { lastSeen } = req.body;
     if (!lastSeen || !Array.isArray(lastSeen)) {
@@ -225,8 +232,10 @@ router.put('/user/last-seen', authenticateUser, async (req, res) => {
     }
     const success = await userFavoritesDB.updateUserLastSeen(req.userId, lastSeen);
     if (success) {
+      console.log(`✅ [API] Last seen products synced successfully for user: ${req.userId}`);
       res.json({ success: true, message: 'Last seen products synchronized successfully' });
     } else {
+      console.log(`❌ [API] Failed to sync last seen for user: ${req.userId}`);
       res.status(500).json({ error: 'Failed to sync last seen products' });
     }
   } catch (error) {
