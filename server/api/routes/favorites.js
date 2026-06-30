@@ -126,6 +126,25 @@ router.delete('/tracked-products/:productCode', authenticateUser, async (req, re
   }
 });
 
+// GET /api/favorites/admin/dashboard - Get end-to-end admin details across all users and alerts
+router.get('/admin/dashboard', async (req, res) => {
+  try {
+    const allUsersObj = await userFavoritesDB.getAllUsers();
+    const allFavsObj = await userFavoritesDB.getAllFavorites();
+    const allTrackersObj = await userFavoritesDB.getAllTrackers();
+    
+    res.json({
+      success: true,
+      users: allUsersObj,
+      favoritesByProduct: allFavsObj,
+      trackersByProduct: allTrackersObj
+    });
+  } catch (error) {
+    logger.error('Error getting admin dashboard data', { error: error.message });
+    res.status(500).json({ error: 'Failed to get admin dashboard data' });
+  }
+});
+
 // GET /api/favorites/user/preferences - Get user preferences
 router.get('/user/preferences', authenticateUser, async (req, res) => {
   try {
