@@ -41,6 +41,8 @@ interface User {
   favoritesCount: number;
   favorites: { [productCode: string]: FavoriteItem };
   trackedProducts: { [productCode: string]: TrackedProduct };
+  searches: string[];
+  lastSeen: string[];
 }
 
 interface ProductDetails {
@@ -124,7 +126,9 @@ const UsersPage: React.FC = () => {
       whatsappConfigured,
       favoritesCount: Object.keys(u.favorites || {}).length,
       favorites: u.favorites || {},
-      trackedProducts: tracked
+      trackedProducts: tracked,
+      searches: u.searches || [],
+      lastSeen: u.lastSeen || []
     };
   });
 
@@ -384,6 +388,73 @@ const UsersPage: React.FC = () => {
                         <span>Store: <b>{details.storeType || 'Unknown'}</b></span>
                         <span className="item-price-tag">{details.price !== undefined ? `₹${details.price}` : 'N/A'}</span>
                       </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recent Searches Section */}
+            <div className="drilldown-searches-section" style={{ marginTop: '24px', borderTop: '1px dashed #e9ecef', paddingTop: '20px' }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#1a1f36', fontWeight: 600 }}>Recent Searches ({selectedUser.searches?.length || 0})</h4>
+              {!selectedUser.searches || selectedUser.searches.length === 0 ? (
+                <p className="no-searches-text" style={{ fontSize: '13px', color: '#697386', fontStyle: 'italic', margin: 0 }}>No recent searches recorded.</p>
+              ) : (
+                <div className="searches-chips-container" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                  {selectedUser.searches.map((term, index) => (
+                    <span 
+                      key={index} 
+                      className="search-chip" 
+                      style={{ 
+                        backgroundColor: '#f1f3f5', 
+                        color: '#495057', 
+                        padding: '4px 10px', 
+                        borderRadius: '16px', 
+                        fontSize: '12px', 
+                        fontWeight: '500',
+                        border: '1px solid #dee2e6'
+                      }}
+                    >
+                      🔍 {term}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Recently Viewed Products Section */}
+            <div className="drilldown-lastseen-section" style={{ marginTop: '24px', borderTop: '1px dashed #e9ecef', paddingTop: '20px' }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#1a1f36', fontWeight: 600 }}>Recently Viewed ({selectedUser.lastSeen?.length || 0})</h4>
+              {!selectedUser.lastSeen || selectedUser.lastSeen.length === 0 ? (
+                <p className="no-lastseen-text" style={{ fontSize: '13px', color: '#697386', fontStyle: 'italic', margin: 0 }}>No recently viewed products recorded.</p>
+              ) : (
+                <div className="lastseen-list" style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {selectedUser.lastSeen.map((code, index) => (
+                    <div 
+                      key={index} 
+                      className="lastseen-item" 
+                      style={{ 
+                        backgroundColor: '#f8f9fa', 
+                        border: '1px solid #e9ecef', 
+                        borderRadius: '6px', 
+                        padding: '8px 12px',
+                        fontSize: '13px',
+                        fontFamily: 'monospace',
+                        color: '#212529',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <span>📦 {code}</span>
+                      <a 
+                        href={`http://localhost:3000/p/${code}`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        style={{ fontSize: '11px', color: '#1a1f36', textDecoration: 'underline', fontWeight: '600' }}
+                      >
+                        View Product
+                      </a>
                     </div>
                   ))}
                 </div>
