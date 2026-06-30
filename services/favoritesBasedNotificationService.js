@@ -177,6 +177,47 @@ class FavoritesBasedNotificationService {
   }
 
   /**
+   * Check if stock status has changed (e.g. Back in Stock) for favorited users
+   */
+  async checkStockStatusChanges(productCode, currentProduct, previousProduct) {
+    try {
+      if (!isFavoritesEnabled()) return;
+      if (!productCode || !currentProduct || !previousProduct) return;
+
+      const currentOutOfStock = !!currentProduct.isOutOfStock;
+      const previousOutOfStock = !!previousProduct.isOutOfStock;
+
+      if (previousOutOfStock && !currentOutOfStock) {
+        // Product went from out of stock to in stock -> Back in Stock!
+        const userIds = await userFavoritesDB.getUsersFavouritedProduct(productCode);
+        if (!userIds || userIds.length === 0) return;
+
+        logger.info('Back in stock detected for favorited product', {
+          productCode,
+          title: currentProduct.title,
+          usersCount: userIds.length
+        });
+
+        await this.notifyUsersForProduct(userIds, currentProduct, 'back_in_stock');
+      } else if (!previousOutOfStock && currentOutOfStock) {
+        // Product went from in stock to out of stock -> Out of Stock!
+        const userIds = await userFavoritesDB.getUsersFavouritedProduct(productCode);
+        if (!userIds || userIds.length === 0) return;
+
+        logger.info('Out of stock detected for favorited product', {
+          productCode,
+          title: currentProduct.title,
+          usersCount: userIds.length
+        });
+
+        await this.notifyUsersForProduct(userIds, currentProduct, 'out_of_stock');
+      }
+    } catch (error) {
+      logger.error('Error checking stock status changes', { productCode, error: error.message });
+    }
+  }
+
+  /**
    * Notify users about a specific product
    */
   async notifyUsersForProduct(userIds, product, notificationType, extraData = {}) {
@@ -209,9 +250,10 @@ class FavoritesBasedNotificationService {
 
         // Send via WhatsApp (preferred) or Telegram
         let sent = false;
+        const photoUrl = product.photo || product.image || '';
         if (channels.whatsapp && preferences.whatsapp?.phone && constants.notifications?.enableWhatsapp) {
           const phone = channels.whatsapp.phone || preferences.whatsapp.phone;
-          sent = await notifyWhatsapp(phone, message, product.productCode, 'productDeal');
+          sent = await notifyWhatsapp(phone, message, product.productCode, 'productDeal', photoUrl);
           if (sent) {
             this.notificationStats.byChannel.whatsapp.sent++;
             notifiedCount++;
@@ -223,7 +265,7 @@ class FavoritesBasedNotificationService {
           this.notificationStats.byChannel.whatsapp.triggered++;
         } else if (channels.telegram && preferences.telegram?.chatId) {
           const chatId = channels.telegram.chatId || preferences.telegram.chatId;
-          sent = await notifyTelegram(chatId, message, product.productCode, 'productDeal');
+          sent = await notifyTelegram(chatId, message, product.productCode, 'productDeal', photoUrl);
           if (sent) {
             this.notificationStats.byChannel.telegram.sent++;
             notifiedCount++;
@@ -322,20 +364,26 @@ class FavoritesBasedNotificationService {
     let message = '';
 
     if (notificationType === 'price_drop') {
-      message = `💰 Price Drop Alert!\n\n${title}\n\n`;
+      message = `💥 😲 Wow! Price Drop Alert! 📉\n\n${title}\n\n`;
       if (extraData.previousPrice && extraData.currentPrice) {
-        message += `Was: ₹${extraData.previousPrice}\nNow: ₹${extraData.currentPrice}\nSave: ${extraData.dropPercent}%\n\n`;
+        message += `🏷️ Old Price: ₹${extraData.previousPrice}\n💸 Offer Price: ₹${extraData.currentPrice}\n🚀 You Save: ${extraData.dropPercent}%\n\n`;
       }
       message += `${productUrl}`;
+    } else if (notificationType === 'back_in_stock') {
+      message = `🎉 Back in Stock Alert! 🚀\n\n${title}\n\nThis item is now back in stock!\n`;
+      if (price) message += `💸 Offer Price: ${price}\n`;
+      message += `\n${productUrl}`;
+    } else if (notificationType === 'out_of_stock') {
+      message = `⚠️ Out of Stock Alert!\n\n${title}\n\nThis item is now out of stock!\n\n${productUrl}`;
     } else if (notificationType === 'new_deal') {
-      message = `🔥 New Deal!\n\n${title}\n\n`;
-      if (price) message += `Price: ${price}\n`;
-      if (discount) message += `Discount: ${discount}\n`;
+      message = `🔥 😲 Hot New Deal! 📉\n\n${title}\n\n`;
+      if (price) message += `💸 Offer Price: ${price}\n`;
+      if (discount) message += `🏷️ Discount: ${discount}\n`;
       message += `\n${productUrl}`;
     } else {
       message = `🎯 Deal Alert!\n\n${title}\n\n`;
-      if (price) message += `Price: ${price}\n`;
-      if (discount) message += `Discount: ${discount}\n`;
+      if (price) message += `💸 Offer Price: ${price}\n`;
+      if (discount) message += `🏷️ Discount: ${discount}\n`;
       message += `\n${productUrl}`;
     }
 

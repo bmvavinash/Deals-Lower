@@ -157,11 +157,11 @@ module.exports = {
 
   // Notification toggles and thresholds
   notifications: {
-    enableWhatsapp: false,
-    enableTelegram: false,
+    enableWhatsapp: true,
+    enableTelegram: true,
     enablePush: false,
     enableBrowser: false,
-    enableFavoritesService: false,
+    enableFavoritesService: true,
     lowStockThreshold: 2,
     expiryWarnMinutes: 30,
     respectDoNotDisturb: true,

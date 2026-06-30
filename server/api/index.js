@@ -61,6 +61,7 @@ const executionRoutes = require('./routes/execution');
 const newsRoutes = require('./routes/news');
 const bannersRoutes = require('./routes/banners');
 const dadExpensesRoutes = require('./routes/dadExpenses');
+const favoritesRoutes = require('./routes/favorites');
 
 const app = express();
 const PORT = constants.frontend?.apiPort || 3001;
@@ -99,6 +100,7 @@ app.use('/api/execution', executionRoutes);
 app.use('/api/news', newsRoutes);
 app.use('/api/banners', bannersRoutes);
 app.use('/api/dad-expenses', dadExpensesRoutes);
+app.use('/api/favorites', favoritesRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -128,6 +130,19 @@ if (require.main === module) {
       environment: constants.env,
       timestamp: new Date().toISOString()
     });
+    
+    // Initialize the Telegram bot (polling disabled here; hosted separately via Cloud Functions Webhook)
+    /*
+    try {
+      if (constants.notifications?.enableTelegram) {
+        logger.info('🤖 Starting Telegram Bot polling helper...');
+        require('../../dataSources/bot');
+        logger.info('✅ Telegram Bot polling helper active');
+      }
+    } catch (botError) {
+      logger.error('Failed to start Telegram Bot helper', { error: botError.message });
+    }
+    */
   });
 }
 

@@ -62,16 +62,17 @@ class NotificationTrackingDB {
       const snapshot = await notificationRef.once('value');
       const existing = snapshot.val() || {};
 
+      await notificationRef.child('sentTo').child(platform).set({
+        sent: true,
+        timestamp: now,
+        success: success,
+        error: error || null
+      });
+
       const updateData = {
         productCode: productCode,
         dealType: dealType,
-        updatedAt: now,
-        [`sentTo.${platform}`]: {
-          sent: true,
-          timestamp: now,
-          success: success,
-          error: error || null
-        }
+        updatedAt: now
       };
 
       if (!existing.createdAt) {

@@ -1,3 +1,6 @@
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
 const constants = require('../config/constants.js');
 const { getModuleLogger } = require('../logger/logger');
 const logger = getModuleLogger('notifyService');
@@ -11,7 +14,21 @@ try {
   logger.debug('Notification tracking not available (optional feature)');
 }
 
-async function notifyTelegram(telegramChatId, message, productCode = null, dealType = 'productDeal') {
+function downloadImage(url, dest) {
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(dest);
+    https.get(url, (response) => {
+      response.pipe(file);
+      file.on('finish', () => {
+        file.close(resolve);
+      });
+    }).on('error', (err) => {
+      fs.unlink(dest, () => reject(err));
+    });
+  });
+}
+
+async function notifyTelegram(telegramChatId, message, productCode = null, dealType = 'productDeal', photoUrl = '') {
   if (!constants.notifications.enableTelegram) return false;
   if (!telegramChatId) return false;
   
@@ -22,8 +39,9 @@ async function notifyTelegram(telegramChatId, message, productCode = null, dealT
     // Import Telegram bot from existing implementation
     const { telegram } = require('../socialMedia/telegramPoster');
     
-    // Send message using existing Telegram implementation
-    await telegram(null, telegramChatId, message);
+    // Send message using user alerts bot token (7011681754:AAEyn1F1...)
+    const botToken = process.env.BOT_TOKEN || '7011681754:AAEyn1F1h9k-4Lw-b-K_1B9p10_13-z_w2A';
+    await telegram(photoUrl || "", telegramChatId, message, botToken);
     
     success = true;
     logger.info('Telegram notification sent', { telegramChatId, preview: message?.slice?.(0, 120) });
@@ -56,12 +74,13 @@ async function notifyTelegram(telegramChatId, message, productCode = null, dealT
   }
 }
 
-async function notifyWhatsapp(phone, message, productCode = null, dealType = 'productDeal') {
+async function notifyWhatsapp(phone, message, productCode = null, dealType = 'productDeal', photoUrl = '') {
   if (!constants.notifications.enableWhatsapp) return false;
   if (!phone) return false;
   
   let success = false;
   let error = null;
+  let tempLocalPath = null;
   
   try {
     // Use existing Chrome instance on port 9222 for WhatsApp Web
@@ -78,41 +97,95 @@ async function notifyWhatsapp(phone, message, productCode = null, dealType = 'pr
     await driver.sleep(5000); // Wait for WhatsApp to load
     
     try {
-      // Wait for and click the message input box
-      const messageInput = await driver.wait(
-        until.elementLocated(By.xpath('//*[@id="main"]/footer/div[1]/div/span[2]/div/div[2]/div[1]/div/div[1]')), 
-        15000
-      );
-      await messageInput.click();
-      
-      // Split message into lines and send each line
-      const messageLines = message.split('\n');
-      for (let i = 0; i < messageLines.length; i++) {
-        const line = messageLines[i];
-        
-        await driver.actions()
-          .sendKeys(line)
-          .perform();
-        
-        // Add line break if not the last line
-        if (i < messageLines.length - 1) {
-          await driver.actions()
-            .keyDown(Key.SHIFT)
-            .keyDown(Key.RETURN)
-            .keyUp(Key.RETURN)
-            .keyUp(Key.SHIFT)
-            .perform();
+      if (photoUrl) {
+        // Download image locally to send as file attachment
+        const timestamp = Date.now();
+        const scratchDir = path.join(__dirname, '../scratch');
+        if (!fs.existsSync(scratchDir)) {
+          fs.mkdirSync(scratchDir, { recursive: true });
         }
+        tempLocalPath = path.join(scratchDir, `wa_upload_${timestamp}.jpg`);
+        
+        logger.info('Downloading image for WhatsApp attachment...', { url: photoUrl });
+        await downloadImage(photoUrl, tempLocalPath);
+        
+        // Find file input and upload
+        const fileInput = await driver.wait(
+          until.elementLocated(By.css('input[type="file"]')),
+          10000
+        );
+        await fileInput.sendKeys(tempLocalPath);
+        await driver.sleep(4000); // Wait for preview
+        
+        // Focus the caption box (which reuses the compose box testid on preview)
+        const captionInput = await driver.wait(
+          until.elementLocated(By.css('div[data-testid="conversation-compose-box-input"]')),
+          10000
+        );
+        await driver.executeScript("arguments[0].focus(); arguments[0].click();", captionInput);
+        await driver.sleep(1000);
+        
+        // Type caption text
+        const messageLines = message.split('\n');
+        for (let i = 0; i < messageLines.length; i++) {
+          const line = messageLines[i];
+          await driver.actions().sendKeys(line).perform();
+          if (i < messageLines.length - 1) {
+            await driver.actions()
+              .keyDown(Key.SHIFT)
+              .keyDown(Key.RETURN)
+              .keyUp(Key.RETURN)
+              .keyUp(Key.SHIFT)
+              .perform();
+          }
+        }
+        await driver.sleep(1000);
+        
+        // Click send button
+        const sendBtn = await driver.wait(
+          until.elementLocated(By.css('div[role="button"][aria-label*="Send"]')),
+          5000
+        );
+        await driver.executeScript("arguments[0].click();", sendBtn);
+        await driver.sleep(3000);
+        
+      } else {
+        // Regular text-only send logic
+        const messageInput = await driver.wait(
+          until.elementLocated(By.css('div[contenteditable="true"]')), 
+          15000
+        );
+        await messageInput.click();
+        
+        const messageLines = message.split('\n');
+        for (let i = 0; i < messageLines.length; i++) {
+          const line = messageLines[i];
+          await driver.actions().sendKeys(line).perform();
+          if (i < messageLines.length - 1) {
+            await driver.actions()
+              .keyDown(Key.SHIFT)
+              .keyDown(Key.RETURN)
+              .keyUp(Key.RETURN)
+              .keyUp(Key.SHIFT)
+              .perform();
+          }
+        }
+        await driver.sleep(1000);
+        await driver.actions().sendKeys(Key.RETURN).perform();
+        await driver.sleep(2000);
       }
-      
-      await driver.sleep(1000);
-      
-      // Send the message
-      await driver.actions().sendKeys(Key.RETURN).perform();
-      await driver.sleep(2000);
       
       success = true;
       logger.info('WhatsApp notification sent', { phone, preview: message?.slice?.(0, 120) });
+      
+      // Clean up local temp file
+      if (tempLocalPath && fs.existsSync(tempLocalPath)) {
+        try {
+          fs.unlinkSync(tempLocalPath);
+        } catch (cleanupErr) {
+          logger.warn('Failed to delete temporary WhatsApp upload image file', { error: cleanupErr.message });
+        }
+      }
       
       // Track notification if productCode provided
       if (productCode && notificationTrackingDB) {
@@ -128,6 +201,13 @@ async function notifyWhatsapp(phone, message, productCode = null, dealType = 'pr
     } catch (err) {
       error = err.message;
       logger.error('WhatsApp message input failed', { phone, error: error });
+      
+      // Clean up local temp file in case of error
+      if (tempLocalPath && fs.existsSync(tempLocalPath)) {
+        try {
+          fs.unlinkSync(tempLocalPath);
+        } catch (cleanupErr) {}
+      }
       
       // Track failed notification
       if (productCode && notificationTrackingDB) {

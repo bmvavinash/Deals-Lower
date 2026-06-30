@@ -150,6 +150,17 @@ class ProductDealsDB {
 							logger.debug('Price drop check failed (non-fatal)', { productCode: product.productCode, error: err.message });
 						});
 					}
+
+					// Check for stock status changes and notify favorited users (async, non-blocking)
+					if (favoritesNotificationService && product.productCode) {
+						favoritesNotificationService.checkStockStatusChanges(
+							product.productCode,
+							product,
+							existingProduct
+						).catch(err => {
+							logger.debug('Stock status change check failed (non-fatal)', { productCode: product.productCode, error: err.message });
+						});
+					}
 				}
 				
 				// Check for new deals on favorited products (async, non-blocking)

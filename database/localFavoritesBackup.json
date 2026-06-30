@@ -1,0 +1,109 @@
+{
+  "users": {
+    "test-user-123": {
+      "createdAt": 1782662597085,
+      "favorites": {
+        "TEST_PROD_999": {
+          "addedAt": 1782662597085,
+          "title": "Test Widget"
+        }
+      },
+      "trackedProducts": {
+        "TEST_PROD_999": {
+          "trackedAt": 1782662604962,
+          "trackedPrice": 85.5,
+          "dropThreshold": 0.1,
+          "productCode": "TEST_PROD_999"
+        }
+      },
+      "preferences": {},
+      "channels": {}
+    },
+    "user_test_55115": {
+      "createdAt": 1782673179128,
+      "favorites": {},
+      "trackedProducts": {
+        "55115": {
+          "trackedAt": 1782673179128,
+          "trackedPrice": 450,
+          "dropThreshold": 0.1,
+          "productCode": "55115"
+        }
+      },
+      "preferences": {},
+      "channels": {}
+    },
+    "whatsapp-real-test-user": {
+      "createdAt": 1782734471258,
+      "favorites": {
+        "TEST_WHATSAPP_PROD": {
+          "addedAt": 1782734471260,
+          "title": "Real WhatsApp Integration Test Product",
+          "price": 100,
+          "productUrl": "https://www.amazon.in/dp/TEST_WHATSAPP_PROD"
+        }
+      },
+      "trackedProducts": {
+        "TEST_WHATSAPP_PROD": {
+          "trackedAt": 1782734471260,
+          "trackedPrice": 100,
+          "dropThreshold": 0.05
+        }
+      },
+      "preferences": {
+        "notifications": {
+          "enabled": true,
+          "channels": {
+            "whatsapp": true
+          }
+        },
+        "whatsapp": {
+          "phone": "919951797149"
+        }
+      },
+      "channels": {
+        "whatsapp": {
+          "phone": "919951797149"
+        }
+      }
+    }
+  },
+  "favouritesByProduct": {
+    "TEST_PROD_999": {
+      "test-user-123": {
+        "addedAt": 1782662597085
+      }
+    },
+    "TEST_WHATSAPP_PROD": {
+      "whatsapp-real-test-user": {
+        "addedAt": 1782734471260
+      }
+    }
+  },
+  "trackersByProduct": {
+    "55115": {
+      "user_test_55115": {
+        "trackedAt": 1782673179128,
+        "trackedPrice": 450,
+        "dropThreshold": 0.1,
+        "productCode": "55115"
+      }
+    },
+    "TEST_PROD_999": {
+      "test-user-123": {
+        "trackedAt": 1782662604962,
+        "trackedPrice": 85.5,
+        "dropThreshold": 0.1,
+        "productCode": "TEST_PROD_999"
+      }
+    },
+    "TEST_WHATSAPP_PROD": {
+      "whatsapp-real-test-user": {
+        "trackedAt": 1782734471260,
+        "trackedPrice": 100,
+        "dropThreshold": 0.05
+      }
+    }
+  },
+  "saleSubscribers": {}
+}
