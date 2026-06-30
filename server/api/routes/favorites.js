@@ -197,4 +197,42 @@ router.put('/user/profile', authenticateUser, async (req, res) => {
   }
 });
 
+// PUT /api/favorites/user/searches - Sync user search queries
+router.put('/user/searches', authenticateUser, async (req, res) => {
+  try {
+    const { searches } = req.body;
+    if (!searches || !Array.isArray(searches)) {
+      return res.status(400).json({ error: 'searches array is required' });
+    }
+    const success = await userFavoritesDB.updateUserSearches(req.userId, searches);
+    if (success) {
+      res.json({ success: true, message: 'Searches synchronized successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to sync searches' });
+    }
+  } catch (error) {
+    logger.error('Error syncing searches', { error: error.message, userId: req.userId });
+    res.status(500).json({ error: 'Failed to sync searches' });
+  }
+});
+
+// PUT /api/favorites/user/last-seen - Sync user last seen products
+router.put('/user/last-seen', authenticateUser, async (req, res) => {
+  try {
+    const { lastSeen } = req.body;
+    if (!lastSeen || !Array.isArray(lastSeen)) {
+      return res.status(400).json({ error: 'lastSeen array is required' });
+    }
+    const success = await userFavoritesDB.updateUserLastSeen(req.userId, lastSeen);
+    if (success) {
+      res.json({ success: true, message: 'Last seen products synchronized successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to sync last seen products' });
+    }
+  } catch (error) {
+    logger.error('Error syncing last seen products', { error: error.message, userId: req.userId });
+    res.status(500).json({ error: 'Failed to sync last seen products' });
+  }
+});
+
 module.exports = router;

@@ -433,6 +433,53 @@ class UserFavoritesDB {
     }
   }
 
+  async updateUserSearches(userId, searches) {
+    try {
+      // Configurable limit of latest searches (default 10)
+      const limit = parseInt(process.env.MAX_SEARCH_HISTORY_LIMIT || '10', 10);
+      const limitedSearches = searches.slice(0, limit);
+
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.users[userId]) {
+          data.users[userId] = { createdAt: Date.now(), favorites: {}, trackedProducts: {}, preferences: {}, channels: {} };
+        }
+        data.users[userId].searches = limitedSearches;
+        this.saveLocalData(data);
+        return true;
+      }
+
+      await db().ref(`${this.usersBase}/${userId}/searches`).set(limitedSearches);
+      return true;
+    } catch (error) {
+      console.error(`Error updating searches for user ${userId}:`, error);
+      return false;
+    }
+  }
+
+  async updateUserLastSeen(userId, lastSeen) {
+    try {
+      // Store last 5 viewed products
+      const limitedLastSeen = lastSeen.slice(0, 5);
+
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.users[userId]) {
+          data.users[userId] = { createdAt: Date.now(), favorites: {}, trackedProducts: {}, preferences: {}, channels: {} };
+        }
+        data.users[userId].lastSeen = limitedLastSeen;
+        this.saveLocalData(data);
+        return true;
+      }
+
+      await db().ref(`${this.usersBase}/${userId}/lastSeen`).set(limitedLastSeen);
+      return true;
+    } catch (error) {
+      console.error(`Error updating last seen for user ${userId}:`, error);
+      return false;
+    }
+  }
+
   async updateUserChannels(userId, channels) {
     try {
       if (isLocalFallback) {
