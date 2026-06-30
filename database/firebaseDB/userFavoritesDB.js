@@ -433,6 +433,51 @@ class UserFavoritesDB {
     }
   }
 
+  async syncUserFavorites(userId, favorites) {
+    try {
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.users[userId]) {
+          data.users[userId] = { createdAt: Date.now(), favorites: {}, trackedProducts: {}, preferences: {}, channels: {} };
+        }
+        
+        // Merge favorites
+        data.users[userId].favorites = {
+          ...data.users[userId].favorites,
+          ...favorites
+        };
+
+        // Also update favouritesByProduct mapping
+        Object.entries(favorites).forEach(([prodCode, details]) => {
+          if (!data.favouritesByProduct[prodCode]) {
+            data.favouritesByProduct[prodCode] = {};
+          }
+          data.favouritesByProduct[prodCode][userId] = {
+            addedAt: details.addedAt || Date.now()
+          };
+        });
+
+        this.saveLocalData(data);
+        return true;
+      }
+
+      await db().ref(`${this.usersBase}/${userId}/favorites`).update(favorites);
+      
+      const updates = {};
+      Object.keys(favorites).forEach(prodCode => {
+        updates[`${this.favouritesByProductBase}/${prodCode}/${userId}`] = {
+          addedAt: favorites[prodCode].addedAt || Date.now()
+        };
+      });
+      await db().ref().update(updates);
+      
+      return true;
+    } catch (error) {
+      console.error(`Error syncing favorites for user ${userId}:`, error);
+      return false;
+    }
+  }
+
   async updateUserSearches(userId, searches) {
     try {
       // Configurable limit of latest searches (default 10)

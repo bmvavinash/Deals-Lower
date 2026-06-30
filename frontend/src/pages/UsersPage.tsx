@@ -104,8 +104,8 @@ const UsersPage: React.FC = () => {
     const telegramChatId = profile.telegramChatId || u.channels?.telegram?.chatId || u.preferences?.telegram?.chatId || u.telegramChatId || 'N/A';
     const whatsappPhone = profile.whatsappPhone || u.channels?.whatsapp?.phone || u.preferences?.whatsapp?.phone || u.whatsappPhone || 'N/A';
 
-    let telegramConfigured = telegramChatId !== 'N/A';
-    let whatsappConfigured = whatsappPhone !== 'N/A';
+    let telegramConfigured = telegramChatId !== 'N/A' && telegramChatId !== 'null' && !!telegramChatId;
+    let whatsappConfigured = whatsappPhone !== 'N/A' && whatsappPhone !== 'null' && !!whatsappPhone;
 
     // Also check tracked products for active notification flags
     Object.values(tracked).forEach((item: any) => {

@@ -200,6 +200,28 @@ router.put('/user/profile', authenticateUser, async (req, res) => {
   }
 });
 
+// PUT /api/favorites/user/favorites - Sync all user favorites at once
+router.put('/user/favorites', authenticateUser, async (req, res) => {
+  console.log(`📥 [API] PUT /user/favorites called for user: ${req.userId}`, req.body);
+  try {
+    const { favorites } = req.body;
+    if (!favorites || typeof favorites !== 'object') {
+      return res.status(400).json({ error: 'favorites object is required' });
+    }
+    const success = await userFavoritesDB.syncUserFavorites(req.userId, favorites);
+    if (success) {
+      console.log(`✅ [API] Favorites synced successfully for user: ${req.userId}`);
+      res.json({ success: true, message: 'Favorites synchronized successfully' });
+    } else {
+      console.log(`❌ [API] Failed to sync favorites for user: ${req.userId}`);
+      res.status(500).json({ error: 'Failed to sync favorites' });
+    }
+  } catch (error) {
+    logger.error('Error syncing user favorites', { error: error.message, userId: req.userId });
+    res.status(500).json({ error: 'Failed to sync favorites' });
+  }
+});
+
 // PUT /api/favorites/user/searches - Sync user search queries
 router.put('/user/searches', authenticateUser, async (req, res) => {
   console.log(`📥 [API] PUT /user/searches called for user: ${req.userId}`, req.body);
