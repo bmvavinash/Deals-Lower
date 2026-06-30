@@ -12,6 +12,7 @@ import DadExpensesPage from './pages/DadExpensesPage';
 import CategoryPriorityPage from './pages/CategoryPriorityPage';
 import ProductMatchingPage from './pages/ProductMatchingPage';
 import CommandsPage from './pages/CommandsPage';
+import UsersPage from './pages/UsersPage';
 import { NotificationProvider } from './context/NotificationContext';
 import Toaster from './components/Notifications/Toaster';
 import NotificationQueue from './components/Notifications/NotificationQueue';
@@ -24,6 +25,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/users" element={<UsersPage />} />
             <Route path="/deals" element={<DealsPage />} />
             <Route path="/matching-config" element={<MatchingConfigPage />} />
             <Route path="/stocks" element={<StocksPage />} />
