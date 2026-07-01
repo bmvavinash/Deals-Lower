@@ -298,11 +298,279 @@ router.post('/link', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Could not find one or both products in the database' });
     }
 
+    cacheService.delete('deals_matches_registry');
     res.json({ success: true, message: `Successfully linked ${updated} product records`, matchId: manualMatchId });
 
   } catch (error) {
     logger.error('Error linking products', { error: error.message });
     res.status(500).json({ success: false, error: 'Failed to link products' });
+  }
+});
+
+/**
+ * GET /api/deals/matches
+ * Get all matched product groups from deals and productdeals databases
+ */
+router.get('/matches', async (req, res) => {
+  try {
+    const registryCacheKey = 'deals_matches_registry';
+    const cachedGroups = cacheService.get(registryCacheKey);
+    if (cachedGroups) {
+      logger.info('Returning cached matched product groups');
+      return res.json({ success: true, count: cachedGroups.length, groups: cachedGroups });
+    }
+
+    logger.info('Registry cache cold. Performing full database scan for matched products...');
+    
+    // 1. Fetch all deals (since only ~92 have competitorMatches, we must scan the database)
+    const recentDealsSnapshot = await productDealsDB.dealsRef.once('value');
+    const recentDeals = recentDealsSnapshot.val() || {};
+    
+    // 2. Fetch latest date productdeals from raw deals cache if available, otherwise fetch recent ones
+    let pDeals = {};
+    const latestDateCacheKey = `latest_date_productdeals`;
+    const cachedDate = cacheService.get(latestDateCacheKey);
+    if (cachedDate) {
+      const rawDealsCacheKey = `raw_deals_productdeals_${cachedDate}`;
+      pDeals = cacheService.get(rawDealsCacheKey) || {};
+    }
+    
+    if (Object.keys(pDeals).length === 0) {
+      logger.info('Cache cold for productdeals matches, scanning recent 1000 productdeals...');
+      const pDealsSnapshot = await productDealsDB.productdealsRef.orderByChild('datetime').limitToLast(1000).once('value');
+      pDeals = pDealsSnapshot.val() || {};
+    }
+    
+    // Merge all products to find matches
+    const allProductsMap = {};
+    
+    // Add productdeals
+    Object.entries(pDeals).forEach(([key, val]) => {
+      if (val) {
+        allProductsMap[key] = {
+          productCode: key,
+          db: 'productdeals',
+          ...val
+        };
+      }
+    });
+    
+    // Add deals
+    Object.entries(recentDeals).forEach(([key, val]) => {
+      if (val) {
+        allProductsMap[key] = {
+          productCode: key,
+          db: 'deals',
+          ...val
+        };
+      }
+    });
+    
+    const allProducts = Object.values(allProductsMap);
+    
+    const groups = [];
+    const processedCodes = new Set();
+    
+    for (const prod of allProducts) {
+      const code = prod.productCode;
+      if (processedCodes.has(code)) continue;
+      
+      const compMatches = prod.competitorMatches || {};
+      const matchKeys = Object.entries(compMatches).map(([store, match]) => ({
+        storeType: store,
+        productCode: match.key,
+        productUrl: match.link,
+        price: match.price
+      })).filter(m => m.productCode && m.productCode !== code);
+      
+      // Also look for matchId groupings if not generic
+      const matchId = prod.matchId;
+      const isGenericMatchId = !matchId || matchId.startsWith('GEN_') || matchId.startsWith('MATCH_') || matchId.startsWith('MANUAL_LINK_');
+      
+      if (matchKeys.length === 0 && isGenericMatchId) {
+        continue;
+      }
+      
+      const groupProducts = [{
+        productCode: prod.productCode,
+        db: prod.db || 'deals',
+        title: prod.title || prod.shortText || prod.productText || 'No Title',
+        price: prod.price || prod.offerPrice || 'N/A',
+        storeType: prod.storeType || 'Unknown',
+        photo: prod.photo || prod.images || '',
+        productUrl: prod.productUrl || '',
+        competitorMatches: prod.competitorMatches || {}
+      }];
+      
+      processedCodes.add(code);
+      
+      // Resolve matches via competitorMatches
+      matchKeys.forEach(m => {
+        if (!processedCodes.has(m.productCode)) {
+          const other = allProducts.find(p => p.productCode === m.productCode);
+          groupProducts.push({
+            productCode: m.productCode,
+            db: other ? (other.db || 'deals') : (prod.db || 'deals'),
+            title: other ? (other.title || other.shortText || other.productText || 'No Title') : (prod.title || 'Matched Product'),
+            price: m.price || (other ? (other.price || other.offerPrice) : 'N/A'),
+            storeType: m.storeType,
+            photo: other ? (other.photo || other.images) : '',
+            productUrl: m.productUrl || (other ? other.productUrl : ''),
+            competitorMatches: other ? (other.competitorMatches || {}) : {}
+          });
+          processedCodes.add(m.productCode);
+        }
+      });
+      
+      // Resolve matches via shared matchId
+      if (!isGenericMatchId) {
+        for (const other of allProducts) {
+          const otherCode = other.productCode;
+          if (!processedCodes.has(otherCode) && other.matchId === matchId) {
+            groupProducts.push({
+              productCode: otherCode,
+              db: other.db || 'deals',
+              title: other.title || other.shortText || other.productText || 'No Title',
+              price: other.price || other.offerPrice || 'N/A',
+              storeType: other.storeType || 'Unknown',
+              photo: other.photo || other.images || '',
+              productUrl: other.productUrl || '',
+              competitorMatches: other.competitorMatches || {}
+            });
+            processedCodes.add(otherCode);
+          }
+        }
+      }
+      
+      if (groupProducts.length > 1) {
+        groups.push({
+          matchId: matchId || `GROUP_${code}`,
+          products: groupProducts
+        });
+      }
+    }
+    
+    // Cache the groups for 1 hour
+    cacheService.set(registryCacheKey, groups, 60 * 60 * 1000);
+    res.json({ success: true, count: groups.length, groups });
+  } catch (error) {
+    logger.error('Error fetching matched product groups', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch matches' });
+  }
+});
+
+/**
+ * POST /api/deals/unlink
+ * Manually de-link two products by removing competitorMatches links and separating their matchId
+ * Body: { productCode1: string, productCode2: string, database?: 'deals' | 'productdeals' }
+ */
+router.post('/unlink', async (req, res) => {
+  try {
+    const { productCode1, productCode2, database } = req.body;
+    
+    if (!productCode1 || !productCode2) {
+      return res.status(400).json({ success: false, error: 'Both product codes are required for de-linking' });
+    }
+    
+    // Determine which database refs to modify
+    const targetDbs = database ? [database] : ['deals', 'productdeals'];
+    let totalUpdated = 0;
+    
+    for (const dbName of targetDbs) {
+      const ref = dbName === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
+      
+      // Load both products
+      const safeKey1 = String(productCode1).replace(/[.#$/\[\]]/g, '_');
+      const safeKey2 = String(productCode2).replace(/[.#$/\[\]]/g, '_');
+      
+      const [snap1, snap2] = await Promise.all([
+        ref.child(safeKey1).once('value'),
+        ref.child(safeKey2).once('value')
+      ]);
+      
+      let p1 = snap1.val();
+      let p2 = snap2.val();
+      
+      // If direct lookup fails, try query by productCode
+      let key1 = safeKey1;
+      let key2 = safeKey2;
+      
+      if (!p1) {
+        const qSnap1 = await ref.orderByChild('productCode').equalTo(productCode1).once('value');
+        if (qSnap1.exists()) {
+          const val = qSnap1.val();
+          key1 = Object.keys(val)[0];
+          p1 = val[key1];
+        }
+      }
+      
+      if (!p2) {
+        const qSnap2 = await ref.orderByChild('productCode').equalTo(productCode2).once('value');
+        if (qSnap2.exists()) {
+          const val = qSnap2.val();
+          key2 = Object.keys(val)[0];
+          p2 = val[key2];
+        }
+      }
+      
+      // Update if they exist
+      if (p1 || p2) {
+        const updates = {};
+        
+        if (p1) {
+          const compMatches1 = { ...(p1.competitorMatches || {}) };
+          const storeTypesToRemove = Object.keys(compMatches1).filter(storeType => {
+            const match = compMatches1[storeType];
+            return match && match.key === productCode2;
+          });
+          
+          storeTypesToRemove.forEach(storeType => {
+            delete compMatches1[storeType];
+          });
+          
+          updates[`${key1}/competitorMatches`] = compMatches1;
+          updates[`${key1}/matchId`] = `MATCH_${productCode1}`;
+        }
+        
+        if (p2) {
+          const compMatches2 = { ...(p2.competitorMatches || {}) };
+          const storeTypesToRemove = Object.keys(compMatches2).filter(storeType => {
+            const match = compMatches2[storeType];
+            return match && match.key === productCode1;
+          });
+          
+          storeTypesToRemove.forEach(storeType => {
+            delete compMatches2[storeType];
+          });
+          
+          updates[`${key2}/competitorMatches`] = compMatches2;
+          updates[`${key2}/matchId`] = `MATCH_${productCode2}`;
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          await ref.update(updates);
+          totalUpdated++;
+          
+          // Clear active memory cache for raw deals so it updates instantly
+          if (p1 && p1.date) {
+            cacheService.delete(`raw_deals_${dbName}_${p1.date}`);
+          }
+          if (p2 && p2.date && p2.date !== p1?.date) {
+            cacheService.delete(`raw_deals_${dbName}_${p2.date}`);
+          }
+          cacheService.delete('deals_matches_registry');
+        }
+      }
+    }
+    
+    if (totalUpdated === 0) {
+      return res.status(404).json({ success: false, error: 'Could not find matching products in database to de-link' });
+    }
+    
+    res.json({ success: true, message: `Successfully de-linked products in ${totalUpdated} database(s)` });
+  } catch (error) {
+    logger.error('Error de-linking products', { error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to de-link products' });
   }
 });
 
@@ -446,16 +714,50 @@ router.get('/', async (req, res, next) => {
     const targetDb = dealType === 'hotDeal' ? 'deals' : 'productdeals';
     const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
     
-    let snapshot;
-    if (date) {
-      // Use native Firebase querying to fetch by date
-      snapshot = await ref.orderByChild('date').equalTo(date).once('value');
-    } else {
-      // Use native Firebase querying to fetch a dynamic pool size to account for potential invalid items
-      const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
-      snapshot = await ref.orderByChild('datetime').limitToLast(poolSize).once('value');
+    let deals = {};
+    let queryDate = date;
+    
+    if (!queryDate) {
+      // Check cache for latest date first
+      const latestDateCacheKey = `latest_date_${targetDb}`;
+      queryDate = cacheService.get(latestDateCacheKey);
+      
+      if (!queryDate) {
+        logger.info('No date specified, finding most recent date with deals...');
+        const latestSnapshot = await ref.orderByChild('datetime').limitToLast(1).once('value');
+        const latestVal = latestSnapshot.val() || {};
+        const latestKey = Object.keys(latestVal)[0];
+        
+        if (latestKey && latestVal[latestKey]) {
+          queryDate = latestVal[latestKey].date;
+          logger.info(`Found latest date: ${queryDate}.`);
+          cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000); // cache for 2 minutes
+        }
+      } else {
+        logger.info(`Using cached latest date: ${queryDate}`);
+      }
     }
-    let deals = snapshot.val() || {};
+    
+    if (queryDate) {
+      // Check cache for raw deals on this date
+      const rawDealsCacheKey = `raw_deals_${targetDb}_${queryDate}`;
+      deals = cacheService.get(rawDealsCacheKey);
+      
+      if (!deals) {
+        logger.info(`Fetching raw deals from Firebase for date ${queryDate}...`);
+        const snapshot = await ref.orderByChild('date').equalTo(queryDate).once('value');
+        deals = snapshot.val() || {};
+        cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000); // Cache raw data for 10 minutes
+      } else {
+        logger.info(`Using cached raw deals for date ${queryDate}`);
+      }
+    } else {
+      // Fallback if no deals at all in the DB (query last 300 items)
+      logger.info('No deals found to determine latest date, querying default pool.');
+      const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
+      const snapshot = await ref.orderByChild('datetime').limitToLast(poolSize).once('value');
+      deals = snapshot.val() || {};
+    }
     
     // Convert to array and filter out completely empty items
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
@@ -490,7 +792,7 @@ router.get('/', async (req, res, next) => {
     }
 
     // Apply sorting
-    if (date) {
+    if (queryDate) {
       // If date is specified, Firebase natively sorts identical dates by key ascending.
       // We must match this behavior so the Admin portal exactly matches the Website.
       dealsArray.sort((a, b) => {
@@ -512,18 +814,14 @@ router.get('/', async (req, res, next) => {
     const total = dealsArray.length;
     const paginated = dealsArray.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
 
-    // Get notification statuses for paginated deals in a single batch query
-    const notificationSnapshot = await notificationTrackingDB.ref.once('value');
-    const allNotifications = notificationSnapshot.val() || {};
-
-    const dealsWithNotifications = paginated.map((deal) => {
-      const safeKey = String(deal.productCode).replace(/[.#$/\[\]]/g, '_');
-      const notificationStatus = allNotifications[safeKey] || null;
+    // Get notification statuses only for the paginated deals in parallel (highly optimized, avoids full table download)
+    const dealsWithNotifications = await Promise.all(paginated.map(async (deal) => {
+      const notificationStatus = await notificationTrackingDB.getNotificationStatus(deal.productCode);
       return {
         ...deal,
         notificationStatus: notificationStatus
       };
-    });
+    }));
 
     const response = {
       success: true,
@@ -1022,6 +1320,33 @@ router.delete('/:productCode', async (req, res, next) => {
 });
 
 
+function cleanProductUrl(url) {
+  if (!url) return '';
+  // Check if it's an inrdeals or affiliate wrapper containing another URL
+  const httpIndex = url.indexOf('http', 4); // look for http after the first one
+  if (httpIndex !== -1) {
+    return url.substring(httpIndex);
+  }
+  return url;
+}
+
+function getUrlFromProduct(product) {
+  if (!product) return '';
+  if (product.productUrl) return product.productUrl;
+  if (product.url) return product.url;
+  if (product.link) return product.link;
+  if (product.links) {
+    if (product.links.avinashbmvINR) return product.links.avinashbmvINR;
+    if (product.links.avinashbmv) return product.links.avinashbmv;
+  }
+  if (product.competitorMatches) {
+    for (const match of Object.values(product.competitorMatches)) {
+      if (match && match.link) return match.link;
+    }
+  }
+  return '';
+}
+
 /**
  * POST /api/deals/:productCode/retrigger
  * Retrigger a single product
@@ -1033,38 +1358,42 @@ router.post('/:productCode/retrigger', async (req, res) => {
 
     // If it looks like a URL, extract the product code
     if (productCode && (productCode.startsWith('http://') || productCode.startsWith('https://'))) {
-      const storeKey = resolvePlatformFromUrl(productCode);
+      const cleanUrl = cleanProductUrl(productCode);
+      const storeKey = resolvePlatformFromUrl(cleanUrl);
       if (storeKey) {
-        const extracted = getCode(productCode, storeKey);
+        const extracted = getCode(cleanUrl, storeKey);
         if (extracted && extracted.isValid && extracted.value) {
           productCode = extracted.value;
         }
       }
     }
     let product = await productDealsDB.getProduct(productCode, db);
+    let targetUrl = getUrlFromProduct(product);
     
-    if (!product || !product.productUrl) {
+    if (!product || !targetUrl) {
       // Try the other database if not found
       db = db === 'productdeals' ? 'deals' : 'productdeals';
       product = await productDealsDB.getProduct(productCode, db);
-      if (!product || !product.productUrl) {
+      targetUrl = getUrlFromProduct(product);
+      if (!product || !targetUrl) {
         return res.status(404).json({ success: false, error: 'Product or URL not found in any database' });
       }
     }
+
+    targetUrl = cleanProductUrl(targetUrl);
     
     const driver = global.driver || await getOrCreateDriver();
     const { scrapeProduct } = require('../../../scrappers/amazon');
     const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
     const { getformattedDate } = require('../../../utils/commonUtils');
     
-    const platform = resolvePlatformFromUrl(product.productUrl) || 'amazon';
+    const platform = resolvePlatformFromUrl(targetUrl) || 'amazon';
     
     // IMPORTANT: We must navigate to the product URL before scraping!
-    await driver.get(product.productUrl);
+    await driver.get(targetUrl);
     
     const extractedData = await scrapeProduct(
-      product.productUrl, 
-
+      targetUrl, 
       platform, 
       driver, 
       product.productText || product.title || "", 
@@ -1074,21 +1403,58 @@ router.post('/:productCode/retrigger', async (req, res) => {
     
     if (extractedData && Object.keys(extractedData).length > 0) {
       // Merge with existing product data
-        const updatedProduct = {
-          ...product,
-          ...extractedData,
-          date: getformattedDate(),
-          updateTimestamp: getISTTimestamp(),
-          updatedAt: getISTTimestamp(),
-          updatedatetime: Date.now()
-        };
+      const updatedProduct = {
+        ...product,
+        ...extractedData,
+        productUrl: targetUrl,
+        date: getformattedDate(),
+        updateTimestamp: getISTTimestamp(),
+        updatedAt: getISTTimestamp(),
+        updatedatetime: Date.now()
+      };
       
       // Keep existing photo if the new extraction failed to find one
       if (!updatedProduct.photo && product.photo) {
         updatedProduct.photo = product.photo;
       }
+
+      // Sync price in this product's own competitorMatches
+      if (updatedProduct.competitorMatches) {
+        for (const [key, match] of Object.entries(updatedProduct.competitorMatches)) {
+          if (key.toLowerCase() === platform.toLowerCase() && match) {
+            match.price = extractedData.price;
+          }
+        }
+      }
       
       await productDealsDB.updateIndividualProduct(productCode, updatedProduct, db);
+
+      // Bidirectional sync: update competitor's match reference to this product
+      if (product.competitorMatches) {
+        for (const [compPlatform, match] of Object.entries(product.competitorMatches)) {
+          if (match && match.key && compPlatform.toLowerCase() !== platform.toLowerCase()) {
+            try {
+              const compProduct = await productDealsDB.getProduct(match.key, db);
+              if (compProduct && compProduct.competitorMatches) {
+                let compUpdated = false;
+                for (const [mPlatform, mData] of Object.entries(compProduct.competitorMatches)) {
+                  if (mPlatform.toLowerCase() === platform.toLowerCase() && mData && mData.key === productCode) {
+                    mData.price = extractedData.price;
+                    compUpdated = true;
+                  }
+                }
+                if (compUpdated) {
+                  await productDealsDB.updateIndividualProduct(match.key, compProduct, db);
+                  logger.info(`Bidirectionally updated price for competitor ${match.key} in ${db}`);
+                }
+              }
+            } catch (err) {
+              logger.error(`Failed to bidirectionally update competitor ${match.key}`, { error: err.message });
+            }
+          }
+        }
+      }
+
       res.json({ success: true, result: { extracted: 1, stored: 1, products: [updatedProduct] } });
     } else {
       res.json({ success: false, error: 'Extraction returned no data' });
@@ -1121,6 +1487,34 @@ router.post('/retrigger-today', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+// Pre-warm cache on startup
+setTimeout(async () => {
+  try {
+    logger.info('Pre-warming deals cache on startup...');
+    const targetDbs = ['deals', 'productdeals'];
+    for (const targetDb of targetDbs) {
+      const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
+      const latestSnapshot = await ref.orderByChild('datetime').limitToLast(1).once('value');
+      const latestVal = latestSnapshot.val() || {};
+      const latestKey = Object.keys(latestVal)[0];
+      if (latestKey && latestVal[latestKey]) {
+        const queryDate = latestVal[latestKey].date;
+        const latestDateCacheKey = `latest_date_${targetDb}`;
+        cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000);
+        
+        logger.info(`Pre-fetching raw deals for ${targetDb} on date ${queryDate}...`);
+        const snapshot = await ref.orderByChild('date').equalTo(queryDate).once('value');
+        const deals = snapshot.val() || {};
+        const rawDealsCacheKey = `raw_deals_${targetDb}_${queryDate}`;
+        cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
+        logger.info(`Deals cache pre-warmed for ${targetDb} (Count: ${Object.keys(deals).length}).`);
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to pre-warm deals cache:', { error: err.message });
+  }
+}, 5000);
 
 module.exports = router;
 

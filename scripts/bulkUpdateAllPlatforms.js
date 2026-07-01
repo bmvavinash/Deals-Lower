@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const { runBatch } = require('../dataSources/batchProductExtractor');
 const { getModuleLogger } = require('../logger/logger');
 const { comprehensiveLoggingService } = require('../services/comprehensiveLoggingService');

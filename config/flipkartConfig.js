@@ -19,6 +19,8 @@ module.exports = {
     { type: 'css', selector: '.hl05eU .Nx9bqj.CxhGGd', validator: validatePrice },
     { type: 'css', selector: '.Nx9bqj.CxhGGd', validator: validatePrice },
     { type: 'css', selector: '.Nx9bqj', validator: validatePrice },
+    { type: 'xpath', selector: '(//div[contains(text(), "₹") and not(contains(text(), "/")) and not(contains(text(), "(")) and string-length(normalize-space(text())) < 15])[1]', validator: validatePrice },
+    { type: 'xpath', selector: '(//*[contains(text(), "₹") and not(contains(text(), "/")) and not(contains(text(), "(")) and string-length(normalize-space(text())) < 15])[1]', validator: validatePrice },
     { type: 'css', selector: '.v1zwn21m', validator: validatePrice },
     { type: 'css', selector: 'div[style*="color:#333333"]', validator: validatePrice },
     { type: 'xpath', selector: '(//div[contains(text(), "₹") and string-length(text()) < 15])[1]', validator: validatePrice },
@@ -27,6 +29,7 @@ module.exports = {
   mrp: [
     { type: 'css', selector: '.hl05eU .yRaY8j.A6+E6v', validator: validatePrice },
     { type: 'css', selector: '.yRaY8j', validator: validatePrice },
+    { type: 'xpath', selector: '(//*[contains(@style, "line-through") and not(contains(text(), "/")) and not(contains(text(), "(")) and string-length(normalize-space(text())) < 15])[1]', validator: validatePrice },
     { type: 'css', selector: '.v1zwn21n', validator: validatePrice },
     { type: 'css', selector: 'div[style*="text-decoration-line:line-through"]', validator: validatePrice },
     { type: 'xpath', selector: '(//*[contains(@style, "line-through")])[1]', validator: validatePrice },

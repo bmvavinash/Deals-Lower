@@ -161,8 +161,8 @@ async function runLiveCompetitorScraper() {
     const allKeys = Object.keys(keysData);
     logger.info(`Found ${allKeys.length} total keys in DB.`);
 
-    // Take the 150 most recent keys to avoid timeouts and download overhead
-    const recentKeys = allKeys.slice(-150);
+    // Take the 600 most recent keys to scan a wider window for electronics/major categories
+    const recentKeys = allKeys.slice(-600);
     logger.info(`Fetching details for the ${recentKeys.length} most recent products...`);
 
     const productsData = {};
@@ -191,7 +191,7 @@ async function runLiveCompetitorScraper() {
     const candidates = [];
     for (const key of productKeys) {
       const product = productsData[key];
-      if (!product) continue;
+      if (!product || !product.title || product.title.trim() === '' || product.title.toLowerCase() === 'no title') continue;
       
       const category = extractCategory(product);
       const ruleKey = Object.keys(matchingRules).find(k => k.toLowerCase() === category.toLowerCase());
@@ -235,7 +235,18 @@ async function runLiveCompetitorScraper() {
     // Select batch to scrape (up to 2 products per category to prevent overloading/timeouts)
     const selectedBatch = [];
     const maxProductsPerCategory = 2;
-    for (const category in candidatesByCategory) {
+    
+    // Prioritize electronics, mobile, and kitchen categories
+    const priorityOrder = ['electronics', 'mobile', 'kitchen'];
+    const categories = Object.keys(candidatesByCategory).sort((a, b) => {
+      const indexA = priorityOrder.indexOf(a.toLowerCase());
+      const indexB = priorityOrder.indexOf(b.toLowerCase());
+      const valA = indexA === -1 ? 99 : indexA;
+      const valB = indexB === -1 ? 99 : indexB;
+      return valA - valB;
+    });
+    
+    for (const category of categories) {
       const selected = candidatesByCategory[category].slice(0, maxProductsPerCategory);
       selectedBatch.push(...selected);
     }
@@ -256,10 +267,11 @@ async function runLiveCompetitorScraper() {
       
       logger.info(`[Product ${index + 1}/${selectedBatch.length}] Processing "${originalProd.title?.substring(0, 40)}" (${formatPlatformName(originalProd.storeType)}) in category: ${category}`);
       
-      // Determine search query: prioritize model, fallback to brand + title prefix
+      // Determine search query: prioritize model/modelNumber, fallback to brand + title prefix
       let query = "";
-      if (originalProd.model && originalProd.model.trim() !== "") {
-        query = `${originalProd.brand || ''} ${originalProd.model}`.trim();
+      const model = originalProd.model || originalProd.modelNumber;
+      if (model && model.trim() !== "") {
+        query = `${originalProd.brand || ''} ${model}`.trim();
       } else {
         const brand = originalProd.brand || "";
         const titleWords = (originalProd.title || "").split(/\s+/).slice(0, 4).join(" ");

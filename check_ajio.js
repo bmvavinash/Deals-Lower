@@ -8,31 +8,27 @@ async function checkAjio() {
     options.debuggerAddress("localhost:9222");
     driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
 
-    console.log("Checking Ajio Old URL...");
-    await driver.get("https://www.ajio.com/nike-air-force-1-07-lx-low-top-lace-up-casual-shoes/p/469554316_olive");
-    await driver.sleep(5000); 
-    const dataOld = await driver.executeScript(`
-      return {
-        bodyLength: document.body.innerHTML.length,
-        title: document.title,
-        h1Count: document.querySelectorAll('h1').length,
-        h2Count: document.querySelectorAll('h2').length
-      };
-    `);
-    console.log("Ajio Old URL Data:", dataOld);
+    console.log("Navigating to Ajio Homepage first...");
+    await driver.get("https://www.ajio.com/");
+    await driver.sleep(6000); 
 
-    console.log("Checking Ajio New URL...");
-    await driver.get("https://www.ajio.com/w-floral-print-straight-kurta-suit-set/p/442252483_lightyellow");
-    await driver.sleep(5000); 
-    const dataNew = await driver.executeScript(`
+    const homeTitle = await driver.getTitle();
+    console.log("Homepage Title:", homeTitle);
+
+    console.log("Navigating to Ajio Category page...");
+    await driver.get("https://www.ajio.com/men-jeans/c/830207002");
+    await driver.sleep(6000); 
+
+    const data = await driver.executeScript(`
       return {
         bodyLength: document.body.innerHTML.length,
         title: document.title,
         h1Count: document.querySelectorAll('h1').length,
-        h2Count: document.querySelectorAll('h2').length
+        h2Count: document.querySelectorAll('h2').length,
+        baseElementsCount: document.querySelectorAll('div.item.rilrtl-products-list__item').length
       };
     `);
-    console.log("Ajio New URL Data:", dataNew);
+    console.log("Ajio Category Page Data:", data);
 
   } catch (error) {
     console.error('Error:', error);

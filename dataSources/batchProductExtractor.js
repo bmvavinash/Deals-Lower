@@ -1373,6 +1373,48 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 }
 
 async function initializeDriver() {
+	const net = require('net');
+	const isPortOpen = (port) => new Promise((resolve) => {
+		const socket = new net.Socket();
+		const onError = () => {
+			socket.destroy();
+			resolve(false);
+		};
+		socket.setTimeout(800);
+		socket.once('error', onError);
+		socket.once('timeout', onError);
+		socket.connect(port, '127.0.0.1', () => {
+			socket.end();
+			resolve(true);
+		});
+	});
+
+	const isDebuggerAvailable = await isPortOpen(9222);
+	if (isDebuggerAvailable) {
+		try {
+			const options = new chrome.Options();
+			options.debuggerAddress("localhost:9222");
+			const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
+			logger.info('Connected to running Chrome instance on port 9222 for batch update');
+			
+			// Inject DevTools command to bypass automation detection
+			try {
+				await driver.sendDevToolsCommand('Page.addScriptToEvaluateOnNewDocument', {
+					source: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
+				});
+				logger.info('DevTools script injected successfully for remote debugger session.');
+			} catch (cdpErr) {
+				logger.warn('Failed to inject DevTools script in remote debugger session', { error: cdpErr.message });
+			}
+			
+			return driver;
+		} catch (error) {
+			logger.warn('Failed to connect to Chrome on port 9222 for batch update, falling back to standalone...', { error: error.message });
+		}
+	} else {
+		logger.info('Port 9222 is closed, initializing standalone headless Chrome');
+	}
+
 	const options = new chrome.Options();
 	options.addArguments('--headless=new');
 	options.addArguments('--no-sandbox');
@@ -1396,8 +1438,15 @@ async function initializeDriver() {
 	
 	const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
 	try {
-		await driver.executeScript('Object.defineProperty(navigator, "webdriver", {get: () => undefined})');
-	} catch {}
+		await driver.sendDevToolsCommand('Page.addScriptToEvaluateOnNewDocument', {
+			source: 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
+		});
+	} catch (cdpErr) {
+		logger.warn('Failed to inject DevTools script in standalone session', { error: cdpErr.message });
+		try {
+			await driver.executeScript('Object.defineProperty(navigator, "webdriver", {get: () => undefined})');
+		} catch {}
+	}
 	return driver;
 }
 
@@ -1473,6 +1522,17 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 			const { resolvePlatformFromUrl } = require('../utils/platformUtils');
 			let platform = resolvePlatformFromUrl(url) || Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase())) || 'amazon';
 			let category = categoryKey;
+
+			if (platform === 'ajio' || platform === 'myntra') {
+				const homepage = platform === 'ajio' ? 'https://www.ajio.com/' : 'https://www.myntra.com/';
+				logger.info(`Navigating to ${platform} homepage first to establish session...`);
+				try {
+					await driver.get(homepage);
+					await driver.sleep(4000);
+				} catch (e) {
+					logger.warn(`Failed to pre-load homepage for ${platform}`, { error: e.message });
+				}
+			}
 			
 			await driver.get(url);
 			await withTimeout(driver.wait(until.elementLocated(By.css('body')), 15000), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE_WAIT');

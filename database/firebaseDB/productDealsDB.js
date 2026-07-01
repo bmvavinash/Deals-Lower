@@ -413,6 +413,18 @@ class ProductDealsDB {
 					// Extracted attributes
 					attributes: product.attributes || null
 				};
+
+				// Whitelist and preserve specifications and parsed specification fields
+				const customSpecFields = [
+					'specifications', 'productTable', 'processor', 'ram', 'storage', 
+					'storageType', 'screenSize', 'starRating', 'capacity', 'acType', 
+					'resolution', 'processorBrand', 'refreshRate', 'fridgeType', 'modelNumber'
+				];
+				for (const field of customSpecFields) {
+					if (product[field] !== undefined) {
+						normalized[field] = product[field];
+					}
+				}
 				
 				updates[safeKey] = normalized;
 				

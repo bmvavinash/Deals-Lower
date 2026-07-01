@@ -27,10 +27,11 @@ function validatePrice(value) {
     const strippedValue = value.replace(/<[^>]*>/g, "").trim();
 
     // Remove common currency symbols like Rs., ₹, $, etc.
-    const cleanedValue = strippedValue.replace(/^(Rs\.|₹|[$])[\s]*/g, "").trim();
+    const cleanedValue = strippedValue.replace(/(Rs\.|₹|[$])/g, "").trim();
 
-    // Remove non-numeric characters except for digits, commas, and period (decimal point)
-    const numericValueString = cleanedValue.replace(/[^0-9,.]/g, "").trim();
+    // Extract the first sequence of digits/commas/periods
+    const match = cleanedValue.match(/[\d,.]+/);
+    const numericValueString = match ? match[0] : "";
 
     // Ensure that we only get the part before the first decimal
     const valueBeforeDecimal = numericValueString.split('.')[0].trim();
