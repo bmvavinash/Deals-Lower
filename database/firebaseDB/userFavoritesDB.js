@@ -563,6 +563,29 @@ class UserFavoritesDB {
     }
   }
 
+  async saveUserFeedback(userId, productId, feedbackData) {
+    try {
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.feedback) {
+          data.feedback = {};
+        }
+        if (!data.feedback[userId]) {
+          data.feedback[userId] = {};
+        }
+        data.feedback[userId][productId] = feedbackData;
+        this.saveLocalData(data);
+        return true;
+      }
+
+      await db().ref(`${this.usersBase}/${userId}/feedback/${productId}`).set(feedbackData);
+      return true;
+    } catch (error) {
+      console.error(`Error saving user feedback for ${userId}:`, error);
+      return false;
+    }
+  }
+
   async deleteUser(userId) {
     try {
       if (isLocalFallback) {
