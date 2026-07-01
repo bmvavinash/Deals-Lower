@@ -314,6 +314,23 @@ router.put('/user/last-seen', authenticateUser, async (req, res) => {
     logger.error('Error syncing last seen products', { error: error.message, userId: req.userId });
     res.status(500).json({ error: 'Failed to sync last seen products' });
   }
+// POST /api/favorites/user/feedback - Save user purchase feedback
+router.post('/user/feedback', authenticateUser, async (req, res) => {
+  try {
+    const { productId, feedback, purchased } = req.body;
+    logger.info('📝 User purchase feedback received:', { userId: req.userId, productId, purchased, feedback });
+    
+    const success = await userFavoritesDB.saveUserFeedback(req.userId, productId, { purchased, feedback, timestamp: Date.now() });
+    
+    if (success) {
+      res.json({ success: true, message: 'Feedback saved successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to save feedback' });
+    }
+  } catch (error) {
+    logger.error('Error saving feedback', { error: error.message, userId: req.userId });
+    res.status(500).json({ error: 'Failed to save feedback' });
+  }
 });
 
 module.exports = router;
