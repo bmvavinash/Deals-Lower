@@ -1,19 +1,73 @@
 {
   "rules": {
-    "banners": {
-      ".indexOn": ["isActive", "platform", "order"],
-      "$bannerId": {
-        ".read": true,
-        ".write": true,
-        ".validate": "newData.hasChildren(['id', 'url', 'clickRedirectUrl', 'isActive', 'order', 'creationTimestamp', 'updateTimestamp'])"
-      }
-    },
+    ".read": true,
+    ".write": "auth != null",
     "deals": {
-      ".indexOn": ["productCode", "storeType", "discount"],
-      "$dealId": {
+      ".indexOn": [
+        "price",
+        "discount",
+        "category",
+        "id",
+        "date",
+        "asin",
+        "productCode",
+        "datetime",
+        "sourceType",
+        "categoryKey",
+        "categoryGroup",
+        "hierarchicalCategory/subcategory",
+        "storeType"
+      ]
+    },
+    "productdeals": {
+      ".indexOn": [
+        "price",
+        "discount",
+        "category",
+        "id",
+        "date",
+        "asin",
+        "productCode",
+        "datetime",
+        "sourceType",
+        "categoryKey",
+        "categoryGroup",
+        "hierarchicalCategory/subcategory",
+        "storeType"
+      ],
+      "$id": {
         ".read": true,
         ".write": true
       }
+    },
+    "productdeals_static": {
+      ".indexOn": [
+        "staticCategory",
+        "categoryGroup",
+        "staticSubcategory",
+        "staticStyle"
+      ],
+      "$id": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "banners": {
+      ".indexOn": [
+        "active",
+        "order",
+        "category",
+        "isActive",
+        "platform"
+      ]
+    },
+    "test-banners": {
+      ".indexOn": [
+        "active",
+        "order",
+        "category",
+        "isActive"
+      ]
     }
   }
-} 
+}

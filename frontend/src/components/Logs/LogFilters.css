@@ -26,6 +26,27 @@
   border-color: #3498db;
 }
 
+.log-filters .apply-filters-btn {
+  background-color: #3498db;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.log-filters .apply-filters-btn:hover {
+  background-color: #2980b9;
+}
+
+.log-filters .apply-filters-btn:active {
+  transform: scale(0.98);
+}
+
 
 
 

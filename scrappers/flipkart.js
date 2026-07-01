@@ -1,5 +1,7 @@
 const flipkartConfig = require('../config/flipkartConfig');
 const { By, Key, Builder, Button, until } = require("selenium-webdriver");
+const { getModuleLogger } = require('../logger/logger');
+const logger = getModuleLogger('flipkart');
 
 const { validatePrice, validateDiscount } = require("../utils/commonUtils");
 const { getExtrapeUrl } = require('../affiliate/extrape');
@@ -117,9 +119,28 @@ async function scrapeFlipkartProduct(url, text, driver) {
         product.hierarchicalCategory = hierarchyInfo.hierarchicalCategory;
         product.hierarchicalKey = hierarchyInfo.hierarchicalKey;
 
+        // Log structured warnings for missing critical fields
+        const missingFields = [];
+        if (!product.price || product.price === '0') missingFields.push('price');
+        if (!product.title) missingFields.push('title');
+        if (!product.photo && (!product.images || product.images.length === 0)) missingFields.push('photo');
+        if (!product.brand) missingFields.push('brand');
+
+        if (missingFields.length > 0) {
+          logger.warn(`[flipkart] Scraped product has missing attributes: ${missingFields.join(', ')}`, {
+            moduleName: 'flipkart',
+            platform: 'flipkart',
+            productCode: product.productCode || (url ? url.match(/[?&]pid=([^&]+)/)?.[1] : ''),
+            productUrl: url,
+            missingFields,
+            category: product.category?.mainCategory || product.categoryGroup || 'Unknown',
+            actionRequired: 'fix_missing_data'
+          });
+        }
+
         return product;
     } catch(e) {
-        console.log("Error in Scrap Flipkart Product ",e);
+        logger.error("Error in Scrap Flipkart Product", { error: e.message, stack: e.stack, url });
     }
 }
 

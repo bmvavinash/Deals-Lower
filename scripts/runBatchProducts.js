@@ -113,7 +113,7 @@ async function main() {
 			logger.info('Starting batch run with custom seeds', { seedsCount: customSeeds.length });
 			await runBatch(customSeeds, sourceType, categoryKey, 'productdeals');
 			console.log('\n✅ Batch Extraction Complete');
-			return;
+			process.exit(0);
 		}
 
 		// MULTIPASS BREADTH-FIRST LOGIC
@@ -202,6 +202,7 @@ async function main() {
 		console.log('\n✅ Category-First Breadth-First Batch Extraction Complete');
 		console.log(`📊 Total Products extracted: ${totalExtracted}`);
 		console.log(`💾 Total Products stored: ${totalStored}`);
+		process.exit(0);
 
 	} catch (error) {
 		console.error('❌ runBatchProducts failed:', error.message);
@@ -214,3 +215,4 @@ if (require.main === module) {
 }
 
 module.exports = { getPlatformUrl, loadPriorityConfig, getPrioritizedJobs };
+

@@ -1,3 +1,4 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const { getModuleLogger } = require('../logger/logger');
 const { firebaseget } = require('../database/firebaseget');
 const updateProduct = require('../database/firebaseDB/firebaseUpdate');
@@ -36,8 +37,9 @@ function extractCategory(product) {
  * Prioritizes model number. If missing, uses brand + first 3 words of title.
  */
 function generateMatchingKey(product) {
-  if (product.model && product.model.trim() !== '') {
-    return `model_${normalizeStr(product.model)}`;
+  const model = product.model || product.modelNumber;
+  if (model && model.trim() !== '') {
+    return `model_${normalizeStr(model)}`;
   }
   
   // Fallback to brand + title prefix (mainly for fashion/clothing)

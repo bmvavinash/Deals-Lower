@@ -53,7 +53,9 @@ export const logsAPI = {
   getStats: (params?: { startDate?: string; endDate?: string }) =>
     api.get('/logs/stats', { params }),
   clear: (params?: { startDate?: string; endDate?: string; level?: string; module?: string }) =>
-    api.delete('/logs', { data: params })
+    api.delete('/logs', { data: params }),
+  fix: (logData: { productCode: string; productUrl: string; storeType: string; targetDb?: string; issue?: string }) =>
+    api.post('/logs/fix', logData)
 };
 
 // News API

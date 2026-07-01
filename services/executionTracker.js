@@ -49,6 +49,16 @@ class ExecutionTracker {
           });
           this.currentExecution.platforms = {};
         }
+
+        // Ensure platforms and their categories are initialized defensively
+        if (this.currentExecution && this.currentExecution.platforms) {
+          for (const key of Object.keys(this.currentExecution.platforms)) {
+            const platformData = this.currentExecution.platforms[key];
+            if (platformData && (!platformData.categories || typeof platformData.categories !== 'object')) {
+              platformData.categories = {};
+            }
+          }
+        }
         
         // Ensure executionHistory is always an array
         const history = data.history || [];
@@ -380,7 +390,7 @@ class ExecutionTracker {
     }
     
     const platformData = this.currentExecution.platforms[platform];
-    if (!platformData || !platformData.categories[category]) return;
+    if (!platformData || !platformData.categories || !platformData.categories[category]) return;
     
     const categoryData = platformData.categories[category];
     if (!categoryData.pages) {
@@ -430,7 +440,7 @@ class ExecutionTracker {
     }
     
     const platformData = this.currentExecution.platforms[platform];
-    if (!platformData || !platformData.categories[category]) return;
+    if (!platformData || !platformData.categories || !platformData.categories[category]) return;
     
     const categoryData = platformData.categories[category];
     if (!categoryData.pages || !categoryData.pages[`page_${pageIndex}`]) return;
@@ -476,7 +486,11 @@ class ExecutionTracker {
       platformData = this.currentExecution.platforms[platform];
     }
 
-    if (!platformData.categories[category]) {
+    if (platformData && (!platformData.categories || typeof platformData.categories !== 'object')) {
+      platformData.categories = {};
+    }
+
+    if (!platformData || !platformData.categories || !platformData.categories[category]) {
       platformData.categories[category] = {
         startTime: new Date().toISOString(),
         totalProducts: 0,

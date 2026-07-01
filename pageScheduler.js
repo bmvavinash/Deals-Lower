@@ -251,6 +251,14 @@ async function scrapeGeneral(driver, pageConfig, storeKey) {
     const products = [];
     const workingSelectorCache = {};
     
+    try {
+        const curUrl = await driver.getCurrentUrl();
+        const curTitle = await driver.getTitle();
+        logger.info('Page loaded for scraping:', { storeKey, url: curUrl, title: curTitle });
+    } catch (e) {
+        logger.warn('Failed to get page details before scraping:', { error: e.message });
+    }
+    
     logger.info('Starting general scraping', { storeKey, baseSelector: pageConfig.baseSelector });
     
     // Clear memory at start

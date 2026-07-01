@@ -497,6 +497,35 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
     product.hierarchicalCategory = hierarchyInfo.hierarchicalCategory;
     product.hierarchicalKey = hierarchyInfo.hierarchicalKey;
 
+    // Parse and attach spec details directly to product object for DB storage
+    try {
+      const { parseSpecs } = require('../utils/specMatcher');
+      const categoryGroup = product.categoryGroup || product.hierarchicalCategory?.mainCategory || product.category || '';
+      const parsedSpecs = parseSpecs(product.title, product.specifications || product.productTable || {}, categoryGroup);
+      Object.assign(product, parsedSpecs);
+    } catch (specErr) {
+      logger.error(`[${platform}] Error parsing and assigning specifications:`, { error: specErr.message, stack: specErr.stack });
+    }
+
+    // Log structured warnings for missing critical fields
+    const missingFields = [];
+    if (!product.price || product.price === '0') missingFields.push('price');
+    if (!product.title) missingFields.push('title');
+    if (!product.photo && (!product.images || product.images.length === 0)) missingFields.push('photo');
+    if (!product.brand) missingFields.push('brand');
+
+    if (missingFields.length > 0) {
+      logger.warn(`[${platform}] Scraped product has missing attributes: ${missingFields.join(', ')}`, {
+        moduleName: platform,
+        platform,
+        productCode: product.productCode || getAsin(url),
+        productUrl: url,
+        missingFields,
+        category: product.category?.mainCategory || product.categoryGroup || 'Unknown',
+        actionRequired: 'fix_missing_data'
+      });
+    }
+
     return product;
   } catch (e) { logger.error(`[${platform}] Error in scrap Product:`, { error: e.message, stack: e.stack, url }); }
 }
