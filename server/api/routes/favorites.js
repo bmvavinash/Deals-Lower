@@ -335,4 +335,31 @@ router.post('/user/feedback', authenticateUser, async (req, res) => {
   }
 });
 
+// GET /api/favorites/notifications - Get user's triggered notifications history
+router.get('/notifications', authenticateUser, async (req, res) => {
+  try {
+    const list = await userFavoritesDB.getTriggeredNotifications(req.userId);
+    res.json({ success: true, notifications: Object.values(list) });
+  } catch (error) {
+    logger.error('Error getting notifications', { error: error.message, userId: req.userId });
+    res.status(500).json({ error: 'Failed to get notifications' });
+  }
+});
+
+// POST /api/favorites/notifications - Trigger a notification (mocked or real)
+router.post('/notifications', authenticateUser, async (req, res) => {
+  try {
+    const { title, message, channel } = req.body;
+    const success = await userFavoritesDB.addTriggeredNotification(req.userId, { title, message, channel });
+    if (success) {
+      res.json({ success: true, message: 'Notification triggered successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to trigger notification' });
+    }
+  } catch (error) {
+    logger.error('Error triggering notification', { error: error.message, userId: req.userId });
+    res.status(500).json({ error: 'Failed to trigger notification' });
+  }
+});
+
 module.exports = router;

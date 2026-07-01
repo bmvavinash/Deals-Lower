@@ -44,6 +44,8 @@ interface User {
   whatsappPhone: string;
   telegramConfigured: boolean;
   whatsappConfigured: boolean;
+  webPushConfigured: boolean;
+  appVisionsConfigured: boolean;
   favoritesCount: number;
   favorites: { [productCode: string]: FavoriteItem };
   trackedProducts: { [productCode: string]: TrackedProduct };
@@ -116,10 +118,15 @@ const UsersPage: React.FC = () => {
     let telegramConfigured = telegramChatId !== 'N/A' && telegramChatId !== 'null' && !!telegramChatId;
     let whatsappConfigured = whatsappPhone !== 'N/A' && whatsappPhone !== 'null' && !!whatsappPhone;
 
+    let webPushConfigured = false;
+    let appVisionsConfigured = false;
+
     // Also check tracked products for active notification flags
     Object.values(tracked).forEach((item: any) => {
       if (item.telegramEnabled || item.telegramChatId) telegramConfigured = true;
       if (item.whatsappEnabled || item.whatsappPhone) whatsappConfigured = true;
+      if (item.webPushEnabled) webPushConfigured = true;
+      if (item.appVisionsEnabled) appVisionsConfigured = true;
     });
 
     return {
@@ -131,6 +138,8 @@ const UsersPage: React.FC = () => {
       whatsappPhone,
       telegramConfigured,
       whatsappConfigured,
+      webPushConfigured,
+      appVisionsConfigured,
       favoritesCount: Object.keys(u.favorites || {}).length,
       favorites: u.favorites || {},
       trackedProducts: tracked,
@@ -300,15 +309,14 @@ const UsersPage: React.FC = () => {
               <tr>
                 <th>User Profile</th>
                 <th>Contact Number</th>
-                <th>Telegram Config</th>
-                <th>WhatsApp Config</th>
+                <th>Channels</th>
                 <th style={{ textAlign: 'center' }}>Favorites</th>
               </tr>
             </thead>
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="empty-table-cell">
+                  <td colSpan={4} className="empty-table-cell">
                     No users match the search/filter parameters.
                   </td>
                 </tr>
@@ -320,7 +328,7 @@ const UsersPage: React.FC = () => {
                     onClick={() => setSelectedUserId(u.uid === selectedUserId ? null : u.uid)}
                   >
                     <td>
-                      <div className="user-profile-cell">
+                       <div className="user-profile-cell">
                         <strong className="user-display-name">{u.displayName}</strong>
                         <span className="user-email-text">{u.email}</span>
                       </div>
@@ -329,18 +337,15 @@ const UsersPage: React.FC = () => {
                       <span className="user-phone-text">{u.mobileNumber}</span>
                     </td>
                     <td>
-                      {u.telegramConfigured ? (
-                        <span className="status-chip success-chip">Active</span>
-                      ) : (
-                        <span className="status-chip warning-chip">Not Active</span>
-                      )}
-                    </td>
-                    <td>
-                      {u.whatsappConfigured ? (
-                        <span className="status-chip success-chip">Active</span>
-                      ) : (
-                        <span className="status-chip warning-chip">Not Active</span>
-                      )}
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                        {u.telegramConfigured && <span className="status-chip success-chip" style={{ backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}>Telegram</span>}
+                        {u.whatsappConfigured && <span className="status-chip success-chip" style={{ backgroundColor: '#f0fdf4', color: '#15803d', border: '1px solid #bbf7d0' }}>WhatsApp</span>}
+                        {u.webPushConfigured && <span className="status-chip success-chip" style={{ backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #ffedd5' }}>Web Push</span>}
+                        {u.appVisionsConfigured && <span className="status-chip success-chip" style={{ backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff' }}>App Visions</span>}
+                        {!u.telegramConfigured && !u.whatsappConfigured && !u.webPushConfigured && !u.appVisionsConfigured && (
+                          <span className="status-chip warning-chip">None</span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: 'bold' }}>
                       {u.favoritesCount}
