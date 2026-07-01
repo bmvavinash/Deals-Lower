@@ -631,6 +631,45 @@ class UserFavoritesDB {
     }
   }
 
+  async addGlobalNotification(notificationData) {
+    try {
+      const notifId = 'global_notif_' + Date.now();
+      const payload = {
+        id: notifId,
+        timestamp: Date.now(),
+        ...notificationData
+      };
+      
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.global_notifications) data.global_notifications = {};
+        data.global_notifications[notifId] = payload;
+        this.saveLocalData(data);
+        return true;
+      }
+      
+      await db().ref(`global_notifications/${notifId}`).set(payload);
+      return true;
+    } catch (error) {
+      console.error(`Error adding global notification:`, error);
+      return false;
+    }
+  }
+
+  async getGlobalNotifications() {
+    try {
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        return data.global_notifications || {};
+      }
+      const snapshot = await db().ref(`global_notifications`).once('value');
+      return snapshot.val() || {};
+    } catch (error) {
+      console.error(`Error getting global notifications:`, error);
+      return {};
+    }
+  }
+
   async deleteUser(userId) {
     try {
       if (isLocalFallback) {
