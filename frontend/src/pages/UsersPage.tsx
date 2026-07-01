@@ -29,6 +29,12 @@ interface TrackedProduct {
   whatsappPhone?: string;
 }
 
+interface UserFeedback {
+  purchased: boolean;
+  feedback: string;
+  timestamp: number;
+}
+
 interface User {
   uid: string;
   email: string;
@@ -43,6 +49,7 @@ interface User {
   trackedProducts: { [productCode: string]: TrackedProduct };
   searches: string[];
   lastSeen: string[];
+  feedback?: { [productId: string]: UserFeedback };
 }
 
 interface ProductDetails {
@@ -128,7 +135,8 @@ const UsersPage: React.FC = () => {
       favorites: u.favorites || {},
       trackedProducts: tracked,
       searches: u.searches || [],
-      lastSeen: u.lastSeen || []
+      lastSeen: u.lastSeen || [],
+      feedback: u.feedback || {}
     };
   });
 
@@ -486,6 +494,40 @@ const UsersPage: React.FC = () => {
                       >
                         View Product
                       </a>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Purchase Feedback Section */}
+            <div className="drilldown-feedback-section" style={{ marginTop: '24px', borderTop: '1px dashed #e9ecef', paddingTop: '20px' }}>
+              <h4 style={{ margin: '0 0 12px 0', fontSize: '15px', color: '#1a1f36', fontWeight: 600 }}>Purchase Feedback ({Object.keys(selectedUser.feedback || {}).length})</h4>
+              {!selectedUser.feedback || Object.keys(selectedUser.feedback).length === 0 ? (
+                <p className="no-feedback-text" style={{ fontSize: '13px', color: '#697386', fontStyle: 'italic', margin: 0 }}>No purchase feedback submitted yet.</p>
+              ) : (
+                <div className="feedback-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {Object.entries(selectedUser.feedback).map(([productId, fb]: [string, any]) => (
+                    <div 
+                      key={productId} 
+                      className="feedback-item-box"
+                      style={{ 
+                        border: '1px solid #e2e8f0',
+                        borderRadius: '8px',
+                        padding: '12px',
+                        backgroundColor: '#f8fafc'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '11px', color: '#64748b' }}>
+                        <span>ID: <b style={{ fontFamily: 'monospace' }}>{productId}</b></span>
+                        <span>{new Date(fb.timestamp).toLocaleDateString()}</span>
+                      </div>
+                      <div style={{ fontWeight: 600, color: fb.purchased ? '#0f766e' : '#b91c1c', fontSize: '12px', marginBottom: '4px' }}>
+                        {fb.purchased ? '✅ Purchased' : '❌ Not Purchased'}
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: '#334155', fontStyle: 'italic' }}>
+                        "{fb.feedback || 'No comments provided'}"
+                      </p>
                     </div>
                   ))}
                 </div>
