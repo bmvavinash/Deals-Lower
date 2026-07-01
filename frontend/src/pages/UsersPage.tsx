@@ -375,20 +375,51 @@ const UsersPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="drilldown-favorites-section">
+             <div className="drilldown-favorites-section">
               <h4>Favorited Products ({selectedUser.favoritesCount})</h4>
               {selectedUser.favoritesCount === 0 ? (
                 <p className="no-favs-text">This user has not favorited any products yet.</p>
               ) : (
-                <div className="drilldown-favorites-list">
+                <div className="drilldown-favorites-list" style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                   {Object.entries(selectedUser.favorites).map(([pCode, details]) => (
-                    <div key={pCode} className="favorites-item-box">
-                      <h5>{details.title || pCode}</h5>
-                      <div className="favorites-item-footer">
-                        <span>Store: <b>{details.storeType || 'Unknown'}</b></span>
-                        <span className="item-price-tag">{details.price !== undefined ? `₹${details.price}` : 'N/A'}</span>
+                    <a 
+                      href={`http://localhost:3000/p/${pCode}`} 
+                      target="_blank" 
+                      rel="noreferrer"
+                      key={pCode} 
+                      className="favorites-item-box-link"
+                      style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+                    >
+                      <div 
+                        className="favorites-item-box"
+                        style={{ 
+                          cursor: 'pointer',
+                          transition: 'transform 0.15s ease, box-shadow 0.15s ease',
+                          border: '1px solid #dee2e6',
+                          borderRadius: '8px',
+                          padding: '12px',
+                          backgroundColor: '#ffffff'
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-2px)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)';
+                          e.currentTarget.style.borderColor = '#c6c9cf';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = 'none';
+                          e.currentTarget.style.borderColor = '#dee2e6';
+                        }}
+                      >
+                        <h5 style={{ margin: '0 0 8px 0', fontSize: '13px', fontWeight: '600', color: '#1a1f36' }}>{details.title || pCode}</h5>
+                        <div className="favorites-item-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: '#697386' }}>
+                          <span>Store: <b style={{ color: '#1a1f36' }}>{details.storeType || 'Unknown'}</b></span>
+                          <span className="item-price-tag" style={{ fontWeight: '700', color: '#008060', fontSize: '12px' }}>
+                            {details.price !== null && details.price !== undefined ? `₹${details.price}` : 'N/A'}
+                          </span>
+                        </div>
                       </div>
-                    </div>
+                    </a>
                   ))}
                 </div>
               )}
