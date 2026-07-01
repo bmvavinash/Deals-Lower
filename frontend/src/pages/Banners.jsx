@@ -43,6 +43,18 @@ const Banners = () => {
   const [extractionResult, setExtractionResult] = useState(null);
   const [dedupeInfo, setDedupeInfo] = useState({ removed: 0 });
 
+  // Custom manual deal/banner form states
+  const [editingBannerId, setEditingBannerId] = useState(null);
+  const [formUrl, setFormUrl] = useState('');
+  const [formClickRedirectUrl, setFormClickRedirectUrl] = useState('');
+  const [formPlatform, setFormPlatform] = useState('custom');
+  const [formCategory, setFormCategory] = useState('general');
+  const [formTitle, setFormTitle] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formIsActive, setFormIsActive] = useState(true);
+  const [formOrder, setFormOrder] = useState('0');
+  const [formStatus, setFormStatus] = useState(null);
+
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
@@ -269,6 +281,96 @@ const Banners = () => {
     }
   };
 
+  const handleSaveBanner = async (e) => {
+    e.preventDefault();
+    if (!formUrl.trim() || !formClickRedirectUrl.trim()) {
+      setFormStatus('❌ Image URL and Target link are required.');
+      return;
+    }
+    
+    setFormStatus(editingBannerId ? 'Updating...' : 'Adding...');
+    
+    const urlEndpoint = editingBannerId 
+      ? `${API_BASE_URL}/api/banners/${editingBannerId}`
+      : `${API_BASE_URL}/api/banners/add`;
+      
+    const method = editingBannerId ? 'PUT' : 'POST';
+
+    try {
+      const response = await fetch(urlEndpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: formUrl,
+          clickRedirectUrl: formClickRedirectUrl,
+          platform: formPlatform,
+          category: formCategory,
+          title: formTitle,
+          description: formDescription,
+          isActive: formIsActive,
+          order: Number(formOrder) || 0
+        })
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setFormStatus(`✅ Success: ${result.message}`);
+        // Clear form
+        handleCancelEdit();
+        // Refresh banners
+        triggerBanners();
+      } else {
+        setFormStatus(`❌ Error: ${result.error || 'Failed to save deal'}`);
+      }
+    } catch (err) {
+      setFormStatus(`❌ Connection Error: ${err.message}`);
+    }
+  };
+
+  const handleEditBannerClick = (banner) => {
+    setEditingBannerId(banner.id);
+    setFormUrl(banner.url || '');
+    setFormClickRedirectUrl(banner.clickRedirectUrl || '');
+    setFormPlatform(banner.platform || 'custom');
+    setFormCategory(banner.category || 'general');
+    setFormTitle(banner.title || '');
+    setFormDescription(banner.description || '');
+    setFormIsActive(banner.isActive === true);
+    setFormOrder(String(banner.order || 0));
+    setFormStatus(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingBannerId(null);
+    setFormUrl('');
+    setFormClickRedirectUrl('');
+    setFormPlatform('custom');
+    setFormCategory('general');
+    setFormTitle('');
+    setFormDescription('');
+    setFormIsActive(true);
+    setFormOrder('0');
+    setFormStatus(null);
+  };
+
+  const handleDeleteBanner = async (bannerId) => {
+    if (!window.confirm('Are you sure you want to delete this live deal/banner?')) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/${bannerId}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setBanners(prev => prev.filter(b => b.id !== bannerId));
+        fetchStats();
+      } else {
+        alert(`Failed to delete banner: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
   return (
     <div className="banners">
       <div className="banners-header">
@@ -322,6 +424,154 @@ const Banners = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Manual Live Deal / Banner Form Card */}
+      <div className="users-filter-card" style={{ marginTop: '24px', borderLeft: '4px solid #3b82f6', background: '#f8fafc', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ color: '#1e3a8a', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {editingBannerId ? '✏️ Edit Live Deal / Banner' : '➕ Add Custom Live Deal / Banner'}
+        </h3>
+        <form onSubmit={handleSaveBanner}>
+          <div className="filters-inputs-row" style={{ flexWrap: 'wrap', gap: '15px' }}>
+            <div className="filter-input-wrapper" style={{ flex: '1 1 250px' }}>
+              <label>Banner Image URL</label>
+              <input
+                type="text"
+                value={formUrl}
+                onChange={(e) => setFormUrl(e.target.value)}
+                placeholder="e.g. https://m.media-amazon.com/...jpg"
+                required
+              />
+            </div>
+            
+            <div className="filter-input-wrapper" style={{ flex: '1 1 250px' }}>
+              <label>Target Redirect Link</label>
+              <input
+                type="text"
+                value={formClickRedirectUrl}
+                onChange={(e) => setFormClickRedirectUrl(e.target.value)}
+                placeholder="e.g. https://www.amazon.in/deal/..."
+                required
+              />
+            </div>
+          </div>
+
+          <div className="filters-inputs-row" style={{ flexWrap: 'wrap', gap: '15px', marginTop: '15px' }}>
+            <div className="filter-input-wrapper" style={{ flex: '1 1 180px' }}>
+              <label>Deal Title</label>
+              <input
+                type="text"
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
+                placeholder="e.g. Flipkart Sale 60% Off"
+              />
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Platform Store</label>
+              <select value={formPlatform} onChange={(e) => setFormPlatform(e.target.value)}>
+                <option value="custom">Custom Platform</option>
+                <option value="amazon">Amazon</option>
+                <option value="flipkart">Flipkart</option>
+                <option value="myntra">Myntra</option>
+                <option value="ajio">Ajio</option>
+              </select>
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Target Category</label>
+              <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)}>
+                <option value="general">General</option>
+                <option value="fashion">Fashion</option>
+                <option value="laptops">Laptops</option>
+                <option value="mobiles">Mobiles</option>
+                <option value="electronics">Electronics</option>
+              </select>
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 80px' }}>
+              <label>Order Priority</label>
+              <input
+                type="number"
+                value={formOrder}
+                onChange={(e) => setFormOrder(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <div className="filter-input-wrapper" style={{ marginTop: '15px' }}>
+            <label>Description (Optional)</label>
+            <textarea
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+              placeholder="e.g. Save on top electronics products this weekend..."
+              rows={2}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontFamily: 'inherit',
+                fontSize: '14px',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={formIsActive}
+                onChange={(e) => setFormIsActive(e.target.checked)}
+              />
+              Make Deal Active immediately on Homepage
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+            {formStatus && (
+              <span style={{ fontSize: '13px', fontWeight: 600, color: formStatus.startsWith('✅') ? '#16a34a' : '#2563eb' }}>
+                {formStatus}
+              </span>
+            )}
+            
+            <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto' }}>
+              {editingBannerId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  style={{
+                    backgroundColor: '#9ca3af',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Cancel Edit
+                </button>
+              )}
+              <button
+                type="submit"
+                style={{
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                {editingBannerId ? 'Update Deal' : '🚀 Save Live Deal'}
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
 
       {dedupeInfo.removed > 0 && (
@@ -397,13 +647,45 @@ const Banners = () => {
             .filter(banner => bannerVisibility[banner.id] !== false)
             .map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
-              <div className="banner-status-toggle">
+              <div className="banner-status-toggle" style={{ display: 'flex', gap: '5px' }}>
                 <button 
                   onClick={() => toggleBannerStatus(banner.id, banner.isActive)}
                   className={`status-toggle-btn ${banner.isActive ? 'active' : 'inactive'}`}
                   title={`Click to ${banner.isActive ? 'deactivate' : 'activate'} this banner`}
                 >
                   {banner.isActive ? '✓ Active' : '✗ Inactive'}
+                </button>
+                <button 
+                  onClick={() => handleEditBannerClick(banner)}
+                  style={{
+                    backgroundColor: '#eab308',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 600
+                  }}
+                  title="Edit this banner's properties"
+                >
+                  ✏️ Edit
+                </button>
+                <button 
+                  onClick={() => handleDeleteBanner(banner.id)}
+                  style={{
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 600
+                  }}
+                  title="Delete this banner"
+                >
+                  🗑️ Delete
                 </button>
               </div>
               <div className="banner-image">

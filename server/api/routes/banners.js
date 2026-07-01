@@ -1196,4 +1196,95 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+// POST /api/banners/add - Create a custom live deal/banner
+router.post('/add', async (req, res, next) => {
+  try {
+    const { url, clickRedirectUrl, platform, category = 'general', title, description, isActive = true, order = 0 } = req.body;
+    if (!url || !clickRedirectUrl) {
+      return res.status(400).json({ success: false, error: 'Image URL and Target Link are required.' });
+    }
+
+    const timestamp = Date.now();
+    const cleanPlatform = (platform || 'custom').toLowerCase();
+    const bannerId = `custom-${cleanPlatform}-${timestamp}`;
+    
+    const bannerData = {
+      id: bannerId,
+      url,
+      mobileUrl: url,
+      clickRedirectUrl,
+      platform: cleanPlatform,
+      category,
+      title: title || `Live Deal - ${platform}`,
+      description: description || '',
+      isActive: isActive === true,
+      order: Number(order) || 0,
+      creationTimestamp: new Date().toISOString(),
+      updateTimestamp: new Date().toISOString()
+    };
+
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    const storeResult = bannerSource === 'test-banners' ? 
+      await testBannerDB.storeTestBanner(bannerData) : 
+      await bannerDB.storeBanner(bannerData);
+
+    if (storeResult.status === 200 || storeResult.status === 201) {
+      res.json({ success: true, data: bannerData, message: 'Custom deal added successfully' });
+    } else {
+      res.status(storeResult.status || 500).json({ success: false, error: storeResult.message });
+    }
+  } catch (error) {
+    logger.error('Error adding custom banner', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/banners/:id - Update an existing live deal/banner
+router.put('/:id', async (req, res, next) => {
+  try {
+    const bannerId = req.params.id;
+    const { url, clickRedirectUrl, platform, category, title, description, isActive, order } = req.body;
+
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    
+    // Fetch existing first
+    const getResult = bannerSource === 'test-banners' ? 
+      await testBannerDB.getAllTestBanners() : 
+      await bannerDB.getAllBanners();
+
+    if (getResult.status !== 200 || !getResult.data || !getResult.data[bannerId]) {
+      return res.status(404).json({ success: false, error: 'Banner not found' });
+    }
+
+    const existing = getResult.data[bannerId];
+    const updatedData = {
+      ...existing,
+      id: bannerId,
+      url: url !== undefined ? url : existing.url,
+      mobileUrl: url !== undefined ? url : (existing.mobileUrl || existing.url),
+      clickRedirectUrl: clickRedirectUrl !== undefined ? clickRedirectUrl : existing.clickRedirectUrl,
+      platform: platform !== undefined ? platform.toLowerCase() : existing.platform,
+      category: category !== undefined ? category : existing.category,
+      title: title !== undefined ? title : existing.title,
+      description: description !== undefined ? description : existing.description,
+      isActive: isActive !== undefined ? isActive === true : existing.isActive,
+      order: order !== undefined ? Number(order) : existing.order,
+      updateTimestamp: new Date().toISOString()
+    };
+
+    const storeResult = bannerSource === 'test-banners' ? 
+      await testBannerDB.storeTestBanner(updatedData) : 
+      await bannerDB.storeBanner(updatedData);
+
+    if (storeResult.status === 200 || storeResult.status === 201) {
+      res.json({ success: true, data: updatedData, message: 'Deal updated successfully' });
+    } else {
+      res.status(storeResult.status || 500).json({ success: false, error: storeResult.message });
+    }
+  } catch (error) {
+    logger.error('Error updating banner', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;
