@@ -54,6 +54,7 @@ const Banners = () => {
   const [formIsActive, setFormIsActive] = useState(true);
   const [formOrder, setFormOrder] = useState('0');
   const [formStatus, setFormStatus] = useState(null);
+  const [useCacheLive, setUseCacheLive] = useState(false);
 
   useEffect(() => {
     fetchBannerSource();
@@ -72,8 +73,14 @@ const Banners = () => {
         setBannerSource(result.data.current);
         setSourceLoading(false);
       }
+      
+      const configRes = await fetch(`${API_BASE_URL}/api/banners/config`);
+      const configResult = await configRes.json();
+      if (configResult.success && configResult.data) {
+        setUseCacheLive(configResult.data.useCache === true);
+      }
     } catch (err) {
-      console.error('Error fetching banner source:', err);
+      console.error('Error fetching banner source/config:', err);
       setBannerSource('test-banners'); // Default to test-banners
       setSourceLoading(false);
     }
@@ -160,6 +167,25 @@ const Banners = () => {
       setError(err.message);
     } finally {
       setSourceLoading(false);
+    }
+  };
+
+  const toggleLiveCacheSetting = async () => {
+    const newValue = !useCacheLive;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useCache: newValue })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setUseCacheLive(newValue);
+      } else {
+        alert('Failed to update live cache setting');
+      }
+    } catch (err) {
+      alert(`Error toggling cache setting: ${err.message}`);
     }
   };
 
@@ -420,6 +446,24 @@ const Banners = () => {
                 className={`source-button ${bannerSource === 'production' ? 'active' : ''}`}
               >
                 production
+              </button>
+            </div>
+          </div>
+
+          <div className="source-toggle" style={{ marginLeft: '20px' }}>
+            <span className="source-label" style={{ minWidth: '135px' }}>Live Web Caching:</span>
+            <div className="toggle-switch">
+              <button 
+                onClick={toggleLiveCacheSetting}
+                className={`source-button ${useCacheLive ? 'active' : ''}`}
+                style={{
+                  backgroundColor: useCacheLive ? '#16a34a' : '#ef4444',
+                  borderColor: useCacheLive ? '#15803d' : '#b91c1c',
+                  color: 'white',
+                  fontWeight: 700
+                }}
+              >
+                {useCacheLive ? 'Enabled (Cached Banners)' : 'Disabled (Live Banners)'}
               </button>
             </div>
           </div>

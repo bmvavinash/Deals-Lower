@@ -76,6 +76,48 @@ router.get('/source', (req, res) => {
 });
 
 /**
+ * GET /api/banners/config
+ * Get live banner config (including whether caching is enabled)
+ */
+router.get('/config', async (req, res, next) => {
+  try {
+    const result = await bannerDB.getBannerConfig();
+    if (result.status === 200) {
+      res.json({ success: true, data: result.data });
+    } else {
+      res.status(result.status || 500).json({ success: false, error: result.message });
+    }
+  } catch (error) {
+    logger.error('Error getting banner config', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/banners/config
+ * Update live banner config (enable/disable caching)
+ */
+router.post('/config', async (req, res, next) => {
+  try {
+    const { useCache } = req.body;
+    if (useCache === undefined) {
+      return res.status(400).json({ success: false, error: 'useCache field is required' });
+    }
+    
+    const result = await bannerDB.updateBannerConfig({ useCache: useCache === true });
+    if (result.status === 200) {
+      logger.info(`Banner caching config updated live to: ${useCache}`);
+      res.json({ success: true, message: `Caching config updated to ${useCache}` });
+    } else {
+      res.status(result.status || 500).json({ success: false, error: result.message });
+    }
+  } catch (error) {
+    logger.error('Error updating banner config', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/banners/source/toggle
  * Toggle banner source between test-banners.json and production
  */

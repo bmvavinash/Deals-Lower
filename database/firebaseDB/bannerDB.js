@@ -59,6 +59,26 @@ class BannerDB {
         this.bannersRef = db.ref('banners');
     }
 
+    async getBannerConfig() {
+        try {
+            const snapshot = await db.ref('settings/banners').once('value');
+            return { status: 200, data: snapshot.val() || { useCache: false } };
+        } catch (error) {
+            console.error('Error getting banner config:', error);
+            return { status: 500, message: 'Error getting banner config', error: error.message };
+        }
+    }
+
+    async updateBannerConfig(configData) {
+        try {
+            await db.ref('settings/banners').update(configData);
+            return { status: 200, message: 'Banner config updated successfully' };
+        } catch (error) {
+            console.error('Error updating banner config:', error);
+            return { status: 500, message: 'Error updating banner config', error: error.message };
+        }
+    }
+
     async storeBanner(bannerData) {
         try {
             const bannerRef = this.bannersRef.child(bannerData.id);
