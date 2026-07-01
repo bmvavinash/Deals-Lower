@@ -567,13 +567,16 @@ class UserFavoritesDB {
     try {
       if (isLocalFallback) {
         const data = this.getLocalData();
-        if (!data.feedback) {
-          data.feedback = {};
+        if (!data.users) {
+          data.users = {};
         }
-        if (!data.feedback[userId]) {
-          data.feedback[userId] = {};
+        if (!data.users[userId]) {
+          data.users[userId] = {};
         }
-        data.feedback[userId][productId] = feedbackData;
+        if (!data.users[userId].feedback) {
+          data.users[userId].feedback = {};
+        }
+        data.users[userId].feedback[productId] = feedbackData;
         this.saveLocalData(data);
         return true;
       }
