@@ -589,6 +589,48 @@ class UserFavoritesDB {
     }
   }
 
+  async addTriggeredNotification(userId, notificationData) {
+    try {
+      const notifId = 'notif_' + Date.now();
+      const payload = {
+        id: notifId,
+        timestamp: Date.now(),
+        read: false,
+        ...notificationData
+      };
+      
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.users) data.users = {};
+        if (!data.users[userId]) data.users[userId] = {};
+        if (!data.users[userId].notifications) data.users[userId].notifications = {};
+        data.users[userId].notifications[notifId] = payload;
+        this.saveLocalData(data);
+        return true;
+      }
+      
+      await db().ref(`${this.usersBase}/${userId}/notifications/${notifId}`).set(payload);
+      return true;
+    } catch (error) {
+      console.error(`Error adding notification for ${userId}:`, error);
+      return false;
+    }
+  }
+
+  async getTriggeredNotifications(userId) {
+    try {
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        return data.users?.[userId]?.notifications || {};
+      }
+      const snapshot = await db().ref(`${this.usersBase}/${userId}/notifications`).once('value');
+      return snapshot.val() || {};
+    } catch (error) {
+      console.error(`Error getting notifications for ${userId}:`, error);
+      return {};
+    }
+  }
+
   async deleteUser(userId) {
     try {
       if (isLocalFallback) {
