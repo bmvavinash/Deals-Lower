@@ -76,6 +76,53 @@ const UsersPage: React.FC = () => {
   // Drilldown Selected User State
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
+  // Broadcast states
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastMessage, setBroadcastMessage] = useState('');
+  const [broadcastLink, setBroadcastLink] = useState('');
+  const [broadcastChannel, setBroadcastChannel] = useState('general');
+  const [broadcastStatus, setBroadcastStatus] = useState<string | null>(null);
+  const [broadcasting, setBroadcasting] = useState(false);
+
+  const handleSendBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastMessage.trim()) {
+      setBroadcastStatus('❌ Error: Title and Message are required.');
+      return;
+    }
+    
+    setBroadcasting(true);
+    setBroadcastStatus(null);
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/favorites/global-notifications`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: broadcastTitle,
+          message: `📢 Broadcast: ${broadcastMessage}`,
+          channel: broadcastChannel,
+          link: broadcastLink || null
+        })
+      });
+      
+      const resData = await response.json();
+      if (response.ok && resData.success) {
+        setBroadcastStatus('✅ Success: Global notification broadcasted to all users!');
+        setBroadcastTitle('');
+        setBroadcastMessage('');
+        setBroadcastLink('');
+        setBroadcastChannel('general');
+      } else {
+        setBroadcastStatus(`❌ Error: ${resData.error || 'Failed to send broadcast.'}`);
+      }
+    } catch (e: any) {
+      setBroadcastStatus(`❌ Error connecting to server: ${e.message}`);
+    } finally {
+      setBroadcasting(false);
+    }
+  };
+
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
@@ -298,6 +345,97 @@ const UsersPage: React.FC = () => {
             </select>
           </div>
         </div>
+      </div>
+
+      {/* Broadcast Global Notification Card */}
+      <div className="users-filter-card" style={{ marginTop: '24px', borderLeft: '4px solid #7e22ce' }}>
+        <h3 style={{ color: '#7e22ce', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          📢 Broadcast Notification to All Users
+        </h3>
+        <form onSubmit={handleSendBroadcast}>
+          <div className="filters-inputs-row" style={{ flexWrap: 'wrap', gap: '15px' }}>
+            <div className="filter-input-wrapper" style={{ flex: '1 1 200px' }}>
+              <label>Notification Title</label>
+              <input
+                type="text"
+                value={broadcastTitle}
+                onChange={(e) => setBroadcastTitle(e.target.value)}
+                placeholder="e.g. Myntra Super Sale Starts Tomorrow!"
+                required
+              />
+            </div>
+            
+            <div className="filter-input-wrapper" style={{ flex: '1 1 200px' }}>
+              <label>Link Target URL (Optional)</label>
+              <input
+                type="text"
+                value={broadcastLink}
+                onChange={(e) => setBroadcastLink(e.target.value)}
+                placeholder="e.g. /category/fashion"
+              />
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 150px' }}>
+              <label>Target Category Taste</label>
+              <select value={broadcastChannel} onChange={(e) => setBroadcastChannel(e.target.value)}>
+                <option value="general">General (All Users)</option>
+                <option value="fashion">Fashion (Myntra/Ajio interest)</option>
+                <option value="laptops">Laptops interest</option>
+                <option value="mobiles">Mobiles interest</option>
+                <option value="electronics">Electronics/Audio interest</option>
+              </select>
+            </div>
+          </div>
+          
+          <div className="filter-input-wrapper" style={{ marginTop: '15px' }}>
+            <label>Message Content</label>
+            <textarea
+              value={broadcastMessage}
+              onChange={(e) => setBroadcastMessage(e.target.value)}
+              placeholder="Write the notification message here. This will be sent to all active users matching the selected category taste..."
+              required
+              rows={3}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontFamily: 'inherit',
+                fontSize: '14px',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+            {broadcastStatus && (
+              <span style={{ fontSize: '13px', fontWeight: 600, color: broadcastStatus.startsWith('✅') ? '#16a34a' : '#dc2626' }}>
+                {broadcastStatus}
+              </span>
+            )}
+            <button
+              type="submit"
+              disabled={broadcasting}
+              style={{
+                backgroundColor: '#7e22ce',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '10px 20px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '14px',
+                marginLeft: 'auto',
+                transition: 'background-color 0.2s',
+                opacity: broadcasting ? 0.7 : 1
+              }}
+              onMouseOver={(e) => (e.currentTarget.style.backgroundColor = '#6b21a8')}
+              onMouseOut={(e) => (e.currentTarget.style.backgroundColor = '#7e22ce')}
+            >
+              {broadcasting ? 'Sending Broadcast...' : '🚀 Send Broadcast'}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Main Layout Area */}

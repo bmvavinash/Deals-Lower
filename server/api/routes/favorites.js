@@ -362,4 +362,31 @@ router.post('/notifications', authenticateUser, async (req, res) => {
   }
 });
 
+// GET /api/favorites/global-notifications - Get list of global notifications / broadcasts
+router.get('/global-notifications', async (req, res) => {
+  try {
+    const list = await userFavoritesDB.getGlobalNotifications();
+    res.json({ success: true, notifications: Object.values(list) });
+  } catch (error) {
+    logger.error('Error getting global notifications', { error: error.message });
+    res.status(500).json({ error: 'Failed to get global notifications' });
+  }
+});
+
+// POST /api/favorites/global-notifications - Add a new global notification / broadcast
+router.post('/global-notifications', async (req, res) => {
+  try {
+    const { title, message, channel, link } = req.body;
+    const success = await userFavoritesDB.addGlobalNotification({ title, message, channel, link });
+    if (success) {
+      res.json({ success: true, message: 'Global notification broadcasted successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to broadcast global notification' });
+    }
+  } catch (error) {
+    logger.error('Error broadcasting global notification', { error: error.message });
+    res.status(500).json({ error: 'Failed to broadcast global notification' });
+  }
+});
+
 module.exports = router;
