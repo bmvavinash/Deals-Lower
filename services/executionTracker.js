@@ -727,9 +727,64 @@ class ExecutionTracker {
       recentExecutions: recent.slice(0, 5)
     };
   }
+
+  async startScraperExecution(saleName, urlsCount) {
+    const execution = {
+      id: `scraper_${Date.now()}`,
+      type: 'sale_scraper',
+      saleName,
+      status: 'running',
+      startTime: new Date().toISOString(),
+      totalUrls: urlsCount,
+      processedUrls: 0,
+      extractedBanners: 0,
+      errors: [],
+      logs: [`[INFO] Scraper started for sale: "${saleName}" with ${urlsCount} target URLs.`]
+    };
+
+    this.currentExecution = execution;
+    
+    if (this.ref) {
+      await this.ref.child('current').set(execution);
+    }
+    
+    logger.info('Scraper execution started', { saleName, id: execution.id });
+    return execution;
+  }
+
+  async updateScraperProgress(processedUrls, extractedBanners, newLogs = []) {
+    if (this.currentExecution && this.currentExecution.type === 'sale_scraper') {
+      this.currentExecution.processedUrls = processedUrls;
+      this.currentExecution.extractedBanners = extractedBanners;
+      if (newLogs.length > 0) {
+        this.currentExecution.logs = [...(this.currentExecution.logs || []), ...newLogs];
+      }
+      
+      if (this.ref) {
+        await this.ref.child('current').set(this.currentExecution);
+      }
+    }
+  }
+
+  async endScraperExecution(status, summary = {}) {
+    if (this.currentExecution && this.currentExecution.type === 'sale_scraper') {
+      this.currentExecution.status = status; // 'completed' or 'failed'
+      this.currentExecution.endTime = new Date().toISOString();
+      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
+      this.currentExecution.summary = summary;
+      this.currentExecution.logs.push(`[INFO] Scraper finished with status: ${status}. Extracted banners: ${this.currentExecution.extractedBanners}.`);
+      
+      if (this.ref) {
+        await this.ref.child('current').set(this.currentExecution);
+        await this.ref.child('history').push(this.currentExecution);
+      }
+      
+      logger.info('Scraper execution completed', { id: this.currentExecution.id, status });
+      this.currentExecution = null;
+    }
+  }
 }
 
 const executionTracker = new ExecutionTracker();
 
 module.exports = { executionTracker };
-

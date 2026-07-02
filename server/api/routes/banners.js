@@ -4,6 +4,8 @@ const { bannerDB, testBannerDB } = require('../../../database/firebaseDB/bannerD
 const { getModuleLogger } = require('../../../logger/logger');
 const { BannerExtractor } = require('../../../dataSources/bannerExtractor');
 const { bannerUrlFixer } = require('../../../services/bannerUrlFixer');
+const bannerConfig = require('../../../config/bannerConfig');
+const { executionTracker } = require('../../../services/executionTracker');
 
 const logger = getModuleLogger('banners-api');
 
@@ -1325,6 +1327,123 @@ router.put('/:id', async (req, res, next) => {
     }
   } catch (error) {
     logger.error('Error updating banner', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const runScrapingTask = async (saleName, platform, category, urls) => {
+  const logs = [];
+  const log = (msg) => {
+    const time = new Date().toLocaleTimeString();
+    logs.push(`[${time}] ${msg}`);
+    logger.info(msg);
+  };
+
+  try {
+    log(`Starting Selenium Chrome driver...`);
+    const extractor = new BannerExtractor({
+      visibility: true, // Custom scraped sale banners active immediately per user's requests
+      useExistingChrome: false,
+      requiresLogin: false
+    });
+    
+    await extractor.initializeDriver();
+    log(`Chrome WebDriver started successfully.`);
+    
+    // Start tracking in execution tracker
+    await executionTracker.startScraperExecution(saleName, urls.length);
+    
+    let processed = 0;
+    let extractedCount = 0;
+    
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    const platformConfig = bannerConfig.platforms[platform.toLowerCase()] || {
+      selectors: {
+        carousel: 'img',
+        bannerLink: 'a',
+        bannerImage: 'img',
+        bannerAlt: 'img[alt]'
+      },
+      validation: {
+        minImageWidth: 200,
+        minImageHeight: 100,
+        allowedDomains: []
+      }
+    };
+
+    for (const url of urls) {
+      if (!url.trim()) continue;
+      processed++;
+      log(`Scraping URL (${processed}/${urls.length}): ${url}`);
+      await executionTracker.updateScraperProgress(processed, extractedCount, logs);
+      logs.length = 0;
+      
+      try {
+        await extractor.driver.get(url);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for lazy load
+        
+        // Extract banners from this page using the platform's selectors
+        const urlBanners = await extractor.extractBannersFromUrl(platform, platformConfig.selectors, platformConfig.validation);
+        log(`Found ${urlBanners.length} potential deals/banners on this page.`);
+        
+        if (urlBanners.length > 0) {
+          // Verify and fix URLs
+          const fixedBanners = await bannerUrlFixer.fixBannerUrls(urlBanners);
+          
+          // Enrich banners with sale category and name
+          const enriched = fixedBanners.map(b => ({
+            ...b,
+            category: category,
+            platform: platform.toLowerCase(),
+            title: b.title || `${saleName} Deal`,
+            isActive: true // Active immediately
+          }));
+          
+          // Save to database
+          const storeResult = bannerSource === 'test-banners' ? 
+            await testBannerDB.storeMultipleTestBanners(enriched) : 
+            await bannerDB.storeMultipleBanners(enriched);
+            
+          const stored = storeResult.filter(r => r.status === 200 || r.status === 201).length;
+          extractedCount += stored;
+          log(`Successfully stored ${stored} new live deals in database.`);
+        }
+      } catch (err) {
+        log(`Error scraping ${url}: ${err.message}`);
+      }
+      
+      // Update execution tracker progress
+      await executionTracker.updateScraperProgress(processed, extractedCount, logs);
+      logs.length = 0; // Clear logs for next iteration
+    }
+    
+    await extractor.closeDriver();
+    log(`Web scraper completed. Extracted a total of ${extractedCount} deals.`);
+    await executionTracker.endScraperExecution('completed', { processedUrls: processed, totalExtracted: extractedCount });
+    
+  } catch (error) {
+    log(`Scraper execution crashed: ${error.message}`);
+    await executionTracker.endScraperExecution('failed', { error: error.message });
+  }
+};
+
+// POST /api/banners/scrape-sale - Trigger background sale scraper
+router.post('/scrape-sale', async (req, res, next) => {
+  try {
+    const { saleName, platform, category, urls } = req.body;
+    if (!saleName || !platform || !category || !urls || !Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ success: false, error: 'saleName, platform, category, and a non-empty urls array are required.' });
+    }
+
+    // Trigger background process immediately
+    runScrapingTask(saleName, platform, category, urls);
+
+    res.json({
+      success: true,
+      message: `Sale scraping process started in the background for "${saleName}". You can monitor progress on the dashboard.`
+    });
+  } catch (error) {
+    logger.error('Error starting sale scraper', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });

@@ -56,14 +56,82 @@ const Banners = () => {
   const [formStatus, setFormStatus] = useState(null);
   const [useCacheLive, setUseCacheLive] = useState(false);
 
+  // Sale Scraper states
+  const [scraperSaleName, setScraperSaleName] = useState('');
+  const [scraperPlatform, setScraperPlatform] = useState('amazon');
+  const [scraperCategory, setScraperCategory] = useState('general');
+  const [scraperUrls, setScraperUrls] = useState('');
+  const [scraperStatusText, setScraperStatusText] = useState(null);
+  const [activeScraperTask, setActiveScraperTask] = useState(null);
+
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
+    checkActiveTask();
     const interval = setInterval(() => {
       fetchStats();
-    }, 30000); // Refresh every 30 seconds
+      checkActiveTask();
+    }, 4000); // Poll status every 4 seconds
     return () => clearInterval(interval);
   }, []);
+
+  const checkActiveTask = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/execution/status`);
+      const result = await response.json();
+      if (result.success && result.data && result.data.type === 'sale_scraper') {
+        setActiveScraperTask(result.data);
+      } else {
+        setActiveScraperTask(null);
+      }
+    } catch (err) {
+      console.warn('Error checking active scraper task status:', err);
+    }
+  };
+
+  const handleStartScraper = async (e) => {
+    e.preventDefault();
+    if (!scraperSaleName || !scraperUrls) {
+      alert('Please fill in both Sale Name and Target URLs list.');
+      return;
+    }
+    
+    const parsedUrls = scraperUrls
+      .split('\n')
+      .map(u => u.trim())
+      .filter(u => u.length > 0);
+      
+    if (parsedUrls.length === 0) {
+      alert('Please enter at least one valid URL.');
+      return;
+    }
+
+    setScraperStatusText('🚀 Initializing sale scraper background task...');
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/scrape-sale`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          saleName: scraperSaleName,
+          platform: scraperPlatform,
+          category: scraperCategory,
+          urls: parsedUrls
+        })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setScraperStatusText('✅ Background scraper started! Tracking live execution...');
+        setScraperUrls('');
+        setScraperSaleName('');
+        checkActiveTask();
+      } else {
+        setScraperStatusText(`❌ Error starting scraper: ${result.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setScraperStatusText(`❌ Error: ${err.message}`);
+    }
+  };
 
   const fetchBannerSource = async () => {
     try {
@@ -468,6 +536,141 @@ const Banners = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Sale Scraper & Execution Monitor Console Card */}
+      <div className="users-filter-card" style={{ marginTop: '24px', borderLeft: '4px solid #ef4444', background: '#fffbeb', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ color: '#b45309', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          🤖 Automated Dynamic Sale Scraper Console
+        </h3>
+        <p style={{ fontSize: '13px', color: '#6b7280', margin: '-10px 0 20px 0' }}>
+          Paste target deal URLs (e.g. Myntra end of season, Amazon deals pages) to scrape live banners & offers automatically in the background using Selenium.
+        </p>
+
+        <form onSubmit={handleStartScraper}>
+          <div className="filters-inputs-row" style={{ flexWrap: 'wrap', gap: '15px' }}>
+            <div className="filter-input-wrapper" style={{ flex: '1 1 200px' }}>
+              <label>Campaign / Sale Name</label>
+              <input
+                type="text"
+                value={scraperSaleName}
+                onChange={(e) => setScraperSaleName(e.target.value)}
+                placeholder="e.g. Myntra Big Bold Sale"
+                required
+              />
+            </div>
+            
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Store Platform</label>
+              <select value={scraperPlatform} onChange={(e) => setScraperPlatform(e.target.value)}>
+                <option value="amazon">Amazon</option>
+                <option value="flipkart">Flipkart</option>
+                <option value="myntra">Myntra</option>
+                <option value="ajio">Ajio</option>
+              </select>
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Target Category</label>
+              <select value={scraperCategory} onChange={(e) => setScraperCategory(e.target.value)}>
+                <option value="general">General</option>
+                <option value="fashion">Fashion</option>
+                <option value="laptops">Laptops</option>
+                <option value="mobiles">Mobiles</option>
+                <option value="electronics">Electronics</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="filter-input-wrapper" style={{ marginTop: '15px' }}>
+            <label>Target URLs List (one URL per line)</label>
+            <textarea
+              value={scraperUrls}
+              onChange={(e) => setScraperUrls(e.target.value)}
+              placeholder="e.g.&#10;https://www.myntra.com/sale-clothing&#10;https://www.myntra.com/sale-footwear"
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontFamily: 'inherit',
+                fontSize: '13px',
+                resize: 'vertical'
+              }}
+              required
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+            {scraperStatusText && (
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#b45309' }}>
+                {scraperStatusText}
+              </span>
+            )}
+            
+            <button
+              type="submit"
+              disabled={!!activeScraperTask}
+              style={{
+                backgroundColor: activeScraperTask ? '#9ca3af' : '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '10px 20px',
+                cursor: activeScraperTask ? 'not-allowed' : 'pointer',
+                fontWeight: 700,
+                marginLeft: 'auto'
+              }}
+            >
+              {activeScraperTask ? '⏳ Scraper Running in Background' : '🚀 Start Background Scraper'}
+            </button>
+          </div>
+        </form>
+
+        {/* Live Scraper Execution Tracker & Logs Viewport */}
+        {activeScraperTask && (
+          <div style={{ marginTop: '20px', background: '#1e293b', borderRadius: '8px', padding: '15px', color: '#f8fafc' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '8px', marginBottom: '10px' }}>
+              <span style={{ fontWeight: 700, color: '#fbbf24', fontSize: '14px' }}>
+                📡 LIVE EXECUTION TRACKER: {activeScraperTask.saleName}
+              </span>
+              <span style={{ fontSize: '12px', background: '#b45309', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                {activeScraperTask.status}
+              </span>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '20px', fontSize: '13px', marginBottom: '10px' }}>
+              <div>
+                <strong>URLs Processed:</strong> {activeScraperTask.processedUrls} / {activeScraperTask.totalUrls}
+              </div>
+              <div>
+                <strong>Banners Extracted:</strong> {activeScraperTask.extractedBanners}
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ width: '100%', height: '8px', background: '#334155', borderRadius: '4px', overflow: 'hidden', marginBottom: '15px' }}>
+              <div 
+                style={{ 
+                  height: '100%', 
+                  background: '#fbbf24', 
+                  width: `${(activeScraperTask.processedUrls / activeScraperTask.totalUrls) * 100}%`,
+                  transition: 'width 0.4s ease'
+                }} 
+              />
+            </div>
+
+            {/* Terminal logs */}
+            <div style={{ fontSize: '12px', fontFamily: 'monospace', maxHeight: '150px', overflowY: 'auto', background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
+              {activeScraperTask.logs && activeScraperTask.logs.map((log, idx) => (
+                <div key={idx} style={{ color: log.includes('[ERROR]') ? '#ef4444' : '#38bdf8', margin: '2px 0' }}>
+                  {log}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Manual Live Deal / Banner Form Card */}
