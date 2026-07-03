@@ -3,8 +3,28 @@ const router = express.Router();
 const fs = require('fs');
 const path = require('path');
 const { exec } = require('child_process');
+const admin = require('firebase-admin');
+const constants = require('../../../config/constants.js');
+const config = require('../../../config/config.js');
 
 const commandsFilePath = path.join(__dirname, '../../../config/commandsList.json');
+
+// Initialize Firebase Admin if not already initialized
+const dbname = constants.postingTypesConfig[constants.type].DB;
+let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
+const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
+const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+
+if (!admin.apps.length) {
+  const databaseURL = DB_Name === 'lowerdealhub' 
+    ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+    : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+    
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+    databaseURL: databaseURL
+  });
+}
 
 router.get('/', (req, res) => {
     try {
@@ -19,7 +39,7 @@ router.get('/', (req, res) => {
     }
 });
 
-router.post('/execute', (req, res) => {
+router.post('/execute', async (req, res) => {
     const { id } = req.body;
     
     try {
@@ -35,7 +55,30 @@ router.post('/execute', (req, res) => {
             return res.status(404).json({ success: false, message: 'Command not found' });
         }
         
-        // Execute the command asynchronously
+        // If hybrid execution is enabled (production mode), queue command in Firebase for local runner execution
+        if (process.env.HYBRID_EXECUTION === 'true' || constants.env === 'prod') {
+            const db = admin.database();
+            const queueRef = db.ref('commandsQueue');
+            const newCommandRef = queueRef.push();
+            
+            await newCommandRef.set({
+                id: id,
+                command: commandObj.command,
+                name: commandObj.name,
+                role: commandObj.role || 'all',
+                status: 'pending',
+                createdAt: new Date().toISOString(),
+                triggeredBy: 'api'
+            });
+            
+            return res.json({ 
+                success: true, 
+                message: `Command "${commandObj.name}" has been queued in Firebase for execution by your local daemon.`,
+                queuedId: newCommandRef.key
+            });
+        }
+        
+        // Otherwise, execute command locally (normal development scenario)
         const process = exec(commandObj.command, { cwd: path.join(__dirname, '../../../') }, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Error executing ${id}:`, error);

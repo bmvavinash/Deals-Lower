@@ -1,10 +1,52 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const express = require('express');
 const cors = require('cors');
+const admin = require('firebase-admin');
 const { getModuleLogger } = require('../../logger/logger');
 const constants = require('../../config/constants');
+const config = require('../../config/config.js');
 
 const logger = getModuleLogger('api-server');
+
+// Centrally initialize Firebase Admin
+if (!admin.apps.length) {
+  let serviceAccount;
+  let databaseURL;
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      const dbname = constants.postingTypesConfig[constants.type].DB;
+      let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
+      databaseURL = DB_Name === 'lowerdealhub' 
+        ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+        : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+      logger.info(`Centrally initializing Firebase Admin in cloud mode using environment variables.`);
+    } catch (e) {
+      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON env variable:", e.message);
+    }
+  } else {
+    try {
+      const dbname = constants.postingTypesConfig[constants.type].DB;
+      let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
+      const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
+      serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+      databaseURL = DB_Name === 'lowerdealhub' 
+        ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+        : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+      logger.info(`Centrally initializing Firebase Admin in local development mode.`);
+    } catch (e) {
+      logger.warn("Could not find local Firebase credentials file. Central initialization skipped.", e.message);
+    }
+  }
+
+  if (serviceAccount && databaseURL) {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: databaseURL
+    });
+  }
+}
 
 // ============================================
 // GLOBAL ERROR HANDLERS - Catch ALL errors

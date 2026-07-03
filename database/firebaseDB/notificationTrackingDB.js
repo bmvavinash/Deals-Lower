@@ -10,8 +10,6 @@ const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
-const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
-
 // Initialize Firebase Admin if not already initialized
 // Use the same Firebase instance as productDealsDB to avoid conflicts
 let db;
@@ -22,6 +20,23 @@ try {
 } catch (error) {
   // If no instance exists, initialize (shouldn't happen as productDealsDB initializes first)
   try {
+    let serviceAccount;
+    if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+      try {
+        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+      } catch (e) {
+        console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", e.message);
+      }
+    }
+
+    if (!serviceAccount) {
+      try {
+        serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+      } catch (e) {
+        console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
+        throw e;
+      }
+    }
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`

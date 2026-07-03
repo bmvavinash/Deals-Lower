@@ -35,7 +35,7 @@ const Banners = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [triggering, setTriggering] = useState(false);
-  const [filter, setFilter] = useState({ platform: 'all', activeOnly: false });
+  const [filter, setFilter] = useState({ platform: 'all', activeOnly: true });
   const [bannerSource, setBannerSource] = useState('test-banners');
   const [sourceLoading, setSourceLoading] = useState(true);
   const [bannerVisibility, setBannerVisibility] = useState({});
@@ -46,6 +46,7 @@ const Banners = () => {
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
+    triggerBanners();
     const interval = setInterval(() => {
       fetchStats();
     }, 30000); // Refresh every 30 seconds
@@ -394,7 +395,12 @@ const Banners = () => {
           <div className="no-banners">No banners found</div>
         ) : (
           banners
-            .filter(banner => bannerVisibility[banner.id] !== false)
+            .filter(banner => {
+              const matchesVisibility = bannerVisibility[banner.id] !== false;
+              const matchesPlatform = filter.platform === 'all' || banner.platform?.toLowerCase() === filter.platform.toLowerCase();
+              const matchesActive = !filter.activeOnly || banner.isActive === true;
+              return matchesVisibility && matchesPlatform && matchesActive;
+            })
             .map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
               <div className="banner-status-toggle">
