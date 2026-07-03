@@ -45,7 +45,7 @@ const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
-  const databaseURL = `https://${DB_Name}-default-rtdb.firebaseio.com`;
+  const databaseURL = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL
