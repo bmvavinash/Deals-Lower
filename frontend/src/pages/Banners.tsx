@@ -101,7 +101,7 @@ const BannersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
-  const [filter, setFilter] = useState<Filter>({ platform: 'all', activeOnly: false });
+  const [filter, setFilter] = useState<Filter>({ platform: 'all', activeOnly: true });
   const [bannerSource, setBannerSource] = useState('test-banners');
   const [sourceLoading, setSourceLoading] = useState(true);
   const [bannerVisibility, setBannerVisibility] = useState<Record<string, boolean>>({});
@@ -112,6 +112,7 @@ const BannersPage: React.FC = () => {
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
+    triggerBanners(); // Automatically fetch and display banners on mount
     const interval = setInterval(() => {
       fetchStats();
     }, 30000); // Refresh every 30 seconds
@@ -435,6 +436,11 @@ const BannersPage: React.FC = () => {
         ) : (
           banners
             .filter(banner => bannerVisibility[banner.id] !== false)
+            .filter(banner => {
+              if (filter.activeOnly && !banner.isActive) return false;
+              if (filter.platform !== 'all' && banner.platform !== filter.platform) return false;
+              return true;
+            })
             .map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
               <div className="banner-status-toggle">

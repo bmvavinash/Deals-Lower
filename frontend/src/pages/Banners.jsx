@@ -35,7 +35,7 @@ const Banners = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [triggering, setTriggering] = useState(false);
-  const [filter, setFilter] = useState({ platform: 'all', activeOnly: false });
+  const [filter, setFilter] = useState({ platform: 'all', activeOnly: true });
   const [bannerSource, setBannerSource] = useState('test-banners');
   const [sourceLoading, setSourceLoading] = useState(true);
   const [bannerVisibility, setBannerVisibility] = useState({});
@@ -68,6 +68,7 @@ const Banners = () => {
     fetchBannerSource();
     fetchStats();
     checkActiveTask();
+    triggerBanners(); // Automatically fetch and display banners on mount
     const interval = setInterval(() => {
       fetchStats();
       checkActiveTask();
@@ -892,6 +893,11 @@ const Banners = () => {
         ) : (
           banners
             .filter(banner => bannerVisibility[banner.id] !== false)
+            .filter(banner => {
+              if (filter.activeOnly && !banner.isActive) return false;
+              if (filter.platform !== 'all' && banner.platform !== filter.platform) return false;
+              return true;
+            })
             .map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
               <div className="banner-status-toggle" style={{ display: 'flex', gap: '5px' }}>
