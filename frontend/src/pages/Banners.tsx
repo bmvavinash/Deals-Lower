@@ -434,12 +434,38 @@ const BannersPage: React.FC = () => {
         {banners.length === 0 && !triggering ? (
           <div className="no-banners">No banners found</div>
         ) : (
-          banners
+          [...banners]
             .filter(banner => bannerVisibility[banner.id] !== false)
             .filter(banner => {
               if (filter.activeOnly && !banner.isActive) return false;
               if (filter.platform !== 'all' && banner.platform !== filter.platform) return false;
               return true;
+            })
+            .sort((a, b) => {
+              const aActive = a.isActive ? 1 : 0;
+              const bActive = b.isActive ? 1 : 0;
+              if (aActive !== bActive) return bActive - aActive;
+
+              const getTs = (banner: any) => {
+                if (banner.creationTimestamp) {
+                  const t = new Date(banner.creationTimestamp).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                if (banner.updateTimestamp) {
+                  const t = new Date(banner.updateTimestamp).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                const id = banner.id || "";
+                const dateMatch = id.match(/(\d{4})-(\d{2})-(\d{2})/);
+                if (dateMatch) {
+                  const t = new Date(dateMatch[0]).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                const tsMatch = id.match(/-(\d{10,13})$/);
+                if (tsMatch) return parseInt(tsMatch[1], 10);
+                return 0;
+              };
+              return getTs(b) - getTs(a);
             })
             .map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>

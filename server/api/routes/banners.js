@@ -60,6 +60,42 @@ const dedupeBannerArray = (bannerArray = []) => {
   return { unique, duplicates };
 };
 
+const getBannerTimestamp = (banner) => {
+  if (!banner) return 0;
+  if (banner.creationTimestamp) {
+    const t = new Date(banner.creationTimestamp).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (banner.updateTimestamp) {
+    const t = new Date(banner.updateTimestamp).getTime();
+    if (!isNaN(t)) return t;
+  }
+  const id = banner.id || "";
+  const dateMatch = id.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    const t = new Date(dateMatch[0]).getTime();
+    if (!isNaN(t)) return t;
+  }
+  const tsMatch = id.match(/-(\d{10,13})$/);
+  if (tsMatch) {
+    return parseInt(tsMatch[1], 10);
+  }
+  return 0;
+};
+
+const sortBannersDescending = (bannersArray = []) => {
+  return bannersArray.sort((a, b) => {
+    // 1. Sort by active status (active first)
+    const aActive = a && a.isActive ? 1 : 0;
+    const bActive = b && b.isActive ? 1 : 0;
+    if (aActive !== bActive) {
+      return bActive - aActive;
+    }
+    // 2. Sort by timestamp descending (newest first)
+    return getBannerTimestamp(b) - getBannerTimestamp(a);
+  });
+};
+
 // Store the current source globally (default: test-banners.json)
 let bannerSource = 'test-banners';
 
@@ -211,14 +247,14 @@ router.post('/trigger', async (req, res, next) => {
     
     // Calculate statistics
     const stats = {
-    total: unique.length,
-    active: unique.filter(b => b && b.isActive).length,
-    inactive: unique.filter(b => b && !b.isActive).length,
+      total: unique.length,
+      active: unique.filter(b => b && b.isActive).length,
+      inactive: unique.filter(b => b && !b.isActive).length,
       byPlatform: {},
       byCategory: {}
     };
     
-  unique.forEach(banner => {
+    unique.forEach(banner => {
       if (banner && banner.platform) {
         stats.byPlatform[banner.platform] = (stats.byPlatform[banner.platform] || 0) + 1;
       }
@@ -227,19 +263,36 @@ router.post('/trigger', async (req, res, next) => {
       }
     });
     
-  logger.info(`Banner trigger completed. Source: ${bannerSource}, Total: ${unique.length}, DuplicatesRemoved: ${duplicates.length}`);
+    // Server-side filtering to optimize RAM consumption (0.12 MB constraint)
+    let processedBanners = [...unique];
+    const filterPlatform = req.body.platform || req.query.platform;
+    const filterActiveOnly = req.body.activeOnly !== undefined ? 
+      (req.body.activeOnly === true || req.body.activeOnly === 'true') : 
+      (req.query.activeOnly === 'true');
+    
+    if (filterActiveOnly) {
+      processedBanners = processedBanners.filter(b => b && b.isActive === true);
+    }
+    if (filterPlatform && filterPlatform !== 'all') {
+      processedBanners = processedBanners.filter(b => b && b.platform?.toLowerCase() === filterPlatform.toLowerCase());
+    }
+
+    // Server-side sorting: active first, then newest first (descending)
+    sortBannersDescending(processedBanners);
+    
+    logger.info(`Banner trigger completed. Source: ${bannerSource}, Total: ${unique.length}, Filtered: ${processedBanners.length}, DuplicatesRemoved: ${duplicates.length}`);
     
     res.json({
       success: true,
       source: bannerSource,
       data: {
-      banners: unique,
+        banners: processedBanners,
         stats: stats,
-      triggeredAt: new Date().toISOString(),
-      dedupe: {
-        removed: duplicates.length,
-        duplicateIds: duplicates.map(b => b.id)
-      }
+        triggeredAt: new Date().toISOString(),
+        dedupe: {
+          removed: duplicates.length,
+          duplicateIds: duplicates.map(b => b.id)
+        }
       }
     });
   } catch (error) {
@@ -333,22 +386,35 @@ router.get('/', async (req, res, next) => {
     }
     
     if (result.status === 200) {
-    const rawData = result.data || {};
-    const bannerArray = Array.isArray(rawData) ? rawData : Object.entries(rawData).map(([id, data]) => ({ id, ...data }));
-    const { unique, duplicates } = dedupeBannerArray(bannerArray);
-    const normalized = unique.reduce((acc, banner) => {
-      acc[banner.id] = banner;
-      return acc;
-    }, {});
+      const rawData = result.data || {};
+      const bannerArray = Array.isArray(rawData) ? rawData : Object.entries(rawData).map(([id, data]) => ({ id, ...data }));
+      const { unique, duplicates } = dedupeBannerArray(bannerArray);
+      
+      // Server-side filtering to optimize RAM consumption (0.12 MB constraint)
+      let processedBanners = [...unique];
+      if (activeOnly === 'true' || activeOnly === true) {
+        processedBanners = processedBanners.filter(b => b && b.isActive === true);
+      }
+      if (platform && platform !== 'all') {
+        processedBanners = processedBanners.filter(b => b && b.platform?.toLowerCase() === platform.toLowerCase());
+      }
+
+      // Server-side sorting: active first, then newest first (descending)
+      sortBannersDescending(processedBanners);
+
+      const normalized = processedBanners.reduce((acc, banner) => {
+        acc[banner.id] = banner;
+        return acc;
+      }, {});
 
       res.json({ 
         success: true, 
-      data: normalized,
-      source: currentSource,
-      dedupe: {
-        removed: duplicates.length,
-        duplicateIds: duplicates.map(b => b.id)
-      }
+        data: normalized,
+        source: currentSource,
+        dedupe: {
+          removed: duplicates.length,
+          duplicateIds: duplicates.map(b => b.id)
+        }
       });
     } else {
       res.status(result.status || 500).json({ 
