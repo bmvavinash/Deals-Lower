@@ -362,6 +362,113 @@ router.post('/manual-trigger', async (req, res) => {
 });
 
 /**
+ * POST /api/deals/scrape-live
+ * Trigger live deals scraping from Amazon and Flipkart home banners in backend context
+ */
+router.post('/scrape-live', async (req, res) => {
+  try {
+    logger.info('Live deals scraping API endpoint triggered via API call');
+
+    const { scrapeLiveDealsInternal } = require('../../../scripts/scrapeLiveDealsInternal');
+
+    scrapeLiveDealsInternal()
+      .then((summary) => {
+        logger.info('Live deals scraping completed successfully via API', summary);
+      })
+      .catch((error) => {
+        logger.error('Live deals scraping failed via API', { error: error.message, stack: error.stack });
+      });
+
+    res.json({
+      success: true,
+      message: 'Live deals scraping triggered successfully. It will run in the background.',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Error triggering live deals scraping', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to trigger live deals scraping',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * GET /api/deals/test-connection
+ * Retrieve last 10 Amazon deal products to verify sourceUrls and dealName attributes
+ */
+router.get('/test-connection', async (req, res) => {
+  try {
+    const snap = await productDealsDB.dealsRef.orderByChild('sourceUrl').equalTo('https://www.amazon.in/gp/bestsellers/?ref_=nav_cs_bestsellers').limitToLast(30).once('value');
+    const val = snap.val() || {};
+    const results = [];
+    Object.entries(val).forEach(([key, prod]) => {
+      results.push({
+        key,
+        title: prod.title,
+        date: prod.date,
+        sourceUrl: prod.sourceUrl,
+        isDeal: prod.isDeal,
+        dealName: prod.dealName,
+        storeType: prod.storeType
+      });
+    });
+    res.json({
+      success: true,
+      count: results.length,
+      data: results
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/deals/comparison/:matchId
+ * Retrieve products matching the same matchId for price comparison
+ */
+router.get('/comparison/:matchId', async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    if (!matchId || matchId === 'undefined' || matchId.startsWith('GEN_')) {
+      // Don't return matches for generic title hashes (too inaccurate)
+      return res.json({ success: true, matches: [] });
+    }
+    
+    // Query deals database
+    const snapshot = await productDealsDB.dealsRef.orderByChild('matchId').equalTo(matchId).once('value');
+    const val = snapshot.val() || {};
+    
+    const matches = Object.entries(val).map(([key, prod]) => ({
+      key,
+      title: prod.title,
+      price: prod.price,
+      mrp: prod.mrp,
+      discount: prod.discount,
+      storeType: prod.storeType,
+      productUrl: prod.productUrl,
+      photo: prod.photo,
+      links: prod.links
+    }));
+    
+    res.json({
+      success: true,
+      matches
+    });
+  } catch (error) {
+    logger.error('Error fetching price comparisons', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/deals/trigger-telegram-bot
  * Trigger the long-running Telegram bot process from the UI
  */
