@@ -41,10 +41,25 @@ const buildBannerKey = (banner = {}) => {
 const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
-const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
-// Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
+  let serviceAccount;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } catch (e) {
+      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", e.message);
+    }
+  }
+
+  if (!serviceAccount) {
+    try {
+      serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+    } catch (e) {
+      console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
+      throw e;
+    }
+  }
   const databaseURL = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
