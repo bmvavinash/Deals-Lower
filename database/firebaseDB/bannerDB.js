@@ -41,25 +41,11 @@ const buildBannerKey = (banner = {}) => {
 const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
-if (!admin.apps.length) {
-  let serviceAccount;
-  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    try {
-      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
-    } catch (e) {
-      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", e.message);
-    }
-  }
+const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
-  if (!serviceAccount) {
-    try {
-      serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
-    } catch (e) {
-      console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
-      throw e;
-    }
-  }
-  const databaseURL = `https://${DB_Name}-default-rtdb.firebaseio.com`;
+// Initialize Firebase Admin if not already initialized
+if (!admin.apps.length) {
+  const databaseURL = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL
@@ -71,6 +57,26 @@ const db = admin.database();
 class BannerDB {
     constructor() {
         this.bannersRef = db.ref('banners');
+    }
+
+    async getBannerConfig() {
+        try {
+            const snapshot = await db.ref('settings/banners').once('value');
+            return { status: 200, data: snapshot.val() || { useCache: false } };
+        } catch (error) {
+            console.error('Error getting banner config:', error);
+            return { status: 500, message: 'Error getting banner config', error: error.message };
+        }
+    }
+
+    async updateBannerConfig(configData) {
+        try {
+            await db.ref('settings/banners').update(configData);
+            return { status: 200, message: 'Banner config updated successfully' };
+        } catch (error) {
+            console.error('Error updating banner config:', error);
+            return { status: 500, message: 'Error updating banner config', error: error.message };
+        }
     }
 
     async storeBanner(bannerData) {

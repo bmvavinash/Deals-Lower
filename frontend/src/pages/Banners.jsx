@@ -43,15 +43,96 @@ const Banners = () => {
   const [extractionResult, setExtractionResult] = useState(null);
   const [dedupeInfo, setDedupeInfo] = useState({ removed: 0 });
 
+  // Custom manual deal/banner form states
+  const [editingBannerId, setEditingBannerId] = useState(null);
+  const [formUrl, setFormUrl] = useState('');
+  const [formClickRedirectUrl, setFormClickRedirectUrl] = useState('');
+  const [formPlatform, setFormPlatform] = useState('custom');
+  const [formCategory, setFormCategory] = useState('general');
+  const [formTitle, setFormTitle] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formIsActive, setFormIsActive] = useState(true);
+  const [formOrder, setFormOrder] = useState('0');
+  const [formStatus, setFormStatus] = useState(null);
+  const [useCacheLive, setUseCacheLive] = useState(false);
+
+  // Sale Scraper states
+  const [scraperSaleName, setScraperSaleName] = useState('');
+  const [scraperPlatform, setScraperPlatform] = useState('amazon');
+  const [scraperCategory, setScraperCategory] = useState('general');
+  const [scraperUrls, setScraperUrls] = useState('');
+  const [scraperStatusText, setScraperStatusText] = useState(null);
+  const [activeScraperTask, setActiveScraperTask] = useState(null);
+
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
-    triggerBanners();
+    checkActiveTask();
+    triggerBanners(); // Automatically fetch and display banners on mount
     const interval = setInterval(() => {
       fetchStats();
-    }, 30000); // Refresh every 30 seconds
+      checkActiveTask();
+    }, 4000); // Poll status every 4 seconds
     return () => clearInterval(interval);
   }, []);
+
+  const checkActiveTask = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/execution/status`);
+      const result = await response.json();
+      if (result.success && result.data && result.data.type === 'sale_scraper') {
+        setActiveScraperTask(result.data);
+      } else {
+        setActiveScraperTask(null);
+      }
+    } catch (err) {
+      console.warn('Error checking active scraper task status:', err);
+    }
+  };
+
+  const handleStartScraper = async (e) => {
+    e.preventDefault();
+    if (!scraperSaleName || !scraperUrls) {
+      alert('Please fill in both Sale Name and Target URLs list.');
+      return;
+    }
+    
+    const parsedUrls = scraperUrls
+      .split('\n')
+      .map(u => u.trim())
+      .filter(u => u.length > 0);
+      
+    if (parsedUrls.length === 0) {
+      alert('Please enter at least one valid URL.');
+      return;
+    }
+
+    setScraperStatusText('🚀 Initializing sale scraper background task...');
+    
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/scrape-sale`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          saleName: scraperSaleName,
+          platform: scraperPlatform,
+          category: scraperCategory,
+          urls: parsedUrls
+        })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setScraperStatusText('✅ Background scraper started! Tracking live execution...');
+        setScraperUrls('');
+        setScraperSaleName('');
+        checkActiveTask();
+      } else {
+        setScraperStatusText(`❌ Error starting scraper: ${result.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setScraperStatusText(`❌ Error: ${err.message}`);
+    }
+  };
 
   const fetchBannerSource = async () => {
     try {
@@ -61,8 +142,14 @@ const Banners = () => {
         setBannerSource(result.data.current);
         setSourceLoading(false);
       }
+      
+      const configRes = await fetch(`${API_BASE_URL}/api/banners/config`);
+      const configResult = await configRes.json();
+      if (configResult.success && configResult.data) {
+        setUseCacheLive(configResult.data.useCache === true);
+      }
     } catch (err) {
-      console.error('Error fetching banner source:', err);
+      console.error('Error fetching banner source/config:', err);
       setBannerSource('test-banners'); // Default to test-banners
       setSourceLoading(false);
     }
@@ -149,6 +236,25 @@ const Banners = () => {
       setError(err.message);
     } finally {
       setSourceLoading(false);
+    }
+  };
+
+  const toggleLiveCacheSetting = async () => {
+    const newValue = !useCacheLive;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useCache: newValue })
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setUseCacheLive(newValue);
+      } else {
+        alert('Failed to update live cache setting');
+      }
+    } catch (err) {
+      alert(`Error toggling cache setting: ${err.message}`);
     }
   };
 
@@ -270,6 +376,96 @@ const Banners = () => {
     }
   };
 
+  const handleSaveBanner = async (e) => {
+    e.preventDefault();
+    if (!formUrl.trim() || !formClickRedirectUrl.trim()) {
+      setFormStatus('❌ Image URL and Target link are required.');
+      return;
+    }
+    
+    setFormStatus(editingBannerId ? 'Updating...' : 'Adding...');
+    
+    const urlEndpoint = editingBannerId 
+      ? `${API_BASE_URL}/api/banners/${editingBannerId}`
+      : `${API_BASE_URL}/api/banners/add`;
+      
+    const method = editingBannerId ? 'PUT' : 'POST';
+
+    try {
+      const response = await fetch(urlEndpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: formUrl,
+          clickRedirectUrl: formClickRedirectUrl,
+          platform: formPlatform,
+          category: formCategory,
+          title: formTitle,
+          description: formDescription,
+          isActive: formIsActive,
+          order: Number(formOrder) || 0
+        })
+      });
+
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setFormStatus(`✅ Success: ${result.message}`);
+        // Clear form
+        handleCancelEdit();
+        // Refresh banners
+        triggerBanners();
+      } else {
+        setFormStatus(`❌ Error: ${result.error || 'Failed to save deal'}`);
+      }
+    } catch (err) {
+      setFormStatus(`❌ Connection Error: ${err.message}`);
+    }
+  };
+
+  const handleEditBannerClick = (banner) => {
+    setEditingBannerId(banner.id);
+    setFormUrl(banner.url || '');
+    setFormClickRedirectUrl(banner.clickRedirectUrl || '');
+    setFormPlatform(banner.platform || 'custom');
+    setFormCategory(banner.category || 'general');
+    setFormTitle(banner.title || '');
+    setFormDescription(banner.description || '');
+    setFormIsActive(banner.isActive === true);
+    setFormOrder(String(banner.order || 0));
+    setFormStatus(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingBannerId(null);
+    setFormUrl('');
+    setFormClickRedirectUrl('');
+    setFormPlatform('custom');
+    setFormCategory('general');
+    setFormTitle('');
+    setFormDescription('');
+    setFormIsActive(true);
+    setFormOrder('0');
+    setFormStatus(null);
+  };
+
+  const handleDeleteBanner = async (bannerId) => {
+    if (!window.confirm('Are you sure you want to delete this live deal/banner?')) return;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/${bannerId}`, {
+        method: 'DELETE'
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setBanners(prev => prev.filter(b => b.id !== bannerId));
+        fetchStats();
+      } else {
+        alert(`Failed to delete banner: ${result.error}`);
+      }
+    } catch (err) {
+      alert(`Error: ${err.message}`);
+    }
+  };
+
   return (
     <div className="banners">
       <div className="banners-header">
@@ -322,7 +518,308 @@ const Banners = () => {
               </button>
             </div>
           </div>
+
+          <div className="source-toggle" style={{ marginLeft: '20px' }}>
+            <span className="source-label" style={{ minWidth: '135px' }}>Live Web Caching:</span>
+            <div className="toggle-switch">
+              <button 
+                onClick={toggleLiveCacheSetting}
+                className={`source-button ${useCacheLive ? 'active' : ''}`}
+                style={{
+                  backgroundColor: useCacheLive ? '#16a34a' : '#ef4444',
+                  borderColor: useCacheLive ? '#15803d' : '#b91c1c',
+                  color: 'white',
+                  fontWeight: 700
+                }}
+              >
+                {useCacheLive ? 'Enabled (Cached Banners)' : 'Disabled (Live Banners)'}
+              </button>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Sale Scraper & Execution Monitor Console Card */}
+      <div className="users-filter-card" style={{ marginTop: '24px', borderLeft: '4px solid #ef4444', background: '#fffbeb', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ color: '#b45309', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          🤖 Automated Dynamic Sale Scraper Console
+        </h3>
+        <p style={{ fontSize: '13px', color: '#6b7280', margin: '-10px 0 20px 0' }}>
+          Paste target deal URLs (e.g. Myntra end of season, Amazon deals pages) to scrape live banners & offers automatically in the background using Selenium.
+        </p>
+
+        <form onSubmit={handleStartScraper}>
+          <div className="filters-inputs-row" style={{ flexWrap: 'wrap', gap: '15px' }}>
+            <div className="filter-input-wrapper" style={{ flex: '1 1 200px' }}>
+              <label>Campaign / Sale Name</label>
+              <input
+                type="text"
+                value={scraperSaleName}
+                onChange={(e) => setScraperSaleName(e.target.value)}
+                placeholder="e.g. Myntra Big Bold Sale"
+                required
+              />
+            </div>
+            
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Store Platform</label>
+              <select value={scraperPlatform} onChange={(e) => setScraperPlatform(e.target.value)}>
+                <option value="amazon">Amazon</option>
+                <option value="flipkart">Flipkart</option>
+                <option value="myntra">Myntra</option>
+                <option value="ajio">Ajio</option>
+              </select>
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Target Category</label>
+              <select value={scraperCategory} onChange={(e) => setScraperCategory(e.target.value)}>
+                <option value="general">General</option>
+                <option value="fashion">Fashion</option>
+                <option value="laptops">Laptops</option>
+                <option value="mobiles">Mobiles</option>
+                <option value="electronics">Electronics</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="filter-input-wrapper" style={{ marginTop: '15px' }}>
+            <label>Target URLs List (one URL per line)</label>
+            <textarea
+              value={scraperUrls}
+              onChange={(e) => setScraperUrls(e.target.value)}
+              placeholder="e.g.&#10;https://www.myntra.com/sale-clothing&#10;https://www.myntra.com/sale-footwear"
+              rows={4}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontFamily: 'inherit',
+                fontSize: '13px',
+                resize: 'vertical'
+              }}
+              required
+            />
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+            {scraperStatusText && (
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#b45309' }}>
+                {scraperStatusText}
+              </span>
+            )}
+            
+            <button
+              type="submit"
+              disabled={!!activeScraperTask}
+              style={{
+                backgroundColor: activeScraperTask ? '#9ca3af' : '#ef4444',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '10px 20px',
+                cursor: activeScraperTask ? 'not-allowed' : 'pointer',
+                fontWeight: 700,
+                marginLeft: 'auto'
+              }}
+            >
+              {activeScraperTask ? '⏳ Scraper Running in Background' : '🚀 Start Background Scraper'}
+            </button>
+          </div>
+        </form>
+
+        {/* Live Scraper Execution Tracker & Logs Viewport */}
+        {activeScraperTask && (
+          <div style={{ marginTop: '20px', background: '#1e293b', borderRadius: '8px', padding: '15px', color: '#f8fafc' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #334155', paddingBottom: '8px', marginBottom: '10px' }}>
+              <span style={{ fontWeight: 700, color: '#fbbf24', fontSize: '14px' }}>
+                📡 LIVE EXECUTION TRACKER: {activeScraperTask.saleName}
+              </span>
+              <span style={{ fontSize: '12px', background: '#b45309', padding: '2px 8px', borderRadius: '4px', textTransform: 'uppercase' }}>
+                {activeScraperTask.status}
+              </span>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '20px', fontSize: '13px', marginBottom: '10px' }}>
+              <div>
+                <strong>URLs Processed:</strong> {activeScraperTask.processedUrls} / {activeScraperTask.totalUrls}
+              </div>
+              <div>
+                <strong>Banners Extracted:</strong> {activeScraperTask.extractedBanners}
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ width: '100%', height: '8px', background: '#334155', borderRadius: '4px', overflow: 'hidden', marginBottom: '15px' }}>
+              <div 
+                style={{ 
+                  height: '100%', 
+                  background: '#fbbf24', 
+                  width: `${(activeScraperTask.processedUrls / activeScraperTask.totalUrls) * 100}%`,
+                  transition: 'width 0.4s ease'
+                }} 
+              />
+            </div>
+
+            {/* Terminal logs */}
+            <div style={{ fontSize: '12px', fontFamily: 'monospace', maxHeight: '150px', overflowY: 'auto', background: '#0f172a', padding: '10px', borderRadius: '6px' }}>
+              {activeScraperTask.logs && activeScraperTask.logs.map((log, idx) => (
+                <div key={idx} style={{ color: log.includes('[ERROR]') ? '#ef4444' : '#38bdf8', margin: '2px 0' }}>
+                  {log}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Manual Live Deal / Banner Form Card */}
+      <div className="users-filter-card" style={{ marginTop: '24px', borderLeft: '4px solid #3b82f6', background: '#f8fafc', padding: '20px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+        <h3 style={{ color: '#1e3a8a', margin: '0 0 15px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {editingBannerId ? '✏️ Edit Live Deal / Banner' : '➕ Add Custom Live Deal / Banner'}
+        </h3>
+        <form onSubmit={handleSaveBanner}>
+          <div className="filters-inputs-row" style={{ flexWrap: 'wrap', gap: '15px' }}>
+            <div className="filter-input-wrapper" style={{ flex: '1 1 250px' }}>
+              <label>Banner Image URL</label>
+              <input
+                type="text"
+                value={formUrl}
+                onChange={(e) => setFormUrl(e.target.value)}
+                placeholder="e.g. https://m.media-amazon.com/...jpg"
+                required
+              />
+            </div>
+            
+            <div className="filter-input-wrapper" style={{ flex: '1 1 250px' }}>
+              <label>Target Redirect Link</label>
+              <input
+                type="text"
+                value={formClickRedirectUrl}
+                onChange={(e) => setFormClickRedirectUrl(e.target.value)}
+                placeholder="e.g. https://www.amazon.in/deal/..."
+                required
+              />
+            </div>
+          </div>
+
+          <div className="filters-inputs-row" style={{ flexWrap: 'wrap', gap: '15px', marginTop: '15px' }}>
+            <div className="filter-input-wrapper" style={{ flex: '1 1 180px' }}>
+              <label>Deal Title</label>
+              <input
+                type="text"
+                value={formTitle}
+                onChange={(e) => setFormTitle(e.target.value)}
+                placeholder="e.g. Flipkart Sale 60% Off"
+              />
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Platform Store</label>
+              <select value={formPlatform} onChange={(e) => setFormPlatform(e.target.value)}>
+                <option value="custom">Custom Platform</option>
+                <option value="amazon">Amazon</option>
+                <option value="flipkart">Flipkart</option>
+                <option value="myntra">Myntra</option>
+                <option value="ajio">Ajio</option>
+              </select>
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 120px' }}>
+              <label>Target Category</label>
+              <select value={formCategory} onChange={(e) => setFormCategory(e.target.value)}>
+                <option value="general">General</option>
+                <option value="fashion">Fashion</option>
+                <option value="laptops">Laptops</option>
+                <option value="mobiles">Mobiles</option>
+                <option value="electronics">Electronics</option>
+              </select>
+            </div>
+
+            <div className="filter-input-wrapper" style={{ flex: '1 1 80px' }}>
+              <label>Order Priority</label>
+              <input
+                type="number"
+                value={formOrder}
+                onChange={(e) => setFormOrder(e.target.value)}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <div className="filter-input-wrapper" style={{ marginTop: '15px' }}>
+            <label>Description (Optional)</label>
+            <textarea
+              value={formDescription}
+              onChange={(e) => setFormDescription(e.target.value)}
+              placeholder="e.g. Save on top electronics products this weekend..."
+              rows={2}
+              style={{
+                width: '100%',
+                padding: '10px',
+                border: '1px solid #d1d5db',
+                borderRadius: '6px',
+                fontFamily: 'inherit',
+                fontSize: '14px',
+                resize: 'vertical'
+              }}
+            />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '15px' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', fontWeight: 600, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={formIsActive}
+                onChange={(e) => setFormIsActive(e.target.checked)}
+              />
+              Make Deal Active immediately on Homepage
+            </label>
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '15px' }}>
+            {formStatus && (
+              <span style={{ fontSize: '13px', fontWeight: 600, color: formStatus.startsWith('✅') ? '#16a34a' : '#2563eb' }}>
+                {formStatus}
+              </span>
+            )}
+            
+            <div style={{ display: 'flex', gap: '10px', marginLeft: 'auto' }}>
+              {editingBannerId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEdit}
+                  style={{
+                    backgroundColor: '#9ca3af',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    padding: '8px 16px',
+                    cursor: 'pointer',
+                    fontWeight: 600
+                  }}
+                >
+                  Cancel Edit
+                </button>
+              )}
+              <button
+                type="submit"
+                style={{
+                  backgroundColor: '#3b82f6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  cursor: 'pointer',
+                  fontWeight: 600
+                }}
+              >
+                {editingBannerId ? 'Update Deal' : '🚀 Save Live Deal'}
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
 
       {dedupeInfo.removed > 0 && (
@@ -394,22 +891,80 @@ const Banners = () => {
         {banners.length === 0 && !triggering ? (
           <div className="no-banners">No banners found</div>
         ) : (
-          banners
+          [...banners]
+            .filter(banner => bannerVisibility[banner.id] !== false)
             .filter(banner => {
-              const matchesVisibility = bannerVisibility[banner.id] !== false;
-              const matchesPlatform = filter.platform === 'all' || banner.platform?.toLowerCase() === filter.platform.toLowerCase();
-              const matchesActive = !filter.activeOnly || banner.isActive === true;
-              return matchesVisibility && matchesPlatform && matchesActive;
+              if (filter.activeOnly && !banner.isActive) return false;
+              if (filter.platform !== 'all' && banner.platform !== filter.platform) return false;
+              return true;
+            })
+            .sort((a, b) => {
+              const aActive = a.isActive ? 1 : 0;
+              const bActive = b.isActive ? 1 : 0;
+              if (aActive !== bActive) return bActive - aActive;
+
+              const getTs = (banner) => {
+                if (banner.creationTimestamp) {
+                  const t = new Date(banner.creationTimestamp).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                if (banner.updateTimestamp) {
+                  const t = new Date(banner.updateTimestamp).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                const id = banner.id || "";
+                const dateMatch = id.match(/(\d{4})-(\d{2})-(\d{2})/);
+                if (dateMatch) {
+                  const t = new Date(dateMatch[0]).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                const tsMatch = id.match(/-(\d{10,13})$/);
+                if (tsMatch) return parseInt(tsMatch[1], 10);
+                return 0;
+              };
+              return getTs(b) - getTs(a);
             })
             .map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
-              <div className="banner-status-toggle">
+              <div className="banner-status-toggle" style={{ display: 'flex', gap: '5px' }}>
                 <button 
                   onClick={() => toggleBannerStatus(banner.id, banner.isActive)}
                   className={`status-toggle-btn ${banner.isActive ? 'active' : 'inactive'}`}
                   title={`Click to ${banner.isActive ? 'deactivate' : 'activate'} this banner`}
                 >
                   {banner.isActive ? '✓ Active' : '✗ Inactive'}
+                </button>
+                <button 
+                  onClick={() => handleEditBannerClick(banner)}
+                  style={{
+                    backgroundColor: '#eab308',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 600
+                  }}
+                  title="Edit this banner's properties"
+                >
+                  ✏️ Edit
+                </button>
+                <button 
+                  onClick={() => handleDeleteBanner(banner.id)}
+                  style={{
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    padding: '4px 8px',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    fontWeight: 600
+                  }}
+                  title="Delete this banner"
+                >
+                  🗑️ Delete
                 </button>
               </div>
               <div className="banner-image">

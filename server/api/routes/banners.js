@@ -4,6 +4,8 @@ const { bannerDB, testBannerDB } = require('../../../database/firebaseDB/bannerD
 const { getModuleLogger } = require('../../../logger/logger');
 const { BannerExtractor } = require('../../../dataSources/bannerExtractor');
 const { bannerUrlFixer } = require('../../../services/bannerUrlFixer');
+const bannerConfig = require('../../../config/bannerConfig');
+const { executionTracker } = require('../../../services/executionTracker');
 
 const logger = getModuleLogger('banners-api');
 
@@ -58,6 +60,42 @@ const dedupeBannerArray = (bannerArray = []) => {
   return { unique, duplicates };
 };
 
+const getBannerTimestamp = (banner) => {
+  if (!banner) return 0;
+  if (banner.creationTimestamp) {
+    const t = new Date(banner.creationTimestamp).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (banner.updateTimestamp) {
+    const t = new Date(banner.updateTimestamp).getTime();
+    if (!isNaN(t)) return t;
+  }
+  const id = banner.id || "";
+  const dateMatch = id.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (dateMatch) {
+    const t = new Date(dateMatch[0]).getTime();
+    if (!isNaN(t)) return t;
+  }
+  const tsMatch = id.match(/-(\d{10,13})$/);
+  if (tsMatch) {
+    return parseInt(tsMatch[1], 10);
+  }
+  return 0;
+};
+
+const sortBannersDescending = (bannersArray = []) => {
+  return bannersArray.sort((a, b) => {
+    // 1. Sort by active status (active first)
+    const aActive = a && a.isActive ? 1 : 0;
+    const bActive = b && b.isActive ? 1 : 0;
+    if (aActive !== bActive) {
+      return bActive - aActive;
+    }
+    // 2. Sort by timestamp descending (newest first)
+    return getBannerTimestamp(b) - getBannerTimestamp(a);
+  });
+};
+
 // Store the current source globally (default: test-banners.json)
 let bannerSource = 'test-banners';
 
@@ -73,6 +111,48 @@ router.get('/source', (req, res) => {
       available: ['test-banners', 'production']
     }
   });
+});
+
+/**
+ * GET /api/banners/config
+ * Get live banner config (including whether caching is enabled)
+ */
+router.get('/config', async (req, res, next) => {
+  try {
+    const result = await bannerDB.getBannerConfig();
+    if (result.status === 200) {
+      res.json({ success: true, data: result.data });
+    } else {
+      res.status(result.status || 500).json({ success: false, error: result.message });
+    }
+  } catch (error) {
+    logger.error('Error getting banner config', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/banners/config
+ * Update live banner config (enable/disable caching)
+ */
+router.post('/config', async (req, res, next) => {
+  try {
+    const { useCache } = req.body;
+    if (useCache === undefined) {
+      return res.status(400).json({ success: false, error: 'useCache field is required' });
+    }
+    
+    const result = await bannerDB.updateBannerConfig({ useCache: useCache === true });
+    if (result.status === 200) {
+      logger.info(`Banner caching config updated live to: ${useCache}`);
+      res.json({ success: true, message: `Caching config updated to ${useCache}` });
+    } else {
+      res.status(result.status || 500).json({ success: false, error: result.message });
+    }
+  } catch (error) {
+    logger.error('Error updating banner config', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 /**
@@ -167,14 +247,14 @@ router.post('/trigger', async (req, res, next) => {
     
     // Calculate statistics
     const stats = {
-    total: unique.length,
-    active: unique.filter(b => b && b.isActive).length,
-    inactive: unique.filter(b => b && !b.isActive).length,
+      total: unique.length,
+      active: unique.filter(b => b && b.isActive).length,
+      inactive: unique.filter(b => b && !b.isActive).length,
       byPlatform: {},
       byCategory: {}
     };
     
-  unique.forEach(banner => {
+    unique.forEach(banner => {
       if (banner && banner.platform) {
         stats.byPlatform[banner.platform] = (stats.byPlatform[banner.platform] || 0) + 1;
       }
@@ -183,19 +263,36 @@ router.post('/trigger', async (req, res, next) => {
       }
     });
     
-  logger.info(`Banner trigger completed. Source: ${bannerSource}, Total: ${unique.length}, DuplicatesRemoved: ${duplicates.length}`);
+    // Server-side filtering to optimize RAM consumption (0.12 MB constraint)
+    let processedBanners = [...unique];
+    const filterPlatform = req.body.platform || req.query.platform;
+    const filterActiveOnly = req.body.activeOnly !== undefined ? 
+      (req.body.activeOnly === true || req.body.activeOnly === 'true') : 
+      (req.query.activeOnly === 'true');
+    
+    if (filterActiveOnly) {
+      processedBanners = processedBanners.filter(b => b && b.isActive === true);
+    }
+    if (filterPlatform && filterPlatform !== 'all') {
+      processedBanners = processedBanners.filter(b => b && b.platform?.toLowerCase() === filterPlatform.toLowerCase());
+    }
+
+    // Server-side sorting: active first, then newest first (descending)
+    sortBannersDescending(processedBanners);
+    
+    logger.info(`Banner trigger completed. Source: ${bannerSource}, Total: ${unique.length}, Filtered: ${processedBanners.length}, DuplicatesRemoved: ${duplicates.length}`);
     
     res.json({
       success: true,
       source: bannerSource,
       data: {
-      banners: unique,
+        banners: processedBanners,
         stats: stats,
-      triggeredAt: new Date().toISOString(),
-      dedupe: {
-        removed: duplicates.length,
-        duplicateIds: duplicates.map(b => b.id)
-      }
+        triggeredAt: new Date().toISOString(),
+        dedupe: {
+          removed: duplicates.length,
+          duplicateIds: duplicates.map(b => b.id)
+        }
       }
     });
   } catch (error) {
@@ -289,22 +386,35 @@ router.get('/', async (req, res, next) => {
     }
     
     if (result.status === 200) {
-    const rawData = result.data || {};
-    const bannerArray = Array.isArray(rawData) ? rawData : Object.entries(rawData).map(([id, data]) => ({ id, ...data }));
-    const { unique, duplicates } = dedupeBannerArray(bannerArray);
-    const normalized = unique.reduce((acc, banner) => {
-      acc[banner.id] = banner;
-      return acc;
-    }, {});
+      const rawData = result.data || {};
+      const bannerArray = Array.isArray(rawData) ? rawData : Object.entries(rawData).map(([id, data]) => ({ id, ...data }));
+      const { unique, duplicates } = dedupeBannerArray(bannerArray);
+      
+      // Server-side filtering to optimize RAM consumption (0.12 MB constraint)
+      let processedBanners = [...unique];
+      if (activeOnly === 'true' || activeOnly === true) {
+        processedBanners = processedBanners.filter(b => b && b.isActive === true);
+      }
+      if (platform && platform !== 'all') {
+        processedBanners = processedBanners.filter(b => b && b.platform?.toLowerCase() === platform.toLowerCase());
+      }
+
+      // Server-side sorting: active first, then newest first (descending)
+      sortBannersDescending(processedBanners);
+
+      const normalized = processedBanners.reduce((acc, banner) => {
+        acc[banner.id] = banner;
+        return acc;
+      }, {});
 
       res.json({ 
         success: true, 
-      data: normalized,
-      source: currentSource,
-      dedupe: {
-        removed: duplicates.length,
-        duplicateIds: duplicates.map(b => b.id)
-      }
+        data: normalized,
+        source: currentSource,
+        dedupe: {
+          removed: duplicates.length,
+          duplicateIds: duplicates.map(b => b.id)
+        }
       });
     } else {
       res.status(result.status || 500).json({ 
@@ -1193,6 +1303,214 @@ router.get('/:id', async (req, res, next) => {
   } catch (error) {
     logger.error('Error getting banner', { error: error.message, stack: error.stack });
     next(error);
+  }
+});
+
+// POST /api/banners/add - Create a custom live deal/banner
+router.post('/add', async (req, res, next) => {
+  try {
+    const { url, clickRedirectUrl, platform, category = 'general', title, description, isActive = true, order = 0 } = req.body;
+    if (!url || !clickRedirectUrl) {
+      return res.status(400).json({ success: false, error: 'Image URL and Target Link are required.' });
+    }
+
+    const timestamp = Date.now();
+    const cleanPlatform = (platform || 'custom').toLowerCase();
+    const bannerId = `custom-${cleanPlatform}-${timestamp}`;
+    
+    const bannerData = {
+      id: bannerId,
+      url,
+      mobileUrl: url,
+      clickRedirectUrl,
+      platform: cleanPlatform,
+      category,
+      title: title || `Live Deal - ${platform}`,
+      description: description || '',
+      isActive: isActive === true,
+      order: Number(order) || 0,
+      creationTimestamp: new Date().toISOString(),
+      updateTimestamp: new Date().toISOString()
+    };
+
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    const storeResult = bannerSource === 'test-banners' ? 
+      await testBannerDB.storeTestBanner(bannerData) : 
+      await bannerDB.storeBanner(bannerData);
+
+    if (storeResult.status === 200 || storeResult.status === 201) {
+      res.json({ success: true, data: bannerData, message: 'Custom deal added successfully' });
+    } else {
+      res.status(storeResult.status || 500).json({ success: false, error: storeResult.message });
+    }
+  } catch (error) {
+    logger.error('Error adding custom banner', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// PUT /api/banners/:id - Update an existing live deal/banner
+router.put('/:id', async (req, res, next) => {
+  try {
+    const bannerId = req.params.id;
+    const { url, clickRedirectUrl, platform, category, title, description, isActive, order } = req.body;
+
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    
+    // Fetch existing first
+    const getResult = bannerSource === 'test-banners' ? 
+      await testBannerDB.getAllTestBanners() : 
+      await bannerDB.getAllBanners();
+
+    if (getResult.status !== 200 || !getResult.data || !getResult.data[bannerId]) {
+      return res.status(404).json({ success: false, error: 'Banner not found' });
+    }
+
+    const existing = getResult.data[bannerId];
+    const updatedData = {
+      ...existing,
+      id: bannerId,
+      url: url !== undefined ? url : existing.url,
+      mobileUrl: url !== undefined ? url : (existing.mobileUrl || existing.url),
+      clickRedirectUrl: clickRedirectUrl !== undefined ? clickRedirectUrl : existing.clickRedirectUrl,
+      platform: platform !== undefined ? platform.toLowerCase() : existing.platform,
+      category: category !== undefined ? category : existing.category,
+      title: title !== undefined ? title : existing.title,
+      description: description !== undefined ? description : existing.description,
+      isActive: isActive !== undefined ? isActive === true : existing.isActive,
+      order: order !== undefined ? Number(order) : existing.order,
+      updateTimestamp: new Date().toISOString()
+    };
+
+    const storeResult = bannerSource === 'test-banners' ? 
+      await testBannerDB.storeTestBanner(updatedData) : 
+      await bannerDB.storeBanner(updatedData);
+
+    if (storeResult.status === 200 || storeResult.status === 201) {
+      res.json({ success: true, data: updatedData, message: 'Deal updated successfully' });
+    } else {
+      res.status(storeResult.status || 500).json({ success: false, error: storeResult.message });
+    }
+  } catch (error) {
+    logger.error('Error updating banner', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+const runScrapingTask = async (saleName, platform, category, urls) => {
+  const logs = [];
+  const log = (msg) => {
+    const time = new Date().toLocaleTimeString();
+    logs.push(`[${time}] ${msg}`);
+    logger.info(msg);
+  };
+
+  try {
+    log(`Starting Selenium Chrome driver...`);
+    const extractor = new BannerExtractor({
+      visibility: true, // Custom scraped sale banners active immediately per user's requests
+      useExistingChrome: false,
+      requiresLogin: false
+    });
+    
+    await extractor.initializeDriver();
+    log(`Chrome WebDriver started successfully.`);
+    
+    // Start tracking in execution tracker
+    await executionTracker.startScraperExecution(saleName, urls.length);
+    
+    let processed = 0;
+    let extractedCount = 0;
+    
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    const platformConfig = bannerConfig.platforms[platform.toLowerCase()] || {
+      selectors: {
+        carousel: 'img',
+        bannerLink: 'a',
+        bannerImage: 'img',
+        bannerAlt: 'img[alt]'
+      },
+      validation: {
+        minImageWidth: 200,
+        minImageHeight: 100,
+        allowedDomains: []
+      }
+    };
+
+    for (const url of urls) {
+      if (!url.trim()) continue;
+      processed++;
+      log(`Scraping URL (${processed}/${urls.length}): ${url}`);
+      await executionTracker.updateScraperProgress(processed, extractedCount, logs);
+      logs.length = 0;
+      
+      try {
+        await extractor.driver.get(url);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for lazy load
+        
+        // Extract banners from this page using the platform's selectors
+        const urlBanners = await extractor.extractBannersFromUrl(platform, platformConfig.selectors, platformConfig.validation);
+        log(`Found ${urlBanners.length} potential deals/banners on this page.`);
+        
+        if (urlBanners.length > 0) {
+          // Verify and fix URLs
+          const fixedBanners = await bannerUrlFixer.fixBannerUrls(urlBanners);
+          
+          // Enrich banners with sale category and name
+          const enriched = fixedBanners.map(b => ({
+            ...b,
+            category: category,
+            platform: platform.toLowerCase(),
+            title: b.title || `${saleName} Deal`,
+            isActive: true // Active immediately
+          }));
+          
+          // Save to database
+          const storeResult = bannerSource === 'test-banners' ? 
+            await testBannerDB.storeMultipleTestBanners(enriched) : 
+            await bannerDB.storeMultipleBanners(enriched);
+            
+          const stored = storeResult.filter(r => r.status === 200 || r.status === 201).length;
+          extractedCount += stored;
+          log(`Successfully stored ${stored} new live deals in database.`);
+        }
+      } catch (err) {
+        log(`Error scraping ${url}: ${err.message}`);
+      }
+      
+      // Update execution tracker progress
+      await executionTracker.updateScraperProgress(processed, extractedCount, logs);
+      logs.length = 0; // Clear logs for next iteration
+    }
+    
+    await extractor.closeDriver();
+    log(`Web scraper completed. Extracted a total of ${extractedCount} deals.`);
+    await executionTracker.endScraperExecution('completed', { processedUrls: processed, totalExtracted: extractedCount });
+    
+  } catch (error) {
+    log(`Scraper execution crashed: ${error.message}`);
+    await executionTracker.endScraperExecution('failed', { error: error.message });
+  }
+};
+
+// POST /api/banners/scrape-sale - Trigger background sale scraper
+router.post('/scrape-sale', async (req, res, next) => {
+  try {
+    const { saleName, platform, category, urls } = req.body;
+    if (!saleName || !platform || !category || !urls || !Array.isArray(urls) || urls.length === 0) {
+      return res.status(400).json({ success: false, error: 'saleName, platform, category, and a non-empty urls array are required.' });
+    }
+
+    // Trigger background process immediately
+    runScrapingTask(saleName, platform, category, urls);
+
+    res.json({
+      success: true,
+      message: `Sale scraping process started in the background for "${saleName}". You can monitor progress on the dashboard.`
+    });
+  } catch (error) {
+    logger.error('Error starting sale scraper', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

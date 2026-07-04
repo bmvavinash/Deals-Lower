@@ -98,12 +98,13 @@ const formatBannerDate = (timestamp?: string): string => {
 const BannersPage: React.FC = () => {
   const [banners, setBanners] = useState<Banner[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [filter, setFilter] = useState<Filter>({ platform: 'all', activeOnly: true });
   const [bannerSource, setBannerSource] = useState('test-banners');
   const [sourceLoading, setSourceLoading] = useState(true);
-  const [bannerVisibility] = useState<Record<string, boolean>>({});
+  const [bannerVisibility, setBannerVisibility] = useState<Record<string, boolean>>({});
   const [dedupeInfo, setDedupeInfo] = useState<{ removed: number }>({ removed: 0 });
   const [extracting, setExtracting] = useState(false);
   const [extractionResult, setExtractionResult] = useState<{ extracted: number; stored: number; duplicates: number } | null>(null);
@@ -111,7 +112,7 @@ const BannersPage: React.FC = () => {
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
-    triggerBanners();
+    triggerBanners(); // Automatically fetch and display banners on mount
     const interval = setInterval(() => {
       fetchStats();
     }, 30000); // Refresh every 30 seconds
@@ -176,6 +177,15 @@ const BannersPage: React.FC = () => {
           source: result.source || bannerSource,
         };
         setStats(updatedStats);
+        
+        // Initialize visibility state for each banner
+        const visibilityState: Record<string, boolean> = {};
+        unique.forEach((banner: Banner) => {
+          visibilityState[banner.id] = true; // Default to visible
+        });
+        setBannerVisibility(visibilityState);
+        
+        setLoading(false);
       } else {
         throw new Error(result.error || 'Failed to trigger banners');
       }
@@ -220,7 +230,7 @@ const BannersPage: React.FC = () => {
     }
   };
 
-  const toggleBannerStatus = async (bannerId: string) => {
+  const toggleBannerStatus = async (bannerId: string, currentStatus: boolean) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/banners/${bannerId}/toggle-active`, {
         method: 'POST',
@@ -256,12 +266,12 @@ const BannersPage: React.FC = () => {
     }
   };
 
-  // const toggleBannerVisibility = (bannerId: string) => {
-  //   setBannerVisibility(prev => ({
-  //     ...prev,
-  //     [bannerId]: !prev[bannerId]
-  //   }));
-  // };
+  const toggleBannerVisibility = (bannerId: string) => {
+    setBannerVisibility(prev => ({
+      ...prev,
+      [bannerId]: !prev[bannerId]
+    }));
+  };
 
   const extractAllBanners = async () => {
     setExtracting(true);
@@ -424,18 +434,44 @@ const BannersPage: React.FC = () => {
         {banners.length === 0 && !triggering ? (
           <div className="no-banners">No banners found</div>
         ) : (
-          banners
+          [...banners]
+            .filter(banner => bannerVisibility[banner.id] !== false)
             .filter(banner => {
-              const matchesVisibility = bannerVisibility[banner.id] !== false;
-              const matchesPlatform = filter.platform === 'all' || banner.platform?.toLowerCase() === filter.platform.toLowerCase();
-              const matchesActive = !filter.activeOnly || banner.isActive === true;
-              return matchesVisibility && matchesPlatform && matchesActive;
+              if (filter.activeOnly && !banner.isActive) return false;
+              if (filter.platform !== 'all' && banner.platform !== filter.platform) return false;
+              return true;
+            })
+            .sort((a, b) => {
+              const aActive = a.isActive ? 1 : 0;
+              const bActive = b.isActive ? 1 : 0;
+              if (aActive !== bActive) return bActive - aActive;
+
+              const getTs = (banner: any) => {
+                if (banner.creationTimestamp) {
+                  const t = new Date(banner.creationTimestamp).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                if (banner.updateTimestamp) {
+                  const t = new Date(banner.updateTimestamp).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                const id = banner.id || "";
+                const dateMatch = id.match(/(\d{4})-(\d{2})-(\d{2})/);
+                if (dateMatch) {
+                  const t = new Date(dateMatch[0]).getTime();
+                  if (!isNaN(t)) return t;
+                }
+                const tsMatch = id.match(/-(\d{10,13})$/);
+                if (tsMatch) return parseInt(tsMatch[1], 10);
+                return 0;
+              };
+              return getTs(b) - getTs(a);
             })
             .map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
               <div className="banner-status-toggle">
                 <button 
-                  onClick={() => toggleBannerStatus(banner.id)}
+                  onClick={() => toggleBannerStatus(banner.id, banner.isActive)}
                   className={`status-toggle-btn ${banner.isActive ? 'active' : 'inactive'}`}
                   title={`Click to ${banner.isActive ? 'deactivate' : 'activate'} this banner`}
                 >
