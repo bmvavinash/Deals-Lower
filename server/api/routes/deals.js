@@ -1490,6 +1490,10 @@ router.post('/retrigger-today', async (req, res) => {
 
 // Pre-warm cache on startup
 setTimeout(async () => {
+  if (process.env.DISABLE_CACHE_PREWARM === 'true' || process.env.RENDER === 'true') {
+    logger.info('Startup cache pre-warming skipped (running on Render or pre-warm disabled).');
+    return;
+  }
   try {
     logger.info('Pre-warming deals cache on startup...');
     const targetDbs = ['deals', 'productdeals'];
