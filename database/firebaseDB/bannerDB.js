@@ -59,7 +59,7 @@ if (!admin.apps.length) {
       throw e;
     }
   }
-  const databaseURL = `https://${DB_Name}-default-rtdb.firebaseio.com`;
+  const databaseURL = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL
