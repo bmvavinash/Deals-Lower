@@ -14,15 +14,29 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const isLocalhost = () => {
+    return (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.startsWith('192.168.')
+    );
+  };
+
   useEffect(() => {
-    // Check if bypass was previously saved in localStorage
-    const savedBypass = localStorage.getItem('auth_bypass_user');
-    if (savedBypass) {
-      setBypassUser(savedBypass);
+    // Only check or allow bypass if we are on localhost/development
+    if (isLocalhost()) {
+      const savedBypass = localStorage.getItem('auth_bypass_user');
+      if (savedBypass) {
+        setBypassUser(savedBypass);
+      }
     }
 
     if (!isConfigured || !auth) {
       setLoading(false);
+      // If running on a public server and Firebase is not configured, show a configuration error
+      if (!isLocalhost()) {
+        setError("Security Setup Required: Firebase environment variables (VITE_FIREBASE_*) are missing. Please configure them in your Vercel Project Settings.");
+      }
       return;
     }
 
@@ -92,7 +106,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   }
 
   // If authenticated as the correct user (either via Firebase or Bypass), render dashboard
-  const isAuthenticated = (user && user.email === ALLOWED_EMAIL) || bypassUser === ALLOWED_EMAIL;
+  const isAuthenticated = (user && user.email === ALLOWED_EMAIL) || (isLocalhost() && bypassUser === ALLOWED_EMAIL);
   if (isAuthenticated) {
     // Add a tiny floating logout button in the admin interface for convenience
     return (
@@ -138,14 +152,22 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
             Sign in with Google
           </button>
         ) : (
-          <div style={styles.bypassContainer}>
-            <p style={styles.bypassWarning}>
-              ⚠️ Firebase authentication client configuration not found. 
-            </p>
-            <button onClick={handleBypassLogin} style={styles.bypassButton}>
-              Bypass as Developer ({ALLOWED_EMAIL})
-            </button>
-          </div>
+          isLocalhost() ? (
+            <div style={styles.bypassContainer}>
+              <p style={styles.bypassWarning}>
+                ⚠️ Firebase authentication client configuration not found. 
+              </p>
+              <button onClick={handleBypassLogin} style={styles.bypassButton}>
+                Bypass as Developer ({ALLOWED_EMAIL})
+              </button>
+            </div>
+          ) : (
+            <div style={styles.bypassContainer}>
+              <p style={styles.bypassWarning}>
+                ⚠️ Security Setup Error: Firebase configurations are not set on this server.
+              </p>
+            </div>
+          )
         )}
 
         <div style={styles.footer}>
