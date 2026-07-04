@@ -110,19 +110,19 @@
       "createdAt": 1782841954964,
       "favorites": {
         "55115": {
-          "addedAt": 1782917459284,
+          "addedAt": 1783045152583,
           "title": "Xtraordin-airy Compact",
           "price": 439,
           "storeType": "Myntra"
         },
         "55370": {
-          "addedAt": 1782917459284,
+          "addedAt": 1783045152583,
           "title": "Nail Polish",
           "price": 174,
           "storeType": "Myntra"
         },
         "B0D6VJCZW3": {
-          "addedAt": 1782917459284,
+          "addedAt": 1783045152583,
           "title": "Ergonomic Office Chair",
           "price": 28990,
           "storeType": "Amazon"
@@ -153,10 +153,14 @@
         "whatsappPhone": "919951797149"
       },
       "lastSeen": [
+        "55115",
         "B0CY8MHDH2",
-        "B0F24SFM4W"
+        "9387779815",
+        "B0GPD4J955",
+        "9359540994"
       ],
       "searches": [
+        "bike accessories",
         "books"
       ]
     }
@@ -164,12 +168,12 @@
   "favouritesByProduct": {
     "55115": {
       "7K279uQlSbNQPq6aBlslZlPPoXB2": {
-        "addedAt": 1782917459284
+        "addedAt": 1783045152583
       }
     },
     "55370": {
       "7K279uQlSbNQPq6aBlslZlPPoXB2": {
-        "addedAt": 1782917459284
+        "addedAt": 1783045152583
       }
     },
     "TEST_PROD_999": {
@@ -184,7 +188,7 @@
     },
     "B0D6VJCZW3": {
       "7K279uQlSbNQPq6aBlslZlPPoXB2": {
-        "addedAt": 1782917459284
+        "addedAt": 1783045152583
       }
     },
     "B0CY8MHDH2": {
