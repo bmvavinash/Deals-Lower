@@ -356,7 +356,7 @@ class FavoritesBasedNotificationService {
    * Build notification message with product URL
    */
   buildNotificationMessage(product, notificationType, extraData = {}) {
-    const productUrl = product.links?.avinashbmvINR || product.productUrl || '';
+    const productUrl = product.links?.avinashbmv || product.links?.avinashbmvINR || product.productUrl || '';
     const title = product.title || 'Product';
     const price = product.price ? `₹${product.price}` : '';
     const discount = product.discount ? `${product.discount}% off` : '';

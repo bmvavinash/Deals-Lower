@@ -217,13 +217,13 @@ class FavoritesNotificationService {
         }
 
         if (priceAlert) {
-          const message = `📉 Price Dropped on Your Favorite!\n\n${currentProduct.title}\nOld Price: ₹${previousPrice}\nNew Price: ₹${currentPrice}\n${targetPrice > 0 ? `Target Price: ₹${targetPrice}\n` : ''}${currentProduct.productUrl || currentProduct.links?.avinashbmvINR || ''}`;
+          const message = `📉 Price Dropped on Your Favorite!\n\n${currentProduct.title}\nOld Price: ₹${previousPrice}\nNew Price: ₹${currentPrice}\n${targetPrice > 0 ? `Target Price: ₹${targetPrice}\n` : ''}${currentProduct.links?.avinashbmv || currentProduct.links?.avinashbmvINR || currentProduct.productUrl || ''}`;
           await this.sendNotification(uid, message, mergedPreferences, 'favorite_price_drop');
         }
 
         // Check for Stock Transition
         if (previousStockStatus === 'out_of_stock' && currentStockStatus === 'in_stock') {
-          const message = `🎉 Back in Stock!\n\nYour favorite item is back:\n${currentProduct.title}\nPrice: ₹${currentPrice}\n${currentProduct.productUrl || currentProduct.links?.avinashbmvINR || ''}`;
+          const message = `🎉 Back in Stock!\n\nYour favorite item is back:\n${currentProduct.title}\nPrice: ₹${currentPrice}\n${currentProduct.links?.avinashbmv || currentProduct.links?.avinashbmvINR || currentProduct.productUrl || ''}`;
           await this.sendNotification(uid, message, mergedPreferences, 'favorite_back_in_stock');
         }
 

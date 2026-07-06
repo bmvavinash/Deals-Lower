@@ -41,8 +41,8 @@ function isProcessRunning(pid) {
   }
 }
 
-// Global driver instance for product processing
 let globalDriver = null;
+const { createChromeDriver } = require('../../../utils/seleniumDriver');
 
 async function getOrCreateDriver() {
   if (globalDriver) {
@@ -57,10 +57,9 @@ async function getOrCreateDriver() {
 
   if (!globalDriver) {
     try {
-      let options = new chrome.Options();
-      options.debuggerAddress("localhost:9222");
-      globalDriver = await chrome.Driver.createSession(options);
-      logger.info('Chrome WebDriver initialized for product processing');
+      const result = await createChromeDriver();
+      globalDriver = result.driver;
+      logger.info('Chrome WebDriver initialized for product processing', { mode: result.mode });
     } catch (error) {
       logger.error('Failed to initialize driver', { error: error.message });
       throw error;

@@ -96,6 +96,7 @@ interface BannerStats {
 
 const DealsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('deals');
+  const [showDeals, setShowDeals] = useState<boolean>(false);
   const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', categoryGroup: '', staticSubcategory: '', limit: 100, offset: 0, q: '' });
   const [newsFilters, setNewsFilters] = useState({ limit: 20, offset: 0, category: '', sortBy: 'publishDate', order: 'desc' });
   const [reviewsFilters, setReviewsFilters] = useState({ limit: 20, offset: 0, productName: '', minRating: '', sortBy: 'publishDate', order: 'desc' });
@@ -153,7 +154,7 @@ const DealsPage: React.FC = () => {
   const { data: dealsData, isLoading: dealsLoading, error: dealsError, refetch: refetchDeals } = useQuery(
     ['deals', filters],
     () => filters.q ? dealsAPI.searchGlobal(filters) : dealsAPI.getAll(filters),
-    { keepPreviousData: true, enabled: viewMode === 'deals' }
+    { keepPreviousData: true, enabled: viewMode === 'deals' && showDeals }
   );
 
   // News query
@@ -1328,20 +1329,30 @@ const DealsPage: React.FC = () => {
                 )}
               </div>
               
-              <button 
-                onClick={handleTriggerBanners} 
-                className="trigger-button banner-trigger-button"
-                disabled={isTriggeringBanners}
-                title="Display banners from all platforms"
-              >
-                {isTriggeringBanners ? (
-                  <><span className="spinner">↻</span> Loading...</>
-                ) : '🖼️ Display Banners'}
-              </button>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                {showDeals && (
+                  <button 
+                    onClick={() => setShowDeals(false)} 
+                    className="trigger-button"
+                    style={{ backgroundColor: '#f44336', color: '#fff', border: 'none' }}
+                    title="Hide deals list"
+                  >
+                    🙈 Hide Deals
+                  </button>
+                )}
+                <button 
+                  onClick={handleTriggerBanners} 
+                  className="trigger-button banner-trigger-button"
+                  disabled={isTriggeringBanners}
+                  title="Display banners from all platforms"
+                >
+                  {isTriggeringBanners ? (
+                    <><span className="spinner">↻</span> Loading...</>
+                  ) : '🖼️ Display Banners'}
+                </button>
+              </div>
             </div>
             
-            {dealsLoading && !productCodeResult && <div className="loading"><span className="spinner">↻</span> Loading deals...</div>}
-            {!!dealsError && <div className="error">Error loading deals: {String(dealsError)}</div>}
             {productCodeResult ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <CategoryMatcher 
@@ -1365,13 +1376,30 @@ const DealsPage: React.FC = () => {
                   onPageChange={() => {}}
                 />
               </div>
-            ) : !!dealsData && (
-              <DealList 
-                deals={(dealsData.data as any).data || []} 
-                database={(dealsData.data as any).database}
-                pagination={(dealsData.data as any).pagination}
-                onPageChange={(offset) => setFilters({ ...filters, offset })}
-              />
+            ) : !showDeals ? (
+              <div className="display-deals-trigger-container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '40px 20px', border: '1px dashed #ccc', borderRadius: '8px', margin: '20px 0', backgroundColor: '#fafafa' }}>
+                <p style={{ margin: '0 0 15px 0', color: '#666', fontSize: '15px' }}>Deals list loading is currently paused to optimize performance. Click below to load and display all deals.</p>
+                <button 
+                  onClick={() => setShowDeals(true)}
+                  className="trigger-button"
+                  style={{ padding: '10px 24px', fontSize: '16px', fontWeight: 'bold' }}
+                >
+                  📊 Display Deals
+                </button>
+              </div>
+            ) : (
+              <>
+                {dealsLoading && <div className="loading"><span className="spinner">↻</span> Loading deals...</div>}
+                {!!dealsError && <div className="error">Error loading deals: {String(dealsError)}</div>}
+                {!!dealsData && (
+                  <DealList 
+                    deals={(dealsData.data as any).data || []} 
+                    database={(dealsData.data as any).database}
+                    pagination={(dealsData.data as any).pagination}
+                    onPageChange={(offset) => setFilters({ ...filters, offset })}
+                  />
+                )}
+              </>
             )}
           </div>
         </div>
