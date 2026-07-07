@@ -55,6 +55,8 @@ const Banners = () => {
   const [formIsActive, setFormIsActive] = useState(true);
   const [formOrder, setFormOrder] = useState('0');
   const [formStatus, setFormStatus] = useState(null);
+  const [formOriginalUrl, setFormOriginalUrl] = useState('');
+  const [isGeneratingAffUrl, setIsGeneratingAffUrl] = useState(false);
   const [useCacheLive, setUseCacheLive] = useState(false);
 
   // Sale Scraper states
@@ -391,7 +393,7 @@ const Banners = () => {
       : `${API_BASE_URL}/api/banners/add`;
       
     const method = editingBannerId ? 'PUT' : 'POST';
-
+ 
     try {
       const response = await fetch(urlEndpoint, {
         method,
@@ -399,6 +401,7 @@ const Banners = () => {
         body: JSON.stringify({
           url: formUrl,
           clickRedirectUrl: formClickRedirectUrl,
+          originalUrl: formOriginalUrl,
           platform: formPlatform,
           category: formCategory,
           title: formTitle,
@@ -407,7 +410,7 @@ const Banners = () => {
           order: Number(formOrder) || 0
         })
       });
-
+ 
       const result = await response.json();
       if (response.ok && result.success) {
         setFormStatus(`✅ Success: ${result.message}`);
@@ -427,11 +430,12 @@ const Banners = () => {
       setFormStatus(`❌ Connection Error: ${err.message}`);
     }
   };
-
+ 
   const handleEditBannerClick = (banner) => {
     setEditingBannerId(banner.id);
     setFormUrl(banner.url || '');
     setFormClickRedirectUrl(banner.clickRedirectUrl || '');
+    setFormOriginalUrl(banner.originalUrl || banner.orig || '');
     setFormPlatform(banner.platform || 'custom');
     setFormCategory(banner.category || 'general');
     setFormTitle(banner.title || '');
@@ -440,11 +444,12 @@ const Banners = () => {
     setFormOrder(String(banner.order || 0));
     setFormStatus(null);
   };
-
+ 
   const handleCancelEdit = () => {
     setEditingBannerId(null);
     setFormUrl('');
     setFormClickRedirectUrl('');
+    setFormOriginalUrl('');
     setFormPlatform('custom');
     setFormCategory('general');
     setFormTitle('');
@@ -469,6 +474,36 @@ const Banners = () => {
       }
     } catch (err) {
       alert(`Error: ${err.message}`);
+    }
+  };
+
+  const handleAutoGenerateAffiliateLink = async () => {
+    const targetUrl = formOriginalUrl || formClickRedirectUrl;
+    if (!targetUrl || !targetUrl.trim()) {
+      setFormStatus('❌ Enter a target Original URL first.');
+      return;
+    }
+
+    setIsGeneratingAffUrl(true);
+    setFormStatus('⏳ Generating Extrape Affiliate Link via Selenium...');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/generate-affiliate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: targetUrl })
+      });
+      const result = await response.json();
+      if (response.ok && result.success && result.affiliateUrl) {
+        setFormClickRedirectUrl(result.affiliateUrl);
+        setFormStatus('✅ Affiliate link generated successfully.');
+        setTimeout(() => setFormStatus(null), 3000);
+      } else {
+        setFormStatus(`❌ Conversion failed: ${result.error || 'Server error'}`);
+      }
+    } catch (err) {
+      setFormStatus(`❌ Connection Error: ${err.message}`);
+    } finally {
+      setIsGeneratingAffUrl(false);
     }
   };
 
@@ -544,6 +579,236 @@ const Banners = () => {
     const nextIndex = (activeIndex + 1) % filteredBanners.length;
     setSelectedBannerId(filteredBanners[nextIndex].id);
   };
+
+  if (selectedBanner) {
+    return (
+      <div className="banners-edit-page-view">
+        <div className="maximized-header">
+          <h2>🖼️ Banner Workspace (Big Screen Preview)</h2>
+          <div className="maximized-header-actions">
+            <div className="maximized-filters">
+              <span className="filter-label">Filter navigation:</span>
+              <select 
+                value={filter.platform} 
+                onChange={(e) => setFilter({ ...filter, platform: e.target.value })}
+              >
+                <option value="all">All Platforms</option>
+                <option value="amazon">Amazon</option>
+                <option value="flipkart">Flipkart</option>
+                <option value="myntra">Myntra</option>
+                <option value="ajio">Ajio</option>
+              </select>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={filter.activeOnly}
+                  onChange={(e) => setFilter({ ...filter, activeOnly: e.target.checked })}
+                />
+                Active Only
+              </label>
+            </div>
+            <button 
+              onClick={() => setSelectedBannerId(null)}
+              className="close-maximized-btn"
+              style={{
+                backgroundColor: '#3b82f6',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '8px 16px',
+                cursor: 'pointer',
+                fontWeight: 600,
+                fontSize: '13px'
+              }}
+            >
+              ← Back to Banners List
+            </button>
+          </div>
+        </div>
+        
+        <div className="maximized-content">
+          <div className="preview-pane">
+            {filteredBanners.length > 1 && (
+              <button 
+                onClick={handlePrevBanner}
+                className="nav-arrow left"
+                title="Previous Banner"
+              >
+                ‹
+              </button>
+            )}
+            
+            <div className="preview-image-container">
+              {selectedBanner.url ? (
+                <img 
+                  src={selectedBanner.url} 
+                  alt={selectedBanner.title || selectedBanner.id} 
+                  onError={(e) => {
+                    e.target.src = 'https://via.placeholder.com/600x300?text=Banner+Image';
+                  }}
+                />
+              ) : (
+                <div className="banner-placeholder">No Image</div>
+              )}
+            </div>
+
+            {filteredBanners.length > 1 && (
+              <button 
+                onClick={handleNextBanner}
+                className="nav-arrow right"
+                title="Next Banner"
+              >
+                ›
+              </button>
+            )}
+          </div>
+          
+          <div className="details-pane">
+            <h3>📝 Edit Banner Details</h3>
+            <form onSubmit={handleSaveBanner} className="edit-form">
+              <div className="form-group">
+                <label>Banner ID (Read-only)</label>
+                <input type="text" value={selectedBanner.id} disabled style={{ opacity: 0.6, background: '#2a2a2a' }} />
+              </div>
+              
+              <div className="form-group">
+                <label>Title</label>
+                <input 
+                  type="text" 
+                  value={formTitle} 
+                  onChange={(e) => setFormTitle(e.target.value)} 
+                  placeholder="Enter banner title"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Description</label>
+                <textarea 
+                  value={formDescription} 
+                  onChange={(e) => setFormDescription(e.target.value)} 
+                  placeholder="Enter banner description"
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Image URL</label>
+                <input 
+                  type="text" 
+                  value={formUrl} 
+                  onChange={(e) => setFormUrl(e.target.value)} 
+                  placeholder="Enter image URL"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Original URL (Target Merchant Page)</label>
+                <input 
+                  type="text" 
+                  value={formOriginalUrl} 
+                  onChange={(e) => setFormOriginalUrl(e.target.value)} 
+                  placeholder="e.g. https://www.flipkart.com/washing-machines-store"
+                />
+              </div>
+
+              <div className="form-group">
+                <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Click Redirect URL (Affiliate Link)</span>
+                  <button
+                    type="button"
+                    onClick={handleAutoGenerateAffiliateLink}
+                    disabled={isGeneratingAffUrl}
+                    style={{
+                      background: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      padding: '3px 8px',
+                      fontSize: '11px',
+                      cursor: 'pointer',
+                      fontWeight: 600
+                    }}
+                  >
+                    {isGeneratingAffUrl ? '⏳ Generating...' : '⚡ Auto Generate Affiliate Link'}
+                  </button>
+                </label>
+                <input 
+                  type="text" 
+                  value={formClickRedirectUrl} 
+                  onChange={(e) => setFormClickRedirectUrl(e.target.value)} 
+                  placeholder="Enter destination URL"
+                  required
+                />
+              </div>
+              
+              <div className="form-group">
+                <label>Platform</label>
+                <select 
+                  value={formPlatform} 
+                  onChange={(e) => setFormPlatform(e.target.value)}
+                >
+                  <option value="custom">Custom Platform</option>
+                  <option value="amazon">Amazon</option>
+                  <option value="flipkart">Flipkart</option>
+                  <option value="myntra">Myntra</option>
+                  <option value="ajio">Ajio</option>
+                </select>
+              </div>
+              
+              <div className="form-group">
+                <label>Category</label>
+                <input 
+                  type="text" 
+                  value={formCategory} 
+                  onChange={(e) => setFormCategory(e.target.value)} 
+                  placeholder="Enter category name"
+                />
+              </div>
+              
+              <div className="form-group form-group-checkbox">
+                <input 
+                  type="checkbox" 
+                  id="formIsActive"
+                  checked={formIsActive} 
+                  onChange={(e) => setFormIsActive(e.target.checked)} 
+                />
+                <label htmlFor="formIsActive" style={{ color: '#fff', fontSize: '14px' }}>Is Active (Visible on site)</label>
+              </div>
+              
+              <div className="form-actions">
+                {formStatus && (
+                  <span style={{ 
+                    color: formStatus.startsWith('✅') ? '#28a745' : '#ef4444', 
+                    fontWeight: 'bold', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    marginRight: 'auto',
+                    fontSize: '13px'
+                  }}>
+                    {formStatus}
+                  </span>
+                )}
+                <button 
+                  type="button" 
+                  onClick={() => setSelectedBannerId(null)}
+                  className="cancel-btn"
+                >
+                  Close
+                </button>
+                <button 
+                  type="submit" 
+                  className="save-btn"
+                >
+                  💾 Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="banners">
@@ -1055,197 +1320,6 @@ const Banners = () => {
           ))
         )}
       </div>
-
-      {selectedBanner && (
-        <div className="maximized-overlay">
-          <div className="maximized-container">
-            <div className="maximized-header">
-              <h2>🖼️ Banner Details (Maximized View)</h2>
-              <div className="maximized-header-actions">
-                <div className="maximized-filters">
-                  <span className="filter-label">Filter navigation:</span>
-                  <select 
-                    value={filter.platform} 
-                    onChange={(e) => setFilter({ ...filter, platform: e.target.value })}
-                  >
-                    <option value="all">All Platforms</option>
-                    <option value="amazon">Amazon</option>
-                    <option value="flipkart">Flipkart</option>
-                    <option value="myntra">Myntra</option>
-                    <option value="ajio">Ajio</option>
-                  </select>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={filter.activeOnly}
-                      onChange={(e) => setFilter({ ...filter, activeOnly: e.target.checked })}
-                    />
-                    Active Only
-                  </label>
-                </div>
-                <button 
-                  onClick={() => setSelectedBannerId(null)}
-                  className="close-maximized-btn"
-                >
-                  ✕ Close
-                </button>
-              </div>
-            </div>
-            
-            <div className="maximized-content">
-              <div className="preview-pane">
-                {filteredBanners.length > 1 && (
-                  <button 
-                    onClick={handlePrevBanner}
-                    className="nav-arrow left"
-                    title="Previous Banner"
-                  >
-                    ‹
-                  </button>
-                )}
-                
-                <div className="preview-image-container">
-                  {selectedBanner.url ? (
-                    <img 
-                      src={selectedBanner.url} 
-                      alt={selectedBanner.title || selectedBanner.id} 
-                      onError={(e) => {
-                        e.target.src = 'https://via.placeholder.com/600x300?text=Banner+Image';
-                      }}
-                    />
-                  ) : (
-                    <div className="banner-placeholder">No Image</div>
-                  )}
-                </div>
-
-                {filteredBanners.length > 1 && (
-                  <button 
-                    onClick={handleNextBanner}
-                    className="nav-arrow right"
-                    title="Next Banner"
-                  >
-                    ›
-                  </button>
-                )}
-              </div>
-              
-              <div className="details-pane">
-                <h3>📝 Edit Banner Details</h3>
-                <form onSubmit={handleSaveBanner} className="edit-form">
-                  <div className="form-group">
-                    <label>Banner ID (Read-only)</label>
-                    <input type="text" value={selectedBanner.id} disabled style={{ opacity: 0.6, background: '#2a2a2a' }} />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Title</label>
-                    <input 
-                      type="text" 
-                      value={formTitle} 
-                      onChange={(e) => setFormTitle(e.target.value)} 
-                      placeholder="Enter banner title"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Description</label>
-                    <textarea 
-                      value={formDescription} 
-                      onChange={(e) => setFormDescription(e.target.value)} 
-                      placeholder="Enter banner description"
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Image URL</label>
-                    <input 
-                      type="text" 
-                      value={formUrl} 
-                      onChange={(e) => setFormUrl(e.target.value)} 
-                      placeholder="Enter image URL"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Click Redirect URL</label>
-                    <input 
-                      type="text" 
-                      value={formClickRedirectUrl} 
-                      onChange={(e) => setFormClickRedirectUrl(e.target.value)} 
-                      placeholder="Enter destination URL"
-                      required
-                    />
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Platform</label>
-                    <select 
-                      value={formPlatform} 
-                      onChange={(e) => setFormPlatform(e.target.value)}
-                    >
-                      <option value="custom">Custom Platform</option>
-                      <option value="amazon">Amazon</option>
-                      <option value="flipkart">Flipkart</option>
-                      <option value="myntra">Myntra</option>
-                      <option value="ajio">Ajio</option>
-                    </select>
-                  </div>
-                  
-                  <div className="form-group">
-                    <label>Category</label>
-                    <input 
-                      type="text" 
-                      value={formCategory} 
-                      onChange={(e) => setFormCategory(e.target.value)} 
-                      placeholder="Enter category name"
-                    />
-                  </div>
-                  
-                  <div className="form-group form-group-checkbox">
-                    <input 
-                      type="checkbox" 
-                      id="formIsActive"
-                      checked={formIsActive} 
-                      onChange={(e) => setFormIsActive(e.target.checked)} 
-                    />
-                    <label htmlFor="formIsActive" style={{ color: '#fff', fontSize: '14px' }}>Is Active (Visible on site)</label>
-                  </div>
-                  
-                  <div className="form-actions">
-                    {formStatus && (
-                      <span style={{ 
-                        color: formStatus.startsWith('✅') ? '#28a745' : '#2563eb', 
-                        fontWeight: 'bold', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        marginRight: 'auto',
-                        fontSize: '13px'
-                      }}>
-                        {formStatus}
-                      </span>
-                    )}
-                    <button 
-                      type="button" 
-                      onClick={() => setSelectedBannerId(null)}
-                      className="cancel-btn"
-                    >
-                      Close
-                    </button>
-                    <button 
-                      type="submit" 
-                      className="save-btn"
-                    >
-                      💾 Save Changes
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

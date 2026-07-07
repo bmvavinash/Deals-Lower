@@ -1306,10 +1306,81 @@ router.get('/:id', async (req, res, next) => {
   }
 });
 
+// POST /api/banners/generate-affiliate - Convert a target merchant URL to an Extrape URL
+router.post('/generate-affiliate', async (req, res) => {
+  try {
+    const { url } = req.body;
+    if (!url) {
+      return res.status(400).json({ success: false, error: 'Merchant URL is required' });
+    }
+
+    logger.info(`Generating Extrape affiliate link for URL: ${url}`);
+
+    // If it is Amazon, we can just append/use tag dealshubglo0c-21
+    if (url.includes('amazon.in') || url.includes('amazon.com')) {
+      const hasQuery = url.includes('?');
+      const hasTag = url.match(/([?&]tag=)[^&]*/i);
+      let amazonAffUrl = url;
+      if (hasTag) {
+        amazonAffUrl = url.replace(/([?&]tag=)[^&]*/i, '$1dealshubglo0c-21');
+      } else {
+        amazonAffUrl = url + (hasQuery ? '&' : '?') + 'tag=dealshubglo0c-21';
+      }
+      return res.json({ success: true, affiliateUrl: amazonAffUrl });
+    }
+
+    // For Flipkart or other platforms, let's use getExtrapeUrl (needs driver)
+    let extrapeUrl = '';
+    
+    // We check if a global driver is active, otherwise start a temp driver
+    let tempDriver = null;
+    const { getExtrapeUrl } = require('../../../affiliate/extrape');
+    
+    try {
+      if (global.driver) {
+        extrapeUrl = await getExtrapeUrl(global.driver, url);
+      } else {
+        // Start a headless webdriver
+        logger.info('Starting temporary headless Chrome driver to generate Extrape link...');
+        const { Builder } = require('selenium-webdriver');
+        const chrome = require('selenium-webdriver/chrome');
+        const options = new chrome.Options();
+        options.addArguments('--headless');
+        options.addArguments('--disable-gpu');
+        options.addArguments('--no-sandbox');
+        options.addArguments('--disable-dev-shm-usage');
+        
+        tempDriver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
+        extrapeUrl = await getExtrapeUrl(tempDriver, url);
+      }
+    } catch (driverErr) {
+      logger.error(`Error in selenium web driver run for Extrape conversion: ${driverErr.message}`);
+    } finally {
+      if (tempDriver) {
+        try { await tempDriver.quit(); } catch (e) { }
+      }
+    }
+
+    // If Extrape fails, fall back to the inrdeals wrapper
+    if (!extrapeUrl) {
+      logger.warn('Extrape generation failed, falling back to INRdeals wrapper');
+      const cleanUrl = url.replace(/^https?:\/\//, '').replace(/^inrdeals\.com\/avi646476329\//, '');
+      extrapeUrl = `https://inrdeals.com/avi646476329/${cleanUrl}`;
+    }
+
+    logger.info(`Successfully generated affiliate URL: ${extrapeUrl}`);
+    return res.json({ success: true, affiliateUrl: extrapeUrl });
+
+  } catch (error) {
+    logger.error(`Error generating affiliate URL: ${error.message}`);
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // POST /api/banners/add - Create a custom live deal/banner
 router.post('/add', async (req, res, next) => {
   try {
-    const { url, clickRedirectUrl, platform, category = 'general', title, description, isActive = true, order = 0 } = req.body;
+    const { url, clickRedirectUrl, originalUrl, platform, category = 'general', title, description, isActive = true, order = 0 } = req.body;
     if (!url || !clickRedirectUrl) {
       return res.status(400).json({ success: false, error: 'Image URL and Target Link are required.' });
     }
@@ -1323,6 +1394,8 @@ router.post('/add', async (req, res, next) => {
       url,
       mobileUrl: url,
       clickRedirectUrl,
+      originalUrl: originalUrl || '',
+      orig: originalUrl || '',
       platform: cleanPlatform,
       category,
       title: title || `Live Deal - ${platform}`,
@@ -1353,7 +1426,7 @@ router.post('/add', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const bannerId = req.params.id;
-    const { url, clickRedirectUrl, platform, category, title, description, isActive, order } = req.body;
+    const { url, clickRedirectUrl, originalUrl, platform, category, title, description, isActive, order } = req.body;
 
     const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
     
@@ -1373,6 +1446,8 @@ router.put('/:id', async (req, res, next) => {
       url: url !== undefined ? url : existing.url,
       mobileUrl: url !== undefined ? url : (existing.mobileUrl || existing.url),
       clickRedirectUrl: clickRedirectUrl !== undefined ? clickRedirectUrl : existing.clickRedirectUrl,
+      originalUrl: originalUrl !== undefined ? originalUrl : (existing.originalUrl || existing.orig || ''),
+      orig: originalUrl !== undefined ? originalUrl : (existing.orig || existing.originalUrl || ''),
       platform: platform !== undefined ? platform.toLowerCase() : existing.platform,
       category: category !== undefined ? category : existing.category,
       title: title !== undefined ? title : existing.title,
