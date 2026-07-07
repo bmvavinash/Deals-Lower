@@ -42,6 +42,7 @@ const Banners = () => {
   const [extracting, setExtracting] = useState(false);
   const [extractionResult, setExtractionResult] = useState(null);
   const [dedupeInfo, setDedupeInfo] = useState({ removed: 0 });
+  const [selectedBannerId, setSelectedBannerId] = useState(null);
 
   // Custom manual deal/banner form states
   const [editingBannerId, setEditingBannerId] = useState(null);
@@ -410,10 +411,15 @@ const Banners = () => {
       const result = await response.json();
       if (response.ok && result.success) {
         setFormStatus(`✅ Success: ${result.message}`);
-        // Clear form
-        handleCancelEdit();
-        // Refresh banners
-        triggerBanners();
+        if (selectedBannerId) {
+          setBanners(prev => prev.map(b => b.id === selectedBannerId ? result.data : b));
+          fetchStats();
+          setTimeout(() => setFormStatus(null), 3000);
+        } else {
+          // Clear form and refresh if adding/editing from bottom card
+          handleCancelEdit();
+          triggerBanners();
+        }
       } else {
         setFormStatus(`❌ Error: ${result.error || 'Failed to save deal'}`);
       }
@@ -464,6 +470,79 @@ const Banners = () => {
     } catch (err) {
       alert(`Error: ${err.message}`);
     }
+  };
+
+  // Derived state: Filtered Banners list sorted by status & timestamp
+  const filteredBanners = [...banners]
+    .filter(banner => bannerVisibility[banner.id] !== false)
+    .filter(banner => {
+      if (filter.activeOnly && !banner.isActive) return false;
+      if (filter.platform !== 'all' && banner.platform !== filter.platform) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const aActive = a.isActive ? 1 : 0;
+      const bActive = b.isActive ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+
+      const getTs = (banner) => {
+        if (banner.creationTimestamp) {
+          const t = new Date(banner.creationTimestamp).getTime();
+          if (!isNaN(t)) return t;
+        }
+        if (banner.updateTimestamp) {
+          const t = new Date(banner.updateTimestamp).getTime();
+          if (!isNaN(t)) return t;
+        }
+        const id = banner.id || "";
+        const dateMatch = id.match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (dateMatch) {
+          const t = new Date(dateMatch[0]).getTime();
+          if (!isNaN(t)) return t;
+        }
+        const tsMatch = id.match(/-(\d{10,13})$/);
+        if (tsMatch) return parseInt(tsMatch[1], 10);
+        return 0;
+      };
+      return getTs(b) - getTs(a);
+    });
+
+  const selectedBanner = filteredBanners.find(b => b.id === selectedBannerId);
+  const activeIndex = selectedBannerId ? filteredBanners.findIndex(b => b.id === selectedBannerId) : -1;
+
+  // Initialize edit form with selected banner details
+  useEffect(() => {
+    if (selectedBannerId && selectedBanner) {
+      handleEditBannerClick(selectedBanner);
+    } else if (!selectedBannerId) {
+      handleCancelEdit();
+    }
+  }, [selectedBannerId, selectedBanner]);
+
+  // Adjust selection if current banner gets filtered out
+  useEffect(() => {
+    if (selectedBannerId) {
+      const exists = filteredBanners.some(b => b.id === selectedBannerId);
+      if (!exists) {
+        if (filteredBanners.length > 0) {
+          setSelectedBannerId(filteredBanners[0].id);
+        } else {
+          setSelectedBannerId(null);
+        }
+      }
+    }
+  }, [filter, banners, selectedBannerId, filteredBanners]);
+
+  const handlePrevBanner = () => {
+    if (filteredBanners.length <= 1 || activeIndex === -1) return;
+    const prevIndex = (activeIndex - 1 + filteredBanners.length) % filteredBanners.length;
+    setSelectedBannerId(filteredBanners[prevIndex].id);
+  };
+
+  const handleNextBanner = () => {
+    if (filteredBanners.length <= 1 || activeIndex === -1) return;
+    const nextIndex = (activeIndex + 1) % filteredBanners.length;
+    setSelectedBannerId(filteredBanners[nextIndex].id);
   };
 
   return (
@@ -888,43 +967,10 @@ const Banners = () => {
       )}
 
       <div className="banners-grid">
-        {banners.length === 0 && !triggering ? (
+        {filteredBanners.length === 0 && !triggering ? (
           <div className="no-banners">No banners found</div>
         ) : (
-          [...banners]
-            .filter(banner => bannerVisibility[banner.id] !== false)
-            .filter(banner => {
-              if (filter.activeOnly && !banner.isActive) return false;
-              if (filter.platform !== 'all' && banner.platform !== filter.platform) return false;
-              return true;
-            })
-            .sort((a, b) => {
-              const aActive = a.isActive ? 1 : 0;
-              const bActive = b.isActive ? 1 : 0;
-              if (aActive !== bActive) return bActive - aActive;
-
-              const getTs = (banner) => {
-                if (banner.creationTimestamp) {
-                  const t = new Date(banner.creationTimestamp).getTime();
-                  if (!isNaN(t)) return t;
-                }
-                if (banner.updateTimestamp) {
-                  const t = new Date(banner.updateTimestamp).getTime();
-                  if (!isNaN(t)) return t;
-                }
-                const id = banner.id || "";
-                const dateMatch = id.match(/(\d{4})-(\d{2})-(\d{2})/);
-                if (dateMatch) {
-                  const t = new Date(dateMatch[0]).getTime();
-                  if (!isNaN(t)) return t;
-                }
-                const tsMatch = id.match(/-(\d{10,13})$/);
-                if (tsMatch) return parseInt(tsMatch[1], 10);
-                return 0;
-              };
-              return getTs(b) - getTs(a);
-            })
-            .map((banner) => (
+          filteredBanners.map((banner) => (
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
               <div className="banner-status-toggle" style={{ display: 'flex', gap: '5px' }}>
                 <button 
@@ -967,7 +1013,12 @@ const Banners = () => {
                   🗑️ Delete
                 </button>
               </div>
-              <div className="banner-image">
+              <div 
+                className="banner-image" 
+                onClick={() => setSelectedBannerId(banner.id)}
+                style={{ cursor: 'pointer' }}
+                title="Click to view details in maximized mode"
+              >
                 {banner.url ? (
                   <img src={banner.url} alt={banner.title || banner.id} onError={(e) => {
                     e.target.src = 'https://via.placeholder.com/300x150?text=Banner+Image';
@@ -977,7 +1028,9 @@ const Banners = () => {
                 )}
               </div>
               <div className="banner-info">
-                <h3>{banner.title || banner.id}</h3>
+                <h3 onClick={() => setSelectedBannerId(banner.id)} style={{ cursor: 'pointer' }} title="Click to view in maximized mode">
+                  {banner.title || banner.id}
+                </h3>
                 {banner.description && <p>{banner.description}</p>}
                 <div className="banner-meta">
                   <span className={`banner-status ${banner.isActive ? 'active' : 'inactive'}`}>
@@ -1002,6 +1055,197 @@ const Banners = () => {
           ))
         )}
       </div>
+
+      {selectedBanner && (
+        <div className="maximized-overlay">
+          <div className="maximized-container">
+            <div className="maximized-header">
+              <h2>🖼️ Banner Details (Maximized View)</h2>
+              <div className="maximized-header-actions">
+                <div className="maximized-filters">
+                  <span className="filter-label">Filter navigation:</span>
+                  <select 
+                    value={filter.platform} 
+                    onChange={(e) => setFilter({ ...filter, platform: e.target.value })}
+                  >
+                    <option value="all">All Platforms</option>
+                    <option value="amazon">Amazon</option>
+                    <option value="flipkart">Flipkart</option>
+                    <option value="myntra">Myntra</option>
+                    <option value="ajio">Ajio</option>
+                  </select>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={filter.activeOnly}
+                      onChange={(e) => setFilter({ ...filter, activeOnly: e.target.checked })}
+                    />
+                    Active Only
+                  </label>
+                </div>
+                <button 
+                  onClick={() => setSelectedBannerId(null)}
+                  className="close-maximized-btn"
+                >
+                  ✕ Close
+                </button>
+              </div>
+            </div>
+            
+            <div className="maximized-content">
+              <div className="preview-pane">
+                {filteredBanners.length > 1 && (
+                  <button 
+                    onClick={handlePrevBanner}
+                    className="nav-arrow left"
+                    title="Previous Banner"
+                  >
+                    ‹
+                  </button>
+                )}
+                
+                <div className="preview-image-container">
+                  {selectedBanner.url ? (
+                    <img 
+                      src={selectedBanner.url} 
+                      alt={selectedBanner.title || selectedBanner.id} 
+                      onError={(e) => {
+                        e.target.src = 'https://via.placeholder.com/600x300?text=Banner+Image';
+                      }}
+                    />
+                  ) : (
+                    <div className="banner-placeholder">No Image</div>
+                  )}
+                </div>
+
+                {filteredBanners.length > 1 && (
+                  <button 
+                    onClick={handleNextBanner}
+                    className="nav-arrow right"
+                    title="Next Banner"
+                  >
+                    ›
+                  </button>
+                )}
+              </div>
+              
+              <div className="details-pane">
+                <h3>📝 Edit Banner Details</h3>
+                <form onSubmit={handleSaveBanner} className="edit-form">
+                  <div className="form-group">
+                    <label>Banner ID (Read-only)</label>
+                    <input type="text" value={selectedBanner.id} disabled style={{ opacity: 0.6, background: '#2a2a2a' }} />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Title</label>
+                    <input 
+                      type="text" 
+                      value={formTitle} 
+                      onChange={(e) => setFormTitle(e.target.value)} 
+                      placeholder="Enter banner title"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Description</label>
+                    <textarea 
+                      value={formDescription} 
+                      onChange={(e) => setFormDescription(e.target.value)} 
+                      placeholder="Enter banner description"
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Image URL</label>
+                    <input 
+                      type="text" 
+                      value={formUrl} 
+                      onChange={(e) => setFormUrl(e.target.value)} 
+                      placeholder="Enter image URL"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Click Redirect URL</label>
+                    <input 
+                      type="text" 
+                      value={formClickRedirectUrl} 
+                      onChange={(e) => setFormClickRedirectUrl(e.target.value)} 
+                      placeholder="Enter destination URL"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Platform</label>
+                    <select 
+                      value={formPlatform} 
+                      onChange={(e) => setFormPlatform(e.target.value)}
+                    >
+                      <option value="custom">Custom Platform</option>
+                      <option value="amazon">Amazon</option>
+                      <option value="flipkart">Flipkart</option>
+                      <option value="myntra">Myntra</option>
+                      <option value="ajio">Ajio</option>
+                    </select>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Category</label>
+                    <input 
+                      type="text" 
+                      value={formCategory} 
+                      onChange={(e) => setFormCategory(e.target.value)} 
+                      placeholder="Enter category name"
+                    />
+                  </div>
+                  
+                  <div className="form-group form-group-checkbox">
+                    <input 
+                      type="checkbox" 
+                      id="formIsActive"
+                      checked={formIsActive} 
+                      onChange={(e) => setFormIsActive(e.target.checked)} 
+                    />
+                    <label htmlFor="formIsActive" style={{ color: '#fff', fontSize: '14px' }}>Is Active (Visible on site)</label>
+                  </div>
+                  
+                  <div className="form-actions">
+                    {formStatus && (
+                      <span style={{ 
+                        color: formStatus.startsWith('✅') ? '#28a745' : '#2563eb', 
+                        fontWeight: 'bold', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        marginRight: 'auto',
+                        fontSize: '13px'
+                      }}>
+                        {formStatus}
+                      </span>
+                    )}
+                    <button 
+                      type="button" 
+                      onClick={() => setSelectedBannerId(null)}
+                      className="cancel-btn"
+                    >
+                      Close
+                    </button>
+                    <button 
+                      type="submit" 
+                      className="save-btn"
+                    >
+                      💾 Save Changes
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
