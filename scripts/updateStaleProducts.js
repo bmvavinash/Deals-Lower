@@ -59,7 +59,8 @@ async function main() {
     const isDryRun = process.argv.includes('--dry-run');
     logger.info('Starting stale products updater...', { isDryRun });
     
-    await executionTracker.startDbUpdateExecution('updateStaleProducts', 'cli');
+    const sourceType = process.env.TRIGGER_SOURCE || 'cli';
+    await executionTracker.startDbUpdateExecution('updateStaleProducts', sourceType);
     
     try {
         const staleUrls = await getStaleProducts(7);

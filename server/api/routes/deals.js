@@ -314,11 +314,16 @@ router.post('/link', async (req, res) => {
 router.post('/manual-trigger', async (req, res) => {
   try {
     const { sourceType = 'website', targetDb = 'productdeals' } = req.body;
+    const clientMetadata = {
+      ip: req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress,
+      origin: req.headers.origin || req.headers.referer || 'Website Direct',
+      userAgent: req.headers['user-agent'] || 'Unknown'
+    };
     
-    logger.info('Manual bulk update triggered', { sourceType, targetDb });
+    logger.info('Manual bulk update triggered', { sourceType, targetDb, clientMetadata });
 
     // Run bulk update in background (don't await - return immediately)
-    runBulkUpdateAll(sourceType, targetDb)
+    runBulkUpdateAll(sourceType, targetDb, clientMetadata)
       .then((result) => {
         logger.info('Bulk update completed', {
           sourceType,
@@ -505,7 +510,14 @@ router.post('/trigger-telegram-bot', async (req, res) => {
     const child = spawn(process.execPath, [scriptPath], {
       detached: true,
       stdio: 'ignore',
-      windowsHide: true
+      windowsHide: true,
+      env: {
+        ...process.env,
+        TRIGGER_SOURCE: 'api',
+        TRIGGER_CLIENT_IP: req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress,
+        TRIGGER_CLIENT_ORIGIN: req.headers.origin || req.headers.referer || 'Website Direct',
+        TRIGGER_CLIENT_UA: req.headers['user-agent'] || 'Unknown'
+      }
     });
     child.unref();
 
@@ -711,9 +723,14 @@ router.post('/manual-trigger', async (req, res, next) => {
       }
     }
 
-    logger.info('Manual bulk update triggered', { sourceType, targetDb });
+    const clientMetadata = {
+      ip: req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress,
+      origin: req.headers.origin || req.headers.referer || 'Website Direct',
+      userAgent: req.headers['user-agent'] || 'Unknown'
+    };
+    logger.info('Manual bulk update triggered', { sourceType, targetDb, clientMetadata });
 
-    runBulkUpdateAll(sourceType, targetDb)
+    runBulkUpdateAll(sourceType, targetDb, clientMetadata)
       .then((result) => logger.info('Manual bulk update completed', result))
       .catch((error) => {
         logger.error('Manual bulk update failed', {

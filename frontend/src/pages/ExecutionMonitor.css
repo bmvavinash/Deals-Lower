@@ -861,6 +861,52 @@
   margin-top: 24px;
 }
 
+.host-cell,
+.client-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.host-env {
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.host-name {
+  font-size: 11px;
+  color: #64748b;
+  font-family: monospace;
+}
+
+.client-ip {
+  font-weight: 500;
+  color: #0369a1;
+  font-family: monospace;
+}
+
+.client-origin {
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+.text-muted {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.host-info-label {
+  color: #1e293b;
+}
+
+.client-info-label {
+  color: #0369a1;
+}
+
 
 
 

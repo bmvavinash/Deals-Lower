@@ -550,11 +550,12 @@ async function runBulkUpdateForPlatform(platform, sourceType = 'website', target
   }
 }
 
-async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals') {
+async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals', clientMetadata = null) {
   try {
     logger.info('🚀 [ENTRY] Starting bulk update for all platforms', { 
       sourceType, 
       targetDb,
+      clientMetadata,
       platformCount: Object.keys(PLATFORM_SEEDS).length,
       platforms: Object.keys(PLATFORM_SEEDS)
     });
@@ -562,7 +563,7 @@ async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals') {
     // Start execution tracking
     let execution;
     try {
-      execution = await executionTracker.startBulkExecution(sourceType, targetDb);
+      execution = await executionTracker.startBulkExecution(sourceType, targetDb, clientMetadata);
       logger.info('✅ Execution tracker started', { executionId: execution?.id });
     } catch (trackerError) {
       logger.error('❌ [ERROR] Failed to start execution tracker', { 

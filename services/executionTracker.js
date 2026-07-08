@@ -2,10 +2,38 @@ const { getModuleLogger } = require('../logger/logger');
 const admin = require('firebase-admin');
 const constants = require('../config/constants');
 const config = require('../config/config');
-
-
+const os = require('os');
 
 const logger = getModuleLogger('executionTracker');
+
+function getHostMetadata() {
+  const interfaces = os.networkInterfaces();
+  const ips = [];
+  try {
+    for (const name of Object.keys(interfaces)) {
+      for (const iface of interfaces[name]) {
+        if (iface.family === 'IPv4' && !iface.internal) {
+          ips.push(iface.address);
+        }
+      }
+    }
+  } catch (e) {
+    logger.warn('Error fetching local IPs', { error: e.message });
+  }
+
+  const hostnameLower = os.hostname().toLowerCase();
+  const isRender = !!process.env.RENDER || !!process.env.RENDER_SERVICE_NAME;
+  const envType = isRender ? 'Render Server' : (hostnameLower.includes('laptop') || hostnameLower.includes('desktop') || hostnameLower.includes('local') || hostnameLower.includes('pc') || hostnameLower.includes('anil') ? 'Local Laptop' : 'Remote Server');
+
+  return {
+    hostname: os.hostname(),
+    username: os.userInfo()?.username || 'unknown',
+    platform: os.platform(),
+    release: os.release(),
+    ips: ips.join(', ') || '127.0.0.1',
+    envType
+  };
+}
 
 // Use existing Firebase instance
 let db;
@@ -73,9 +101,37 @@ class ExecutionTracker {
   }
 
   /**
+   * Save a completed execution to history and reset current execution
+   */
+  async saveToHistory(historyEntry) {
+    if (!this.executionHistory) {
+      this.executionHistory = [];
+    }
+
+    // Set completed timestamp
+    historyEntry.completedAt = new Date().toISOString();
+
+    // Add to in-memory list
+    this.executionHistory.unshift(historyEntry);
+    if (this.executionHistory.length > 200) {
+      this.executionHistory = this.executionHistory.slice(0, 200);
+    }
+
+    if (this.ref) {
+      try {
+        await this.ref.child('current').set(null);
+        await this.ref.child('history').push(historyEntry);
+      } catch (err) {
+        logger.error('Failed to save execution history to Firebase', { error: err.message });
+      }
+    }
+  }
+
+  /**
    * Start tracking a bulk update execution
    */
-  async startBulkExecution(sourceType, targetDb) {
+  async startBulkExecution(sourceType, targetDb, clientMetadata = null) {
+    const hostInfo = getHostMetadata();
     const execution = {
       id: `bulk_${Date.now()}`,
       type: 'bulk_update',
@@ -90,7 +146,23 @@ class ExecutionTracker {
       totalProcessed: 0,
       totalCreated: 0,
       totalUpdated: 0,
-      errors: []
+      errors: [],
+      host: {
+        hostname: hostInfo.hostname,
+        username: hostInfo.username,
+        platform: hostInfo.platform,
+        ips: hostInfo.ips,
+        envType: hostInfo.envType
+      },
+      client: clientMetadata ? {
+        ip: clientMetadata.ip,
+        origin: clientMetadata.origin,
+        userAgent: clientMetadata.userAgent
+      } : {
+        ip: 'N/A',
+        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
+        userAgent: 'N/A'
+      }
     };
     
     // Ensure platforms is always an object (defensive programming)
@@ -111,12 +183,14 @@ class ExecutionTracker {
   /**
    * Start tracking a Telegram bot execution
    */
-  async startTelegramExecution(channel = 'default') {
+  async startTelegramExecution(channel = 'default', clientMetadata = null, sourceType = 'telegram') {
+    const hostInfo = getHostMetadata();
     const execution = {
       id: `telegram_${Date.now()}`,
       type: 'telegram_bot',
       channel,
       status: 'running',
+      sourceType,
       startTime: new Date().toISOString(),
       messages: {
         total: 0,
@@ -131,7 +205,23 @@ class ExecutionTracker {
         failed: 0,
         byPlatform: {}
       },
-      errors: []
+      errors: [],
+      host: {
+        hostname: hostInfo.hostname,
+        username: hostInfo.username,
+        platform: hostInfo.platform,
+        ips: hostInfo.ips,
+        envType: hostInfo.envType
+      },
+      client: clientMetadata ? {
+        ip: clientMetadata.ip,
+        origin: clientMetadata.origin,
+        userAgent: clientMetadata.userAgent
+      } : {
+        ip: 'N/A',
+        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
+        userAgent: 'N/A'
+      }
     };
 
     this.currentExecution = execution;
@@ -147,14 +237,31 @@ class ExecutionTracker {
   /**
    * Start tracking a favorites check execution
    */
-  async startFavoritesExecution(sourceType = 'scheduler') {
+  async startFavoritesExecution(sourceType = 'scheduler', clientMetadata = null) {
+    const hostInfo = getHostMetadata();
     const execution = {
       id: `fav_${Date.now()}`,
       type: 'favorites_check',
       sourceType,
       status: 'running',
       startTime: new Date().toISOString(),
-      errors: []
+      errors: [],
+      host: {
+        hostname: hostInfo.hostname,
+        username: hostInfo.username,
+        platform: hostInfo.platform,
+        ips: hostInfo.ips,
+        envType: hostInfo.envType
+      },
+      client: clientMetadata ? {
+        ip: clientMetadata.ip,
+        origin: clientMetadata.origin,
+        userAgent: clientMetadata.userAgent
+      } : {
+        ip: 'N/A',
+        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
+        userAgent: 'N/A'
+      }
     };
 
     this.currentExecution = execution;
@@ -177,21 +284,10 @@ class ExecutionTracker {
       this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
       this.currentExecution.summary = summary;
 
-      if (!this.executionHistory) {
-        this.executionHistory = [];
-      }
-      this.executionHistory.unshift({ ...this.currentExecution });
+      const historyEntry = { ...this.currentExecution };
+      await this.saveToHistory(historyEntry);
 
-      if (this.executionHistory.length > 50) {
-        this.executionHistory = this.executionHistory.slice(0, 50);
-      }
-
-      if (this.ref) {
-        await this.ref.child('current').set(null);
-        await this.ref.child('history').set(this.executionHistory);
-      }
-
-      logger.info('Favorites check execution completed', { id: this.currentExecution.id, status });
+      logger.info('Favorites check execution completed', { id: historyEntry.id, status });
       this.currentExecution = null;
     }
   }
@@ -199,7 +295,8 @@ class ExecutionTracker {
   /**
    * Start tracking a DB update execution
    */
-  async startDbUpdateExecution(scriptName, sourceType = 'cli') {
+  async startDbUpdateExecution(scriptName, sourceType = 'cli', clientMetadata = null) {
+    const hostInfo = getHostMetadata();
     const execution = {
       id: `db_${Date.now()}`,
       type: 'db_update',
@@ -207,7 +304,23 @@ class ExecutionTracker {
       sourceType,
       status: 'running',
       startTime: new Date().toISOString(),
-      errors: []
+      errors: [],
+      host: {
+        hostname: hostInfo.hostname,
+        username: hostInfo.username,
+        platform: hostInfo.platform,
+        ips: hostInfo.ips,
+        envType: hostInfo.envType
+      },
+      client: clientMetadata ? {
+        ip: clientMetadata.ip,
+        origin: clientMetadata.origin,
+        userAgent: clientMetadata.userAgent
+      } : {
+        ip: 'N/A',
+        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
+        userAgent: 'N/A'
+      }
     };
 
     this.currentExecution = execution;
@@ -230,21 +343,10 @@ class ExecutionTracker {
       this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
       this.currentExecution.summary = summary;
 
-      if (!this.executionHistory) {
-        this.executionHistory = [];
-      }
-      this.executionHistory.unshift({ ...this.currentExecution });
+      const historyEntry = { ...this.currentExecution };
+      await this.saveToHistory(historyEntry);
 
-      if (this.executionHistory.length > 50) {
-        this.executionHistory = this.executionHistory.slice(0, 50);
-      }
-
-      if (this.ref) {
-        await this.ref.child('current').set(null);
-        await this.ref.child('history').set(this.executionHistory);
-      }
-
-      logger.info('DB update execution completed', { id: this.currentExecution.id, status });
+      logger.info('DB update execution completed', { id: historyEntry.id, status });
       this.currentExecution = null;
     }
   }
@@ -345,24 +447,7 @@ class ExecutionTracker {
       this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
       
       const historyEntry = { ...this.currentExecution };
-      
-      if (!Array.isArray(this.executionHistory)) {
-        this.executionHistory = [];
-      }
-      
-      this.executionHistory.unshift(historyEntry);
-      
-      if (this.executionHistory.length > 50) {
-        this.executionHistory = this.executionHistory.slice(0, 50);
-      }
-
-      if (this.ref) {
-        await this.ref.child('current').set(null);
-        const historyToSave = Array.isArray(this.executionHistory) 
-          ? this.executionHistory.slice(0, 50) 
-          : [];
-        await this.ref.child('history').set(historyToSave);
-      }
+      await this.saveToHistory(historyEntry);
 
       const previousExecution = this.currentExecution;
       this.currentExecution = null;
@@ -639,55 +724,8 @@ class ExecutionTracker {
       this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
       this.currentExecution.summary = summary;
 
-      // Ensure executionHistory is an array - robust check
-      if (!this.executionHistory) {
-        logger.warn('executionHistory was null/undefined, initializing as empty array');
-        this.executionHistory = [];
-      }
-      
-      if (!Array.isArray(this.executionHistory)) {
-        logger.error('executionHistory is not an array, converting', { 
-          type: typeof this.executionHistory,
-          value: this.executionHistory 
-        });
-        // If it's an object, try to convert to array
-        if (typeof this.executionHistory === 'object' && this.executionHistory !== null) {
-          this.executionHistory = Object.values(this.executionHistory);
-        } else {
-          this.executionHistory = [];
-        }
-      }
-
-      // Move to history
-      const historyEntry = {
-        ...this.currentExecution,
-        completedAt: new Date().toISOString()
-      };
-      
-      // Ensure executionHistory is always an array before using unshift
-      if (!Array.isArray(this.executionHistory)) {
-        logger.warn('executionHistory is not an array in completeBulkExecution, initializing', {
-          executionHistoryType: typeof this.executionHistory,
-          executionHistoryValue: this.executionHistory
-        });
-        this.executionHistory = [];
-      }
-      
-      this.executionHistory.unshift(historyEntry);
-
-      // Keep only last 50 executions
-      if (this.executionHistory.length > 50) {
-        this.executionHistory = this.executionHistory.slice(0, 50);
-      }
-
-      if (this.ref) {
-        await this.ref.child('current').set(null);
-        // Ensure we're saving an array
-        const historyToSave = Array.isArray(this.executionHistory) 
-          ? this.executionHistory.slice(0, 50) 
-          : [];
-        await this.ref.child('history').set(historyToSave);
-      }
+      const historyEntry = { ...this.currentExecution };
+      await this.saveToHistory(historyEntry);
 
       const previousExecution = this.currentExecution;
       this.currentExecution = null;
@@ -695,8 +733,7 @@ class ExecutionTracker {
       logger.info('Bulk execution completed', { 
         executionId: previousExecution.id,
         duration: previousExecution.duration,
-        totalProducts: previousExecution.totalProducts,
-        historyLength: this.executionHistory.length
+        totalProducts: previousExecution.totalProducts
       });
 
       return previousExecution;
@@ -704,8 +741,6 @@ class ExecutionTracker {
       logger.error('Error in completeBulkExecution', {
         error: error.message,
         stack: error.stack,
-        executionHistoryType: typeof this.executionHistory,
-        executionHistoryIsArray: Array.isArray(this.executionHistory),
         hasCurrentExecution: !!this.currentExecution
       });
       throw error;
@@ -837,7 +872,8 @@ class ExecutionTracker {
     };
   }
 
-  async startScraperExecution(saleName, urlsCount) {
+  async startScraperExecution(saleName, urlsCount, clientMetadata = null) {
+    const hostInfo = getHostMetadata();
     const execution = {
       id: `scraper_${Date.now()}`,
       type: 'sale_scraper',
@@ -848,7 +884,23 @@ class ExecutionTracker {
       processedUrls: 0,
       extractedBanners: 0,
       errors: [],
-      logs: [`[INFO] Scraper started for sale: "${saleName}" with ${urlsCount} target URLs.`]
+      logs: [`[INFO] Scraper started for sale: "${saleName}" with ${urlsCount} target URLs.`],
+      host: {
+        hostname: hostInfo.hostname,
+        username: hostInfo.username,
+        platform: hostInfo.platform,
+        ips: hostInfo.ips,
+        envType: hostInfo.envType
+      },
+      client: clientMetadata ? {
+        ip: clientMetadata.ip,
+        origin: clientMetadata.origin,
+        userAgent: clientMetadata.userAgent
+      } : {
+        ip: 'N/A',
+        origin: 'API/Script',
+        userAgent: 'N/A'
+      }
     };
 
     this.currentExecution = execution;
@@ -883,12 +935,10 @@ class ExecutionTracker {
       this.currentExecution.summary = summary;
       this.currentExecution.logs.push(`[INFO] Scraper finished with status: ${status}. Extracted banners: ${this.currentExecution.extractedBanners}.`);
       
-      if (this.ref) {
-        await this.ref.child('current').set(this.currentExecution);
-        await this.ref.child('history').push(this.currentExecution);
-      }
+      const historyEntry = { ...this.currentExecution };
+      await this.saveToHistory(historyEntry);
       
-      logger.info('Scraper execution completed', { id: this.currentExecution.id, status });
+      logger.info('Scraper execution completed', { id: historyEntry.id, status });
       this.currentExecution = null;
     }
   }

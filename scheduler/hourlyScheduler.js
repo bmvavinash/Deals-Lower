@@ -172,7 +172,12 @@ class HourlyScheduler {
                 const path = require('path');
                 const scriptPath = path.join(__dirname, '../scripts/updateStaleProducts.js');
                 
-                exec(`node "${scriptPath}"`, (error, stdout, stderr) => {
+                exec(`node "${scriptPath}"`, {
+                    env: {
+                        ...process.env,
+                        TRIGGER_SOURCE: 'scheduler'
+                    }
+                }, (error, stdout, stderr) => {
                     if (error) {
                         logger.error('Stale product update failed', { error: error.message });
                         return;

@@ -30,6 +30,18 @@ interface Execution {
   summary?: any;
   errors?: string[];
   logs?: string[];
+  host?: {
+    hostname: string;
+    username: string;
+    platform: string;
+    ips: string;
+    envType: string;
+  };
+  client?: {
+    ip: string;
+    origin: string;
+    userAgent: string;
+  };
 }
 
 interface ExecutionStatus {
@@ -107,7 +119,7 @@ const ExecutionMonitor: React.FC = () => {
   // History query
   const { data: historyDataResponse, refetch: refetchHistory } = useQuery(
     'execution-history-all',
-    () => executionAPI.getHistory(50),
+    () => executionAPI.getHistory(100), // Request up to 100 recent entries
     {
       refetchInterval: autoRefresh ? 5000 : false
     }
@@ -189,6 +201,22 @@ const ExecutionMonitor: React.FC = () => {
                   {new Date(currentExec.startTime).toLocaleString()}
                 </span>
               </div>
+              {currentExec.host && (
+                <div className="info-row">
+                  <span className="label">Running Host:</span>
+                  <span className="value host-info-label">
+                    🖥️ <strong>{currentExec.host.envType}</strong> ({currentExec.host.hostname} / {currentExec.host.username})
+                  </span>
+                </div>
+              )}
+              {currentExec.client && currentExec.client.ip !== 'N/A' && (
+                <div className="info-row">
+                  <span className="label">Triggered Client:</span>
+                  <span className="value client-info-label">
+                    🌐 {currentExec.client.ip} ({currentExec.client.origin})
+                  </span>
+                </div>
+              )}
               {currentExec.type === 'bulk_update' && (
                 <>
                   <div className="info-row">
@@ -350,6 +378,8 @@ const ExecutionMonitor: React.FC = () => {
                   <th>Run ID</th>
                   <th>Execution Type</th>
                   <th>Source</th>
+                  <th>Machine (Host)</th>
+                  <th>Trigger IP / Origin</th>
                   <th>Status</th>
                   <th>Time Range</th>
                   <th>Duration</th>
@@ -367,6 +397,26 @@ const ExecutionMonitor: React.FC = () => {
                     </td>
                     <td className="run-source">
                       <span className="source-tag">{run.sourceType || 'cli'}</span>
+                    </td>
+                    <td className="run-host">
+                      {run.host ? (
+                        <div className="host-cell">
+                          <span className="host-env">{run.host.envType}</span>
+                          <span className="host-name">{run.host.hostname}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted">N/A</span>
+                      )}
+                    </td>
+                    <td className="run-client">
+                      {run.client ? (
+                        <div className="client-cell">
+                          <span className="client-ip">{run.client.ip}</span>
+                          <span className="client-origin">{run.client.origin}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted">N/A</span>
+                      )}
                     </td>
                     <td className="run-status">
                       <span className={`status-tag ${run.status}`}>
