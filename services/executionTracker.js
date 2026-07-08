@@ -574,7 +574,11 @@ class ExecutionTracker {
     }
     
     const platformData = this.currentExecution.platforms[platform];
-    if (!platformData || !platformData.categories[category]) return;
+    if (!platformData) return;
+    if (!platformData.categories || typeof platformData.categories !== 'object') {
+      platformData.categories = {};
+    }
+    if (!platformData.categories[category]) return;
     
     const categoryData = platformData.categories[category];
     if (!categoryData.pages) {
@@ -624,7 +628,11 @@ class ExecutionTracker {
     }
     
     const platformData = this.currentExecution.platforms[platform];
-    if (!platformData || !platformData.categories[category]) return;
+    if (!platformData) return;
+    if (!platformData.categories || typeof platformData.categories !== 'object') {
+      platformData.categories = {};
+    }
+    if (!platformData.categories[category]) return;
     
     const categoryData = platformData.categories[category];
     if (!categoryData.pages || !categoryData.pages[`page_${pageIndex}`]) return;
@@ -669,7 +677,10 @@ class ExecutionTracker {
       await this.updateCurrentPlatform(platform, category);
       platformData = this.currentExecution.platforms[platform];
     }
-
+    if (!platformData.categories || typeof platformData.categories !== 'object') {
+      platformData.categories = {};
+    }
+    
     if (!platformData.categories[category]) {
       platformData.categories[category] = {
         startTime: new Date().toISOString(),
@@ -719,24 +730,48 @@ class ExecutionTracker {
         return;
       }
 
-      this.currentExecution.status = 'completed';
-      this.currentExecution.endTime = new Date().toISOString();
-      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
-      this.currentExecution.summary = summary;
+      // Copy active state first to prevent real-time listener nulling issues
+      const executionCopy = { ...this.currentExecution };
+      executionCopy.status = 'completed';
+      executionCopy.endTime = new Date().toISOString();
+      executionCopy.duration = Date.now() - new Date(executionCopy.startTime).getTime();
+      
+      // Ensure summary totals propagate to the root counts if available
+      if (summary) {
+        executionCopy.totalProducts = summary.totalProducts !== undefined ? summary.totalProducts : executionCopy.totalProducts;
+        executionCopy.totalProcessed = summary.totalSuccess !== undefined ? summary.totalSuccess : executionCopy.totalProcessed;
+        
+        // Map created & updated counts if not already populated
+        let created = 0, updated = 0;
+        if (summary.results) {
+          Object.values(summary.results).forEach((platResult) => {
+            if (platResult && typeof platResult === 'object') {
+              if (platResult.results) {
+                Object.values(platResult.results).forEach((catResult) => {
+                  created += catResult.createdCount || 0;
+                  updated += catResult.updatedCount || 0;
+                });
+              } else {
+                created += platResult.createdCount || 0;
+                updated += platResult.updatedCount || 0;
+              }
+            }
+          });
+          executionCopy.totalCreated = created || executionCopy.totalCreated;
+          executionCopy.totalUpdated = updated || executionCopy.totalUpdated;
+        }
+      }
+      executionCopy.summary = summary;
 
-      const historyEntry = { ...this.currentExecution };
-      await this.saveToHistory(historyEntry);
-
-      const previousExecution = this.currentExecution;
-      this.currentExecution = null;
+      await this.saveToHistory(executionCopy);
 
       logger.info('Bulk execution completed', { 
-        executionId: previousExecution.id,
-        duration: previousExecution.duration,
-        totalProducts: previousExecution.totalProducts
+        executionId: executionCopy.id,
+        duration: executionCopy.duration,
+        totalProducts: executionCopy.totalProducts
       });
 
-      return previousExecution;
+      return executionCopy;
     } catch (error) {
       logger.error('Error in completeBulkExecution', {
         error: error.message,
