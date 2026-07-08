@@ -53,6 +53,7 @@ interface ExecutionStatus {
   };
   platformQueue: any[];
   categoryQueue: any[];
+  queue?: any[];
 }
 
 const formatDuration = (ms?: number) => {
@@ -74,9 +75,9 @@ const getTypeName = (type: string, run?: Execution) => {
     case 'favorites_check':
       return '❤️ Favorites Check';
     case 'db_update':
-      return `💾 DB Update (${run?.scriptName || 'Script'})`;
+      return `💾 TB Update (${run?.scriptName || 'Script'})`;
     case 'sale_scraper':
-      return `📡 Sale Scraper (${run?.saleName || 'Sale'})`;
+      return `📡 Sails Grapper (${run?.saleName || 'Sale'})`;
     default:
       return type;
   }
@@ -104,6 +105,67 @@ const getSummaryText = (run: Execution) => {
 const ExecutionMonitor: React.FC = () => {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [selectedTab, setSelectedTab] = useState<string>('all');
+
+  // Manual trigger states
+  const [bulkSource, setBulkSource] = useState('website');
+  const [bulkDb, setBulkDb] = useState('productdeals');
+  const [favSource, setFavSource] = useState('api');
+  const [saleName, setSaleName] = useState('Mega Sale Scrape');
+  const [salePlatform, setSalePlatform] = useState('flipkart');
+  const [saleCategory, setSaleCategory] = useState('electronics');
+  const [saleUrls, setSaleUrls] = useState('https://www.flipkart.com/offers-list/deals-of-the-day');
+  const [forceParallel, setForceParallel] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [triggerMessage, setTriggerMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const handleTrigger = async (type: string) => {
+    setIsSubmitting(true);
+    setTriggerMessage(null);
+    try {
+      let params: any = {};
+      if (type === 'bulk_update') {
+        params = { sourceType: bulkSource, targetDb: bulkDb };
+      } else if (type === 'favorites_check') {
+        params = { sourceType: favSource };
+      } else if (type === 'sale_scraper') {
+        const urlList = saleUrls.split(/[\n,]+/).map(u => u.trim()).filter(Boolean);
+        if (urlList.length === 0) {
+          throw new Error('Please enter at least one URL to scrape.');
+        }
+        params = {
+          saleName,
+          platform: salePlatform,
+          category: saleCategory,
+          urls: urlList
+        };
+      }
+
+      const res = await executionAPI.triggerTask(type, params, forceParallel);
+      setTriggerMessage({
+        text: (res.data as any)?.message || 'Task triggered successfully.',
+        type: 'success'
+      });
+      
+      setTimeout(() => setTriggerMessage(null), 5000);
+      refetchStatus();
+    } catch (error: any) {
+      setTriggerMessage({
+        text: error.response?.data?.error || error.message || 'Failed to trigger task.',
+        type: 'error'
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelTask = async (taskId: string) => {
+    try {
+      await executionAPI.cancelTask(taskId);
+      refetchStatus();
+    } catch (error: any) {
+      console.error('Failed to cancel task', error);
+    }
+  };
   
   // Realtime active execution status
   const { data: statusData, refetch: refetchStatus } = useQuery(
@@ -343,6 +405,159 @@ const ExecutionMonitor: React.FC = () => {
         </div>
       )}
 
+      {/* Task Queue Visualization */}
+      {status?.queue && status.queue.length > 0 && (
+        <div className="queue-panel">
+          <div className="queue-title">
+            <span>⏳ Background Task Queue ({status.queue.length} Pending)</span>
+          </div>
+          <div className="queue-items-list">
+            {status.queue.map((task: any, index: number) => (
+              <div key={task.id} className="queue-item-row">
+                <div className="queue-item-details">
+                  <span className={`queue-badge ${task.status === 'running' ? 'running' : ''}`}>
+                    {task.status === 'running' ? '⚡ Running' : `#${index + 1} Queued`}
+                  </span>
+                  <span className="queue-meta">
+                    Type: <strong>{getTypeName(task.type)}</strong> | 
+                    Triggered from: <strong>{task.client?.origin || 'System'}</strong> | 
+                    Enqueued: <strong>{new Date(task.enqueuedAt).toLocaleTimeString()}</strong>
+                  </span>
+                </div>
+                {task.status !== 'running' && (
+                  <button className="queue-cancel-btn" onClick={() => handleCancelTask(task.id)}>
+                    ❌ Cancel
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Manual Trigger Panel depending on Selected Tab */}
+      {selectedTab !== 'all' && (
+        <div className="trigger-control-panel">
+          <h3>⚡ Manual Trigger: {getTypeName(selectedTab)}</h3>
+          
+          {triggerMessage && (
+            <div className={`status-badge ${triggerMessage.type === 'success' ? 'completed' : 'failed'} mb-3`} style={{ display: 'inline-block' }}>
+              {triggerMessage.text}
+            </div>
+          )}
+
+          <div className="trigger-form">
+            {selectedTab === 'bulk_update' && (
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Source Type</label>
+                  <select value={bulkSource} onChange={(e) => setBulkSource(e.target.value)}>
+                    <option value="website">Website (Scraper)</option>
+                    <option value="api">API Triggered</option>
+                    <option value="cli">CLI Script</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Target Database</label>
+                  <select value={bulkDb} onChange={(e) => setBulkDb(e.target.value)}>
+                    <option value="productdeals">Product Deals (Production)</option>
+                    <option value="testdeals">Test Deals (Staging)</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {selectedTab === 'favorites_check' && (
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Source Type</label>
+                  <select value={favSource} onChange={(e) => setFavSource(e.target.value)}>
+                    <option value="api">API Monitor Web</option>
+                    <option value="scheduler">Scheduler Clock</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {selectedTab === 'sale_scraper' && (
+              <div className="trigger-form">
+                <div className="form-grid">
+                  <div className="form-group">
+                    <label>Sale Name</label>
+                    <input 
+                      type="text" 
+                      value={saleName} 
+                      onChange={(e) => setSaleName(e.target.value)} 
+                      placeholder="Mega Sale Scrape"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Scraping Platform</label>
+                    <select value={salePlatform} onChange={(e) => setSalePlatform(e.target.value)}>
+                      <option value="flipkart">Flipkart</option>
+                      <option value="amazon">Amazon</option>
+                      <option value="ajio">Ajio</option>
+                      <option value="myntra">Myntra</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Product Category</label>
+                    <input 
+                      type="text" 
+                      value={saleCategory} 
+                      onChange={(e) => setSaleCategory(e.target.value)} 
+                      placeholder="electronics"
+                    />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>URLs to Scrape (one per line)</label>
+                  <textarea 
+                    rows={3} 
+                    value={saleUrls} 
+                    onChange={(e) => setSaleUrls(e.target.value)}
+                    placeholder="https://www.flipkart.com/..."
+                  />
+                </div>
+              </div>
+            )}
+
+            {selectedTab === 'telegram_bot' && (
+              <p className="text-muted" style={{ margin: 0, fontSize: '13px' }}>
+                Triggering the Telegram Bot starts checking real-time messages and channel feeds in the background.
+              </p>
+            )}
+
+            {selectedTab === 'db_update' && (
+              <p className="text-muted" style={{ margin: 0, fontSize: '13px' }}>
+                Triggering the Database update scans for stale product listings and refreshes current details automatically.
+              </p>
+            )}
+
+            <div className="form-grid mt-2">
+              <div className="form-group">
+                <label className="checkbox-label">
+                  <input 
+                    type="checkbox" 
+                    checked={forceParallel} 
+                    onChange={(e) => setForceParallel(e.target.checked)}
+                  />
+                  Force Run in Parallel (Only if running locally - Bypasses sequential queue)
+                </label>
+              </div>
+            </div>
+
+            <button 
+              className="trigger-btn" 
+              onClick={() => handleTrigger(selectedTab)}
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? '⏳ Triggering...' : `🚀 Start ${getTypeName(selectedTab)}`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tabs / Filter Controls */}
       <div className="runs-history-section">
         <div className="runs-history-header">
@@ -355,16 +570,16 @@ const ExecutionMonitor: React.FC = () => {
               📦 Bulk Updates
             </button>
             <button className={`tab-btn ${selectedTab === 'telegram_bot' ? 'active' : ''}`} onClick={() => setSelectedTab('telegram_bot')}>
-              📱 Telegram Bot
+              📱 Telegram Bots
             </button>
             <button className={`tab-btn ${selectedTab === 'favorites_check' ? 'active' : ''}`} onClick={() => setSelectedTab('favorites_check')}>
               ❤️ Favorites
             </button>
             <button className={`tab-btn ${selectedTab === 'db_update' ? 'active' : ''}`} onClick={() => setSelectedTab('db_update')}>
-              💾 DB Updates
+              💾 TB Updates
             </button>
             <button className={`tab-btn ${selectedTab === 'sale_scraper' ? 'active' : ''}`} onClick={() => setSelectedTab('sale_scraper')}>
-              📡 Sale Scrapers
+              📡 Sails Grappers
             </button>
           </div>
         </div>

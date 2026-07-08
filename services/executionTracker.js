@@ -55,6 +55,9 @@ class ExecutionTracker {
       channels: {}
     };
     
+    this.queue = [];
+    this.isProcessingQueue = false;
+    
     // Initialize Firebase ref if available
     if (db) {
       this.ref = db.ref('executionTracking');
@@ -96,6 +99,19 @@ class ExecutionTracker {
         this.platformQueue = data.platformQueue || [];
         this.categoryQueue = data.categoryQueue || [];
         this.telegramQueue = data.telegramQueue || this.telegramQueue;
+
+        // Parse task queue
+        const queueData = data.queue;
+        let queueArray = [];
+        if (queueData && typeof queueData === 'object') {
+          queueArray = Object.values(queueData);
+          queueArray.sort((a, b) => {
+            const tA = a.enqueuedAt ? new Date(a.enqueuedAt).getTime() : 0;
+            const tB = b.enqueuedAt ? new Date(b.enqueuedAt).getTime() : 0;
+            return tA - tB;
+          });
+        }
+        this.queue = queueArray;
       }
     });
   }
@@ -279,16 +295,17 @@ class ExecutionTracker {
    */
   async endFavoritesExecution(status, summary = {}) {
     if (this.currentExecution && this.currentExecution.type === 'favorites_check') {
-      this.currentExecution.status = status;
-      this.currentExecution.endTime = new Date().toISOString();
-      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
-      this.currentExecution.summary = summary;
+      const executionCopy = { ...this.currentExecution };
+      executionCopy.status = status;
+      executionCopy.endTime = new Date().toISOString();
+      executionCopy.duration = Date.now() - new Date(executionCopy.startTime).getTime();
+      executionCopy.summary = summary;
 
-      const historyEntry = { ...this.currentExecution };
-      await this.saveToHistory(historyEntry);
+      await this.saveToHistory(executionCopy);
 
-      logger.info('Favorites check execution completed', { id: historyEntry.id, status });
+      logger.info('Favorites check execution completed', { id: executionCopy.id, status });
       this.currentExecution = null;
+      setTimeout(() => this.processQueue(), 1000);
     }
   }
 
@@ -338,16 +355,17 @@ class ExecutionTracker {
    */
   async endDbUpdateExecution(status, summary = {}) {
     if (this.currentExecution && this.currentExecution.type === 'db_update') {
-      this.currentExecution.status = status;
-      this.currentExecution.endTime = new Date().toISOString();
-      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
-      this.currentExecution.summary = summary;
+      const executionCopy = { ...this.currentExecution };
+      executionCopy.status = status;
+      executionCopy.endTime = new Date().toISOString();
+      executionCopy.duration = Date.now() - new Date(executionCopy.startTime).getTime();
+      executionCopy.summary = summary;
 
-      const historyEntry = { ...this.currentExecution };
-      await this.saveToHistory(historyEntry);
+      await this.saveToHistory(executionCopy);
 
-      logger.info('DB update execution completed', { id: historyEntry.id, status });
+      logger.info('DB update execution completed', { id: executionCopy.id, status });
       this.currentExecution = null;
+      setTimeout(() => this.processQueue(), 1000);
     }
   }
 
@@ -442,24 +460,24 @@ class ExecutionTracker {
     if (!this.currentExecution || this.currentExecution.type !== 'telegram_bot') return;
     
     try {
-      this.currentExecution.status = 'completed';
-      this.currentExecution.endTime = new Date().toISOString();
-      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
+      const executionCopy = { ...this.currentExecution };
+      executionCopy.status = 'completed';
+      executionCopy.endTime = new Date().toISOString();
+      executionCopy.duration = Date.now() - new Date(executionCopy.startTime).getTime();
       
-      const historyEntry = { ...this.currentExecution };
-      await this.saveToHistory(historyEntry);
-
-      const previousExecution = this.currentExecution;
-      this.currentExecution = null;
+      await this.saveToHistory(executionCopy);
 
       logger.info('Telegram execution completed', { 
-        executionId: previousExecution.id,
-        duration: previousExecution.duration,
-        messagesProcessed: previousExecution.messages.processed,
-        productsProcessed: previousExecution.products.processed
+        executionId: executionCopy.id,
+        duration: executionCopy.duration,
+        messagesProcessed: executionCopy.messages?.processed || 0,
+        productsProcessed: executionCopy.products?.processed || 0
       });
 
-      return previousExecution;
+      this.currentExecution = null;
+      setTimeout(() => this.processQueue(), 1000);
+
+      return executionCopy;
     } catch (error) {
       logger.error('Error in completeTelegramExecution', { error: error.message });
       throw error;
@@ -806,6 +824,276 @@ class ExecutionTracker {
   }
 
   /**
+   * Enqueue a new execution task
+   */
+  async enqueueTask(type, params = {}, client = null, forceParallel = false) {
+    if (forceParallel) {
+      logger.info(`Force parallel execution requested for task type ${type}`);
+      const mockTaskId = `task_parallel_${Date.now()}`;
+      this.executeTask(mockTaskId, { type, params, client }).catch(err => {
+        logger.error(`Parallel task execution failed`, { type, error: err.message });
+      });
+      return { id: mockTaskId, type, status: 'running', message: 'Force parallel execution started' };
+    }
+
+    const task = {
+      id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      type,
+      params: params || {},
+      status: 'pending',
+      enqueuedAt: new Date().toISOString(),
+      client: client ? {
+        ip: client.ip || 'N/A',
+        origin: client.origin || 'API/Script',
+        userAgent: client.userAgent || 'N/A'
+      } : {
+        ip: 'N/A',
+        origin: 'System',
+        userAgent: 'N/A'
+      }
+    };
+
+    if (this.ref) {
+      await this.ref.child('queue').child(task.id).set(task);
+    }
+
+    logger.info(`Task enqueued successfully`, { taskId: task.id, type });
+
+    // Trigger queue processing
+    setTimeout(() => this.processQueue(), 500);
+
+    return task;
+  }
+
+  /**
+   * Cancel and remove a pending task from the queue
+   */
+  async cancelQueuedTask(taskId) {
+    if (this.ref) {
+      await this.ref.child('queue').child(taskId).remove();
+    }
+    logger.info(`Task ${taskId} cancelled and removed from queue`);
+  }
+
+  /**
+   * Process the next task in the queue sequentially
+   */
+  async processQueue() {
+    if (this.isProcessingQueue) return;
+    this.isProcessingQueue = true;
+
+    try {
+      while (true) {
+        const status = this.getCurrentStatus();
+        if (status.currentExecution && status.currentExecution.status === 'running') {
+          logger.info('Queue processing: An execution is already running, waiting.');
+          break;
+        }
+
+        if (!this.ref) {
+          logger.warn('Queue processing: Firebase not initialized, cannot process queue');
+          break;
+        }
+
+        const queueSnap = await this.ref.child('queue').orderByChild('status').equalTo('pending').limitToFirst(1).once('value');
+        if (!queueSnap.exists()) {
+          break;
+        }
+
+        const queueData = queueSnap.val();
+        const taskId = Object.keys(queueData)[0];
+        const task = queueData[taskId];
+
+        await this.ref.child('queue').child(taskId).update({
+          status: 'running',
+          startedAt: new Date().toISOString()
+        });
+
+        logger.info(`Queue processing: Starting task ${task.type} (${taskId})`);
+
+        this.executeTask(taskId, task).catch(err => {
+          logger.error(`Queue processing: Task execution error`, { taskId, error: err.message });
+        });
+
+        break;
+      }
+    } catch (error) {
+      logger.error('Error processing queue', { error: error.message });
+    } finally {
+      this.isProcessingQueue = false;
+    }
+  }
+
+  /**
+   * Execute the specific task by type
+   */
+  async executeTask(taskId, task) {
+    const { type, params, client } = task;
+    
+    const finalizeTask = async (status, result = {}) => {
+      try {
+        if (this.ref) {
+          await this.ref.child('queue').child(taskId).remove();
+        }
+        logger.info(`Queue processing: Task ${type} (${taskId}) finished with status: ${status}`);
+        setTimeout(() => this.processQueue(), 1000);
+      } catch (err) {
+        logger.error(`Queue processing: Failed to finalize task ${taskId}`, { error: err.message });
+      }
+    };
+
+    try {
+      if (type === 'bulk_update') {
+        const { runBulkUpdateAll } = require('../scripts/bulkUpdateAllPlatforms');
+        await runBulkUpdateAll(params.sourceType || 'website', params.targetDb || 'productdeals', client);
+        await finalizeTask('completed');
+      } 
+      else if (type === 'telegram_bot') {
+        const path = require('path');
+        const { spawn } = require('child_process');
+        const scriptPath = path.resolve(__dirname, '..', 'run_telegram_bot.js');
+        
+        const child = spawn(process.execPath, [scriptPath], {
+          detached: true,
+          stdio: 'ignore',
+          windowsHide: true,
+          env: {
+            ...process.env,
+            TRIGGER_SOURCE: 'api',
+            TRIGGER_CLIENT_IP: client?.ip || '127.0.0.1',
+            TRIGGER_CLIENT_ORIGIN: client?.origin || 'Website Direct',
+            TRIGGER_CLIENT_UA: client?.userAgent || 'Unknown'
+          }
+        });
+        child.unref();
+        
+        await new Promise(r => setTimeout(r, 5000));
+        await finalizeTask('completed');
+      } 
+      else if (type === 'favorites_check') {
+        const { favoritesNotificationService } = require('./favoritesNotificationService');
+        await favoritesNotificationService.processFavoritesAndNotifications(params.sourceType || 'api');
+        await finalizeTask('completed');
+      } 
+      else if (type === 'db_update') {
+        const path = require('path');
+        const { spawn } = require('child_process');
+        const scriptPath = path.resolve(__dirname, '..', 'scripts', 'updateStaleProducts.js');
+        
+        const child = spawn(process.execPath, [scriptPath], {
+          env: {
+            ...process.env,
+            TRIGGER_SOURCE: 'api'
+          }
+        });
+        
+        child.on('close', async (code) => {
+          await finalizeTask(code === 0 ? 'completed' : 'failed');
+        });
+      } 
+      else if (type === 'sale_scraper') {
+        const { saleName, platform, category, urls } = params;
+        const { BannerExtractor } = require('../scrappers/bannerExtractor');
+        const { bannerUrlFixer } = require('../utils/bannerUrlFixer');
+        const { bannerDB, testBannerDB } = require('../database/firebaseDB/bannerDB');
+        const constants = require('../config/constants');
+        
+        const logs = [];
+        const log = (msg) => {
+          const time = new Date().toLocaleTimeString();
+          logs.push(`[${time}] ${msg}`);
+          logger.info(msg);
+        };
+
+        const runScraping = async () => {
+          log(`Starting Selenium Chrome driver for queued scraper...`);
+          const extractor = new BannerExtractor({
+            visibility: true,
+            useExistingChrome: false,
+            requiresLogin: false
+          });
+          
+          await extractor.initializeDriver();
+          log(`Chrome WebDriver started successfully.`);
+          
+          await this.startScraperExecution(saleName, urls.length);
+          
+          let processed = 0;
+          let extractedCount = 0;
+          const bannerSource = constants.banners?.source || 'test-banners';
+          
+          for (const url of urls) {
+            if (!url.trim()) continue;
+            processed++;
+            log(`Scraping URL (${processed}/${urls.length}): ${url}`);
+            await this.updateScraperProgress(processed, extractedCount, logs);
+            logs.length = 0;
+            
+            try {
+              await extractor.driver.get(url);
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              
+              const platformConfig = {
+                selectors: {
+                  carousel: 'img',
+                  bannerLink: 'a',
+                  bannerImage: 'img',
+                  bannerAlt: 'img[alt]'
+                },
+                validation: {
+                  minImageWidth: 200,
+                  minImageHeight: 100,
+                  allowedDomains: []
+                }
+              };
+              
+              const urlBanners = await extractor.extractBannersFromUrl(platform, platformConfig.selectors, platformConfig.validation);
+              log(`Found ${urlBanners.length} potential deals/banners on this page.`);
+              
+              if (urlBanners.length > 0) {
+                const fixedBanners = await bannerUrlFixer.fixBannerUrls(urlBanners);
+                const enriched = fixedBanners.map(b => ({
+                  ...b,
+                  category: category,
+                  platform: platform.toLowerCase(),
+                  title: b.title || `${saleName} Deal`,
+                  isActive: true
+                }));
+                
+                const storeResult = bannerSource === 'test-banners' ? 
+                  await testBannerDB.storeMultipleTestBanners(enriched) : 
+                  await bannerDB.storeMultipleBanners(enriched);
+                  
+                const stored = storeResult.filter(r => r.status === 200 || r.status === 201).length;
+                extractedCount += stored;
+                log(`Successfully stored ${stored} new live deals in database.`);
+              }
+            } catch (err) {
+              log(`Error scraping ${url}: ${err.message}`);
+            }
+            
+            await this.updateScraperProgress(processed, extractedCount, logs);
+            logs.length = 0;
+          }
+          
+          await extractor.closeDriver();
+          log(`Web scraper completed. Extracted a total of ${extractedCount} deals.`);
+          await this.endScraperExecution('completed', { processedUrls: processed, totalExtracted: extractedCount });
+        };
+        
+        await runScraping();
+        await finalizeTask('completed');
+      } 
+      else {
+        throw new Error(`Unsupported task type: ${type}`);
+      }
+    } catch (err) {
+      logger.error(`Error executing task ${taskId}`, { error: err.message });
+      await finalizeTask('failed');
+    }
+  }
+
+  /**
    * Get current execution status
    */
   getCurrentStatus() {
@@ -837,7 +1125,8 @@ class ExecutionTracker {
       currentExecution: this.currentExecution,
       telegramQueue: telegramQueue,
       platformQueue: this.platformQueue,
-      categoryQueue: this.categoryQueue
+      categoryQueue: this.categoryQueue,
+      queue: this.queue || []
     };
   }
 
@@ -964,17 +1253,19 @@ class ExecutionTracker {
 
   async endScraperExecution(status, summary = {}) {
     if (this.currentExecution && this.currentExecution.type === 'sale_scraper') {
-      this.currentExecution.status = status; // 'completed' or 'failed'
-      this.currentExecution.endTime = new Date().toISOString();
-      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
-      this.currentExecution.summary = summary;
-      this.currentExecution.logs.push(`[INFO] Scraper finished with status: ${status}. Extracted banners: ${this.currentExecution.extractedBanners}.`);
+      const executionCopy = { ...this.currentExecution };
+      executionCopy.status = status; // 'completed' or 'failed'
+      executionCopy.endTime = new Date().toISOString();
+      executionCopy.duration = Date.now() - new Date(executionCopy.startTime).getTime();
+      executionCopy.summary = summary;
+      executionCopy.logs = [...(executionCopy.logs || [])];
+      executionCopy.logs.push(`[INFO] Scraper finished with status: ${status}. Extracted banners: ${executionCopy.extractedBanners}.`);
       
-      const historyEntry = { ...this.currentExecution };
-      await this.saveToHistory(historyEntry);
+      await this.saveToHistory(executionCopy);
       
-      logger.info('Scraper execution completed', { id: historyEntry.id, status });
+      logger.info('Scraper execution completed', { id: executionCopy.id, status });
       this.currentExecution = null;
+      setTimeout(() => this.processQueue(), 1000);
     }
   }
 }

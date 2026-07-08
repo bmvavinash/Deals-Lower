@@ -280,6 +280,73 @@ router.get('/product/:productCode', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/execution/trigger
+ * Trigger or enqueue a new execution task
+ */
+router.post('/trigger', async (req, res) => {
+  try {
+    const { type, params = {}, forceParallel = false } = req.body;
+    if (!type) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: type'
+      });
+    }
+
+    const clientMetadata = {
+      ip: req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress,
+      origin: req.headers.origin || req.headers.referer || 'Website Monitor',
+      userAgent: req.headers['user-agent'] || 'Unknown'
+    };
+
+    const task = await executionTracker.enqueueTask(type, params, clientMetadata, forceParallel);
+
+    res.json({
+      success: true,
+      message: forceParallel ? 'Task started in parallel immediately.' : 'Task enqueued successfully.',
+      data: task,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error triggering task', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/execution/queue/cancel
+ * Cancel a pending queued task
+ */
+router.post('/queue/cancel', async (req, res) => {
+  try {
+    const { taskId } = req.body;
+    if (!taskId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameter: taskId'
+      });
+    }
+
+    await executionTracker.cancelQueuedTask(taskId);
+
+    res.json({
+      success: true,
+      message: `Task ${taskId} has been cancelled and removed from queue.`,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error cancelling queued task', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
 
 

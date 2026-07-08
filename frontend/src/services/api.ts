@@ -105,7 +105,11 @@ export const executionAPI = {
     api.get('/execution/status', { params: { type: type || 'all' } }),
   getAnalytics: () => api.get('/execution/analytics'),
   getHistory: (limit?: number) => api.get('/execution/history', { params: { limit } }),
-  getProductDetails: (productCode: string) => api.get(`/execution/product/${productCode}`)
+  getProductDetails: (productCode: string) => api.get(`/execution/product/${productCode}`),
+  triggerTask: (type: string, params?: any, forceParallel?: boolean) => 
+    api.post('/execution/trigger', { type, params, forceParallel }),
+  cancelTask: (taskId: string) => 
+    api.post('/execution/queue/cancel', { taskId })
 };
 
 // Banners API
