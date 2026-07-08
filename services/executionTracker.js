@@ -50,9 +50,21 @@ class ExecutionTracker {
           this.currentExecution.platforms = {};
         }
         
-        // Ensure executionHistory is always an array
-        const history = data.history || [];
-        this.executionHistory = Array.isArray(history) ? history : [];
+        // Ensure executionHistory is parsed as array robustly
+        const history = data.history;
+        let historyArray = [];
+        if (Array.isArray(history)) {
+          historyArray = history;
+        } else if (history && typeof history === 'object') {
+          historyArray = Object.values(history);
+        }
+        historyArray.sort((a, b) => {
+          const tA = a.startTime ? new Date(a.startTime).getTime() : 0;
+          const tB = b.startTime ? new Date(b.startTime).getTime() : 0;
+          return tB - tA;
+        });
+        this.executionHistory = historyArray;
+        
         this.platformQueue = data.platformQueue || [];
         this.categoryQueue = data.categoryQueue || [];
         this.telegramQueue = data.telegramQueue || this.telegramQueue;
@@ -90,10 +102,6 @@ class ExecutionTracker {
     
     if (this.ref) {
       await this.ref.child('current').set(execution);
-      await this.ref.child('history').push({
-        ...execution,
-        endTime: null
-      });
     }
 
     logger.info('Bulk execution started', { executionId: execution.id });
@@ -130,14 +138,115 @@ class ExecutionTracker {
     
     if (this.ref) {
       await this.ref.child('current').set(execution);
-      await this.ref.child('history').push({
-        ...execution,
-        status: 'started'
-      });
     }
 
     logger.info('Started Telegram execution tracking', { executionId: execution.id, channel });
     return execution;
+  }
+
+  /**
+   * Start tracking a favorites check execution
+   */
+  async startFavoritesExecution(sourceType = 'scheduler') {
+    const execution = {
+      id: `fav_${Date.now()}`,
+      type: 'favorites_check',
+      sourceType,
+      status: 'running',
+      startTime: new Date().toISOString(),
+      errors: []
+    };
+
+    this.currentExecution = execution;
+    
+    if (this.ref) {
+      await this.ref.child('current').set(execution);
+    }
+
+    logger.info('Favorites check execution started', { executionId: execution.id, sourceType });
+    return execution;
+  }
+
+  /**
+   * Complete a favorites check execution
+   */
+  async endFavoritesExecution(status, summary = {}) {
+    if (this.currentExecution && this.currentExecution.type === 'favorites_check') {
+      this.currentExecution.status = status;
+      this.currentExecution.endTime = new Date().toISOString();
+      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
+      this.currentExecution.summary = summary;
+
+      if (!this.executionHistory) {
+        this.executionHistory = [];
+      }
+      this.executionHistory.unshift({ ...this.currentExecution });
+
+      if (this.executionHistory.length > 50) {
+        this.executionHistory = this.executionHistory.slice(0, 50);
+      }
+
+      if (this.ref) {
+        await this.ref.child('current').set(null);
+        await this.ref.child('history').set(this.executionHistory);
+      }
+
+      logger.info('Favorites check execution completed', { id: this.currentExecution.id, status });
+      this.currentExecution = null;
+    }
+  }
+
+  /**
+   * Start tracking a DB update execution
+   */
+  async startDbUpdateExecution(scriptName, sourceType = 'cli') {
+    const execution = {
+      id: `db_${Date.now()}`,
+      type: 'db_update',
+      scriptName,
+      sourceType,
+      status: 'running',
+      startTime: new Date().toISOString(),
+      errors: []
+    };
+
+    this.currentExecution = execution;
+    
+    if (this.ref) {
+      await this.ref.child('current').set(execution);
+    }
+
+    logger.info('DB update execution started', { id: execution.id, scriptName, sourceType });
+    return execution;
+  }
+
+  /**
+   * Complete a DB update execution
+   */
+  async endDbUpdateExecution(status, summary = {}) {
+    if (this.currentExecution && this.currentExecution.type === 'db_update') {
+      this.currentExecution.status = status;
+      this.currentExecution.endTime = new Date().toISOString();
+      this.currentExecution.duration = Date.now() - new Date(this.currentExecution.startTime).getTime();
+      this.currentExecution.summary = summary;
+
+      if (!this.executionHistory) {
+        this.executionHistory = [];
+      }
+      this.executionHistory.unshift({ ...this.currentExecution });
+
+      if (this.executionHistory.length > 50) {
+        this.executionHistory = this.executionHistory.slice(0, 50);
+      }
+
+      if (this.ref) {
+        await this.ref.child('current').set(null);
+        await this.ref.child('history').set(this.executionHistory);
+      }
+
+      logger.info('DB update execution completed', { id: this.currentExecution.id, status });
+      this.currentExecution = null;
+    }
   }
 
   /**

@@ -4,6 +4,7 @@ const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
 const { urgencyUtils } = require('../utils/urgencyUtils');
 const { notifyService } = require('./notifyService');
 const { comprehensiveLoggingService } = require('./comprehensiveLoggingService');
+const { executionTracker } = require('./executionTracker');
 const constants = require('../config/constants');
 
 const logger = getModuleLogger('favoritesNotificationService');
@@ -29,11 +30,11 @@ class FavoritesNotificationService {
     logger.info('Starting favorites notification service - hourly processing');
 
     // Run immediately on start
-    this.processFavoritesAndNotifications();
+    this.processFavoritesAndNotifications('scheduler');
 
     // Set up hourly interval
     this.intervalId = setInterval(() => {
-      this.processFavoritesAndNotifications();
+      this.processFavoritesAndNotifications('scheduler');
     }, 60 * 60 * 1000); // 1 hour
   }
 
@@ -55,7 +56,7 @@ class FavoritesNotificationService {
     }
     try {
       logger.info('Running favorites notification service one-time check');
-      await this.processFavoritesAndNotifications();
+      await this.processFavoritesAndNotifications('cli');
       return { success: true };
     } catch (error) {
       logger.error('Error in runOnce', { error: error.message });
@@ -64,8 +65,9 @@ class FavoritesNotificationService {
   }
 
   // Main processing function
-  async processFavoritesAndNotifications() {
+  async processFavoritesAndNotifications(sourceType = 'scheduler') {
     const startTime = comprehensiveLoggingService.logFavoritesProcessingStart();
+    await executionTracker.startFavoritesExecution(sourceType);
     
     try {
       logger.info('❤️ Starting favorites and notifications processing');
@@ -114,8 +116,18 @@ class FavoritesNotificationService {
         dealExpiry
       );
 
+      await executionTracker.endFavoritesExecution('completed', {
+        usersCount: users.length,
+        totalFavorites,
+        totalNotifications,
+        priceTracking,
+        lowStock,
+        dealExpiry
+      });
+
     } catch (error) {
       logger.error('❌ Error in processFavoritesAndNotifications', { error: error.message });
+      await executionTracker.endFavoritesExecution('failed', { error: error.message });
     }
   }
 
