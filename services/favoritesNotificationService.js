@@ -1,7 +1,7 @@
 const { getModuleLogger } = require('../logger/logger');
 const { userFavoritesDB } = require('../database/firebaseDB/userFavoritesDB');
 const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
-const { urgencyUtils } = require('../utils/urgencyUtils');
+const urgencyUtils = require('../utils/urgencyUtils');
 const { notifyService } = require('./notifyService');
 const { comprehensiveLoggingService } = require('./comprehensiveLoggingService');
 const { executionTracker } = require('./executionTracker');
@@ -284,7 +284,7 @@ class FavoritesNotificationService {
       for (const productCode of favoriteProducts) {
         const currentProduct = await this.getCurrentProductData(productCode);
         
-        if (currentProduct && urgencyUtils.isLowStock(currentProduct)) {
+        if (currentProduct && currentProduct.stock !== undefined && urgencyUtils.isLowStock(Number(currentProduct.stock))) {
           const message = this.buildLowStockMessage(currentProduct);
           await this.sendNotification(uid, message, preferences, 'low_stock');
         }
@@ -302,7 +302,8 @@ class FavoritesNotificationService {
       for (const productCode of favoriteProducts) {
         const currentProduct = await this.getCurrentProductData(productCode);
         
-        if (currentProduct && urgencyUtils.isExpiringSoon(currentProduct)) {
+        const timerVal = currentProduct.timer || currentProduct.dealEndAt;
+        if (currentProduct && timerVal && urgencyUtils.isExpiringSoon(timerVal)) {
           const message = this.buildDealExpiringMessage(currentProduct);
           await this.sendNotification(uid, message, preferences, 'deal_expiring');
         }
@@ -314,6 +315,7 @@ class FavoritesNotificationService {
 
   // Process deal expiry notifications for all products with timers
   async processDealExpiryNotifications() {
+    let notificationsSent = 0;
     try {
       logger.info('Processing deal expiry notifications');
 
@@ -326,8 +328,10 @@ class FavoritesNotificationService {
       const allProductsWithTimers = [...productdealsWithTimers, ...dealsWithTimers];
 
       for (const [productCode, product] of allProductsWithTimers) {
-        if (urgencyUtils.isExpiringSoon(product)) {
-          await this.notifyUsersAboutExpiringDeal(productCode, product);
+        const timerVal = product.timer || product.dealEndAt;
+        if (timerVal && urgencyUtils.isExpiringSoon(timerVal)) {
+          const sent = await this.notifyUsersAboutExpiringDeal(productCode, product);
+          notificationsSent += sent;
         }
       }
 
@@ -335,10 +339,12 @@ class FavoritesNotificationService {
     } catch (error) {
       logger.error('Error processing deal expiry notifications', { error: error.message });
     }
+    return { notificationsSent };
   }
 
   // Notify users about expiring deals
   async notifyUsersAboutExpiringDeal(productCode, product) {
+    let sentCount = 0;
     try {
       const users = await this.getAllUsers();
       
@@ -351,11 +357,13 @@ class FavoritesNotificationService {
         if (favoriteProducts.includes(productCode)) {
           const message = this.buildDealExpiringMessage(product);
           await this.sendNotification(uid, message, preferences, 'deal_expiring');
+          sentCount++;
         }
       }
     } catch (error) {
       logger.error(`Error notifying users about expiring deal ${productCode}`, { error: error.message });
     }
+    return sentCount;
   }
 
   // Get current product data from both databases
