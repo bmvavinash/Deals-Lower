@@ -512,7 +512,8 @@
   opacity: 0.8;
 }
 
-@media (max-width: 768px) {
+}
+  
   .banners-grid {
     grid-template-columns: 1fr;
   }
@@ -523,3 +524,345 @@
     gap: 16px;
   }
 }
+
+/* Maximized View Overlay Styles */
+.maximized-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(10, 10, 10, 0.96);
+  backdrop-filter: blur(16px);
+  z-index: 2000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 30px;
+  animation: fadeInOverlay 0.3s ease-out;
+}
+
+@keyframes fadeInOverlay {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.maximized-container {
+  width: 92%;
+  max-width: 1200px;
+  height: 85vh;
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #f5f5f5;
+  animation: slideUpContainer 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideUpContainer {
+  from { transform: translateY(30px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.maximized-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: #252525;
+  border-bottom: 1px solid #333;
+}
+
+.maximized-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.maximized-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.maximized-filters {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1px solid #444;
+}
+
+.maximized-filters .filter-label {
+  font-size: 13px;
+  color: #bbb;
+  font-weight: 500;
+}
+
+.maximized-filters select {
+  background: #111;
+  color: #fff;
+  border: 1px solid #444;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  outline: none;
+  cursor: pointer;
+}
+
+.maximized-filters label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #eee;
+  cursor: pointer;
+}
+
+.close-maximized-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.close-maximized-btn:hover {
+  background: #c82333;
+  transform: translateY(-1px);
+}
+
+.maximized-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .maximized-content {
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .maximized-container {
+    height: 95vh;
+  }
+}
+
+.preview-pane {
+  flex: 1.2;
+  background: #141414;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  padding: 40px;
+}
+
+.preview-image-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preview-image-container img {
+  max-width: 100%;
+  max-height: 55vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.nav-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  font-size: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(4px);
+  user-select: none;
+}
+
+.nav-arrow:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-50%) scale(1.1);
+  box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+}
+
+.nav-arrow.left {
+  left: 20px;
+}
+
+.nav-arrow.right {
+  right: 20px;
+}
+
+.details-pane {
+  flex: 1;
+  background: #1e1e1e;
+  border-left: 1px solid #333;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+@media (max-width: 900px) {
+  .details-pane {
+    border-left: none;
+    border-top: 1px solid #333;
+    flex: none;
+  }
+}
+
+.details-pane h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  font-size: 18px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 8px;
+  color: #667eea;
+}
+
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 13px;
+  color: #aaa;
+  font-weight: 500;
+}
+
+.form-group input[type="text"],
+.form-group textarea,
+.form-group select {
+  background: #121212;
+  color: #fff;
+  border: 1px solid #3c3c3c;
+  padding: 10px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.form-group input[type="text"]:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.form-group textarea {
+  min-height: 80px;
+  resize: vertical;
+}
+
+.form-group-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  padding: 8px 0;
+}
+
+.form-group-checkbox input {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 16px;
+  border-top: 1px solid #333;
+}
+
+.save-btn {
+  background: linear-gradient(135deg, #28a745, #218838);
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.save-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
+}
+
+.save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.cancel-btn {
+  background: #333;
+  color: #ccc;
+  border: 1px solid #444;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-btn:hover {
+  background: #444;
+  color: #fff;
+}
+
+.banners-edit-page-view {
+  width: 100%;
+  min-height: calc(100vh - 120px);
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: #f5f5f5;
+  animation: slideUpContainer 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+

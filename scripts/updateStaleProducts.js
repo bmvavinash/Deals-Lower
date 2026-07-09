@@ -2,6 +2,7 @@ process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 require('dotenv').config();
 const { runBatch } = require('../dataSources/batchProductExtractor');
 const { getModuleLogger } = require('../logger/logger');
+const { executionTracker } = require('../services/executionTracker');
 const config = require('../config/config');
 
 const logger = getModuleLogger('updateStaleProducts');
@@ -58,34 +59,47 @@ async function main() {
     const isDryRun = process.argv.includes('--dry-run');
     logger.info('Starting stale products updater...', { isDryRun });
     
-    const staleUrls = await getStaleProducts(7);
-    logger.info(`Found ${staleUrls.length} stale products to update.`);
+    const sourceType = process.env.TRIGGER_SOURCE || 'cli';
+    await executionTracker.startDbUpdateExecution('updateStaleProducts', sourceType);
     
-    if (staleUrls.length === 0) {
-        console.log("No stale products found.");
-        return;
-    }
-    
-    if (isDryRun) {
-        console.log("Dry run mode. Would update the following URLs:");
-        console.log(staleUrls.slice(0, 10).join('\n'));
-        if (staleUrls.length > 10) console.log(`...and ${staleUrls.length - 10} more.`);
-        return;
-    }
-    
-    // Process in smaller batches to avoid overwhelming the system
-    const batchSize = 100;
-    for (let i = 0; i < staleUrls.length; i += batchSize) {
-        const batchUrls = staleUrls.slice(i, i + batchSize);
-        logger.info(`Processing batch ${i/batchSize + 1} of ${Math.ceil(staleUrls.length/batchSize)}...`);
-        try {
-            await runBatch(batchUrls, 'website', 'ALL', 'productdeals');
-        } catch (error) {
-            logger.error(`Error processing batch ${i/batchSize + 1}:`, { error: error.message });
+    try {
+        const staleUrls = await getStaleProducts(7);
+        logger.info(`Found ${staleUrls.length} stale products to update.`);
+        
+        if (staleUrls.length === 0) {
+            console.log("No stale products found.");
+            await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: 0, message: 'No stale products found.' });
+            return;
         }
+        
+        if (isDryRun) {
+            console.log("Dry run mode. Would update the following URLs:");
+            console.log(staleUrls.slice(0, 10).join('\n'));
+            if (staleUrls.length > 10) console.log(`...and ${staleUrls.length - 10} more.`);
+            await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: staleUrls.length, message: 'Dry run completed.' });
+            return;
+        }
+        
+        // Process in smaller batches to avoid overwhelming the system
+        const batchSize = 100;
+        let processedCount = 0;
+        for (let i = 0; i < staleUrls.length; i += batchSize) {
+            const batchUrls = staleUrls.slice(i, i + batchSize);
+            logger.info(`Processing batch ${i/batchSize + 1} of ${Math.ceil(staleUrls.length/batchSize)}...`);
+            try {
+                await runBatch(batchUrls, 'website', 'ALL', 'productdeals');
+                processedCount += batchUrls.length;
+            } catch (error) {
+                logger.error(`Error processing batch ${i/batchSize + 1}:`, { error: error.message });
+            }
+        }
+        
+        logger.info('Stale products update complete.');
+        await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: staleUrls.length, processedCount });
+    } catch (error) {
+        logger.error('Stale products update failed:', error);
+        await executionTracker.endDbUpdateExecution('failed', { error: error.message });
     }
-    
-    logger.info('Stale products update complete.');
 }
 
 if (require.main === module) {

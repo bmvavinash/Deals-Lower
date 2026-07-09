@@ -436,6 +436,10 @@ class ProductDealsDB {
 					updatedatetime: new Date().getTime(),
 					updatedAt: now,
 					
+					dealName: product.dealName || "",
+					sourceUrl: product.sourceUrl || "",
+					matchId: product.matchId || "",
+					
 					// Extracted attributes
 					attributes: product.attributes || null
 				};

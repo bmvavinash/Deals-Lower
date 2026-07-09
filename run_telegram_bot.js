@@ -116,7 +116,13 @@ async function runTelegramBot() {
     if (!locked) return;
 
     // Start Telegram execution tracking
-    await executionTracker.startTelegramExecution('telegram_bot');
+    const clientMetadata = process.env.TRIGGER_SOURCE === 'api' ? {
+      ip: process.env.TRIGGER_CLIENT_IP,
+      origin: process.env.TRIGGER_CLIENT_ORIGIN,
+      userAgent: process.env.TRIGGER_CLIENT_UA
+    } : null;
+    const sourceType = process.env.TRIGGER_SOURCE || 'cli';
+    await executionTracker.startTelegramExecution('telegram_bot', clientMetadata, sourceType);
     logger.info('🚀 Starting Telegram Bot with proper driver setup...');
     
     // Initialize driver first

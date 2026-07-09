@@ -41,8 +41,8 @@ function isProcessRunning(pid) {
   }
 }
 
-// Global driver instance for product processing
 let globalDriver = null;
+const { createChromeDriver } = require('../../../utils/seleniumDriver');
 
 async function getOrCreateDriver() {
   if (globalDriver) {
@@ -57,10 +57,9 @@ async function getOrCreateDriver() {
 
   if (!globalDriver) {
     try {
-      let options = new chrome.Options();
-      options.debuggerAddress("localhost:9222");
-      globalDriver = await chrome.Driver.createSession(options);
-      logger.info('Chrome WebDriver initialized for product processing');
+      const result = await createChromeDriver();
+      globalDriver = result.driver;
+      logger.info('Chrome WebDriver initialized for product processing', { mode: result.mode });
     } catch (error) {
       logger.error('Failed to initialize driver', { error: error.message });
       throw error;
@@ -583,11 +582,16 @@ router.post('/unlink', async (req, res) => {
 router.post('/manual-trigger', async (req, res) => {
   try {
     const { sourceType = 'website', targetDb = 'productdeals' } = req.body;
+    const clientMetadata = {
+      ip: req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress,
+      origin: req.headers.origin || req.headers.referer || 'Website Direct',
+      userAgent: req.headers['user-agent'] || 'Unknown'
+    };
     
-    logger.info('Manual bulk update triggered', { sourceType, targetDb });
+    logger.info('Manual bulk update triggered', { sourceType, targetDb, clientMetadata });
 
     // Run bulk update in background (don't await - return immediately)
-    runBulkUpdateAll(sourceType, targetDb)
+    runBulkUpdateAll(sourceType, targetDb, clientMetadata)
       .then((result) => {
         logger.info('Bulk update completed', {
           sourceType,
@@ -630,6 +634,113 @@ router.post('/manual-trigger', async (req, res) => {
 });
 
 /**
+ * POST /api/deals/scrape-live
+ * Trigger live deals scraping from Amazon and Flipkart home banners in backend context
+ */
+router.post('/scrape-live', async (req, res) => {
+  try {
+    logger.info('Live deals scraping API endpoint triggered via API call');
+
+    const { scrapeLiveDealsInternal } = require('../../../scripts/scrapeLiveDealsInternal');
+
+    scrapeLiveDealsInternal()
+      .then((summary) => {
+        logger.info('Live deals scraping completed successfully via API', summary);
+      })
+      .catch((error) => {
+        logger.error('Live deals scraping failed via API', { error: error.message, stack: error.stack });
+      });
+
+    res.json({
+      success: true,
+      message: 'Live deals scraping triggered successfully. It will run in the background.',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error('Error triggering live deals scraping', {
+      error: error.message,
+      stack: error.stack
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to trigger live deals scraping',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+/**
+ * GET /api/deals/test-connection
+ * Retrieve last 10 Amazon deal products to verify sourceUrls and dealName attributes
+ */
+router.get('/test-connection', async (req, res) => {
+  try {
+    const snap = await productDealsDB.dealsRef.orderByChild('sourceUrl').equalTo('https://www.amazon.in/gp/bestsellers/?ref_=nav_cs_bestsellers').limitToLast(30).once('value');
+    const val = snap.val() || {};
+    const results = [];
+    Object.entries(val).forEach(([key, prod]) => {
+      results.push({
+        key,
+        title: prod.title,
+        date: prod.date,
+        sourceUrl: prod.sourceUrl,
+        isDeal: prod.isDeal,
+        dealName: prod.dealName,
+        storeType: prod.storeType
+      });
+    });
+    res.json({
+      success: true,
+      count: results.length,
+      data: results
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/deals/comparison/:matchId
+ * Retrieve products matching the same matchId for price comparison
+ */
+router.get('/comparison/:matchId', async (req, res) => {
+  try {
+    const { matchId } = req.params;
+    if (!matchId || matchId === 'undefined' || matchId.startsWith('GEN_')) {
+      // Don't return matches for generic title hashes (too inaccurate)
+      return res.json({ success: true, matches: [] });
+    }
+    
+    // Query deals database
+    const snapshot = await productDealsDB.dealsRef.orderByChild('matchId').equalTo(matchId).once('value');
+    const val = snapshot.val() || {};
+    
+    const matches = Object.entries(val).map(([key, prod]) => ({
+      key,
+      title: prod.title,
+      price: prod.price,
+      mrp: prod.mrp,
+      discount: prod.discount,
+      storeType: prod.storeType,
+      productUrl: prod.productUrl,
+      photo: prod.photo,
+      links: prod.links
+    }));
+    
+    res.json({
+      success: true,
+      matches
+    });
+  } catch (error) {
+    logger.error('Error fetching price comparisons', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * POST /api/deals/trigger-telegram-bot
  * Trigger the long-running Telegram bot process from the UI
  */
@@ -667,7 +778,14 @@ router.post('/trigger-telegram-bot', async (req, res) => {
     const child = spawn(process.execPath, [scriptPath], {
       detached: true,
       stdio: 'ignore',
-      windowsHide: true
+      windowsHide: true,
+      env: {
+        ...process.env,
+        TRIGGER_SOURCE: 'api',
+        TRIGGER_CLIENT_IP: req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress,
+        TRIGGER_CLIENT_ORIGIN: req.headers.origin || req.headers.referer || 'Website Direct',
+        TRIGGER_CLIENT_UA: req.headers['user-agent'] || 'Unknown'
+      }
     });
     child.unref();
 
@@ -903,9 +1021,14 @@ router.post('/manual-trigger', async (req, res, next) => {
       }
     }
 
-    logger.info('Manual bulk update triggered', { sourceType, targetDb });
+    const clientMetadata = {
+      ip: req.headers['x-forwarded-for'] || req.ip || req.socket.remoteAddress,
+      origin: req.headers.origin || req.headers.referer || 'Website Direct',
+      userAgent: req.headers['user-agent'] || 'Unknown'
+    };
+    logger.info('Manual bulk update triggered', { sourceType, targetDb, clientMetadata });
 
-    runBulkUpdateAll(sourceType, targetDb)
+    runBulkUpdateAll(sourceType, targetDb, clientMetadata)
       .then((result) => logger.info('Manual bulk update completed', result))
       .catch((error) => {
         logger.error('Manual bulk update failed', {

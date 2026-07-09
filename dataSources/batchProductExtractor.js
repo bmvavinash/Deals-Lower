@@ -988,6 +988,13 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		// Source listing page URL (where this product was discovered)
 		// This is required later to fix selectors or debug missing prices/details
 		sourceUrl: url,
+		isDeal: raw.isDeal || false,
+		isOffer: raw.isOffer || false,
+		isOutOfStock: raw.isOutOfStock || false,
+		deal: raw.deal || '',
+		limitedTimeDeal: raw.limitedTimeDeal || '',
+		dealProgress: raw.dealProgress || '',
+		timer: raw.timer || '',
 		dealName: deriveDealName(raw),
 		sectionName: deriveSectionName(productUrl || url, usedPageType || '')
 	};

@@ -414,7 +414,8 @@ async function scrapeGeneral(driver, pageConfig, storeKey) {
         'button[aria-label*="Next" i]',
         'li.pagination-next' // Myntra specific
     ];
-    for (let page = 0; page < 2; page++) { // Reduced from 3 to 2 pages
+    const maxPagesToScrape = (require('./config/constants').generaltype === 'bulkUpdate') ? 0 : 1;
+    for (let page = 0; page < maxPagesToScrape; page++) {
         let nextEl = null;
         for (const sel of nextSelectors) {
             const found = await driver.findElements(By.css(sel));
