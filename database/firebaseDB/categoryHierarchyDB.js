@@ -16,7 +16,8 @@ const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
-if (!admin.apps.length) {
+const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
+if (!defaultApp) {
 	let serviceAccount;
 	if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 		try {
@@ -34,9 +35,13 @@ if (!admin.apps.length) {
 			throw e;
 		}
 	}
+	const dbUrl = DB_Name === 'lowerdealhub' 
+		? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+		: `https://${DB_Name}-default-rtdb.firebaseio.com`;
+
 	admin.initializeApp({
 		credential: admin.credential.cert(serviceAccount),
-		databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
+		databaseURL: dbUrl
 	});
 }
 

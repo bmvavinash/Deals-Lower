@@ -347,6 +347,289 @@ router.post('/queue/cancel', async (req, res) => {
   }
 });
 
+/**
+ * GET /api/execution/scheduler/config
+ * Get dynamic scheduler configurations from Firebase
+ */
+router.get('/scheduler/config', async (req, res) => {
+  try {
+    const admin = require('firebase-admin');
+    const db = admin.database();
+    const configRef = db.ref('schedulerConfig');
+    
+    const snapshot = await configRef.once('value');
+    let configData = snapshot.val();
+    
+    // Auto-initialize defaults if database node does not exist or is empty
+    if (!configData || Object.keys(configData).length === 0) {
+      logger.info('Firebase schedulerConfig is empty. Writing default configurations from API self-healing endpoint...');
+      configData = {
+        bulkUpdatesInterval: 3,
+        telegramBotInterval: 3,
+        favoritesInterval: 1,
+        dbUpdatesInterval: 2,
+        bannersInterval: 4,
+        isActiveDealsPeriod: false,
+        updatedAt: new Date().toISOString()
+      };
+      await configRef.set(configData);
+    }
+    
+    res.json({
+      success: true,
+      data: configData,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting scheduler config', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/execution/scheduler/config
+ * Update dynamic scheduler configurations in Firebase
+ */
+router.post('/scheduler/config', async (req, res) => {
+  try {
+    const admin = require('firebase-admin');
+    const db = admin.database();
+    const configRef = db.ref('schedulerConfig');
+    
+    const newConfig = req.body;
+    if (!newConfig || typeof newConfig !== 'object') {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid configuration data payload'
+      });
+    }
+    
+    const updateData = {
+      ...newConfig,
+      updatedAt: new Date().toISOString()
+    };
+    
+    await configRef.update(updateData);
+    
+    res.json({
+      success: true,
+      message: 'Scheduler configurations updated successfully',
+      data: updateData,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error updating scheduler config', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/execution/heartbeat
+ * Check the heartbeat of the local runner daemon
+ */
+router.get('/heartbeat', async (req, res) => {
+  try {
+    const admin = require('firebase-admin');
+    const db = admin.database();
+    
+    let heartbeat = null;
+    let current = null;
+    
+    try {
+      const axios = require('axios');
+      const dbUrl = db.app.options.databaseURL;
+      const [heartbeatRes, currentRes] = await Promise.all([
+        axios.get(`${dbUrl}/daemonHeartbeat.json`, { timeout: 4000 }),
+        axios.get(`${dbUrl}/executionTracking/current.json`, { timeout: 4000 })
+      ]);
+      heartbeat = heartbeatRes.data;
+      current = currentRes.data;
+    } catch (restErr) {
+      logger.warn('REST heartbeat fallback triggered', { error: restErr.message });
+      const heartbeatRef = db.ref('daemonHeartbeat');
+      const statusRef = db.ref('executionTracking/current');
+      const [heartbeatSnapshot, statusSnapshot] = await Promise.all([
+        heartbeatRef.once('value'),
+        statusRef.once('value')
+      ]);
+      heartbeat = heartbeatSnapshot.val() || null;
+      current = statusSnapshot.val() || null;
+    }
+
+    let isDaemonAlive = false;
+    let secondsSinceLastHeartbeat = null;
+
+    if (heartbeat && heartbeat.timestamp) {
+      const lastTime = new Date(heartbeat.timestamp).getTime();
+      const diffMs = Date.now() - lastTime;
+      secondsSinceLastHeartbeat = Math.round(diffMs / 1000);
+      // Considered alive if heartbeat was received within last 60 seconds
+      isDaemonAlive = secondsSinceLastHeartbeat < 60;
+    }
+
+    let isRunningScriptStuck = false;
+    let secondsSinceLastScriptUpdate = null;
+
+    if (current && current.status === 'running') {
+      const lastUpdate = new Date(current.lastUpdate || current.startTime).getTime();
+      const diffMs = Date.now() - lastUpdate;
+      secondsSinceLastScriptUpdate = Math.round(diffMs / 1000);
+      // Considered stuck if running for > 20 minutes without progress updates
+      isRunningScriptStuck = secondsSinceLastScriptUpdate > (20 * 60);
+    }
+
+    res.json({
+      success: true,
+      data: {
+        isDaemonAlive,
+        secondsSinceLastHeartbeat,
+        isRunningScriptStuck,
+        secondsSinceLastScriptUpdate,
+        heartbeat,
+        currentExecution: current
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error checking execution heartbeat', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/execution/daemon/restart
+ * Restarts the local runner daemon by killing existing process and spawning a new one
+ */
+router.post('/daemon/restart', async (req, res) => {
+  try {
+    const admin = require('firebase-admin');
+    const db = admin.database();
+    const heartbeatRef = db.ref('daemonHeartbeat');
+    
+    const snapshot = await heartbeatRef.once('value');
+    const heartbeat = snapshot.val();
+    
+    // Kill existing PID if available and running
+    if (heartbeat && heartbeat.pid) {
+      try {
+        logger.info(`Killing daemon process pid: ${heartbeat.pid}`);
+        process.kill(heartbeat.pid, 'SIGKILL');
+      } catch (err) {
+        logger.warn(`PID kill warning (process may already be stopped): ${err.message}`);
+      }
+    }
+    
+    // Spawn daemon process in background
+    const { exec } = require('child_process');
+    const path = require('path');
+    const daemonScript = path.join(__dirname, '../../../scripts/localDaemon.js');
+    
+    logger.info(`Spawning new local daemon process from API server...`);
+    const daemonProcess = exec(`node "${daemonScript}"`, {
+      cwd: path.join(__dirname, '../../../'),
+      detached: true,
+      stdio: 'ignore'
+    });
+    
+    daemonProcess.unref();
+    
+    // Clear/Reset heartbeat status
+    await heartbeatRef.update({
+      status: 'restarting',
+      timestamp: new Date().toISOString(),
+      notes: 'Daemon restart triggered via Admin Monitor panel'
+    });
+    
+    res.json({
+      success: true,
+      message: 'Local runner daemon restart signal triggered successfully.'
+    });
+  } catch (error) {
+    logger.error('Error restarting local daemon', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * GET /api/execution/logs
+ * Retrieve the latest log lines from the active log files
+ */
+router.get('/logs', async (req, res) => {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const logsDir = path.join(__dirname, '../../../logs');
+    
+    if (!fs.existsSync(logsDir)) {
+      return res.json({ success: true, data: { fileName: 'none', availableFiles: [], lines: [] }, message: 'No logs directory found' });
+    }
+
+    const files = fs.readdirSync(logsDir)
+      .filter(f => f.endsWith('.log'))
+      .map(f => {
+        const stats = fs.statSync(path.join(logsDir, f));
+        return { name: f, size: stats.size, mtime: stats.mtime };
+      })
+      .sort((a, b) => b.mtime - a.mtime);
+
+    if (files.length === 0) {
+      return res.json({ success: true, data: { fileName: 'none', availableFiles: [], lines: [] }, message: 'No log files found' });
+    }
+
+    // Default to latest log file
+    const targetFile = req.query.file || files[0].name;
+    const logFilePath = path.join(logsDir, targetFile);
+    
+    if (!fs.existsSync(logFilePath)) {
+      return res.status(404).json({
+        success: false,
+        error: `Log file not found: ${targetFile}`
+      });
+    }
+    
+    const logContent = fs.readFileSync(logFilePath, 'utf8');
+    const rawLines = logContent.split('\n');
+    const logLines = rawLines
+      .map(line => {
+        if (!line.trim()) return null;
+        try {
+          return JSON.parse(line);
+        } catch (_) {
+          return { message: line, level: 'info', timestamp: new Date().toISOString() };
+        }
+      })
+      .filter(Boolean);
+
+    res.json({
+      success: true,
+      data: {
+        fileName: targetFile,
+        availableFiles: files,
+        lines: logLines.slice(-300)
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting execution logs', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
 
 

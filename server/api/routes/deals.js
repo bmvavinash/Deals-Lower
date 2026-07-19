@@ -11,7 +11,7 @@ const { getformattedDate, getISTTimestamp, getCode } = require('../../../utils/c
 const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
 const { Builder } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
-require('chromedriver');
+// require('chromedriver');
 const { getProductDetails } = require('../../../scheduler');
 const { productStatus } = require('../../../config/const');
 const constants = require('../../../config/constants');
@@ -30,6 +30,37 @@ const net = require('net');
 
 const logger = getModuleLogger('deals-api');
 const TELEGRAM_LOCK_FILE = path.join(__dirname, '../../../.telegram-bot.lock');
+
+// Lightweight In-Memory Search Index Cache
+let searchIndexCache = {};
+let isCacheLoaded = false;
+
+function initSearchIndexCache() {
+  logger.info('🧠 [CACHE] Initializing in-memory search index cache...');
+  const ref = productDealsDB.searchIndexRef;
+  
+  ref.once('value').then(snapshot => {
+    searchIndexCache = snapshot.val() || {};
+    isCacheLoaded = true;
+    logger.info(`🧠 [CACHE] Loaded ${Object.keys(searchIndexCache).length} items into memory.`);
+    
+    // Establish real-time socket child sync listeners
+    ref.on('child_added', (snap) => {
+      searchIndexCache[snap.key] = snap.val();
+    });
+    ref.on('child_changed', (snap) => {
+      searchIndexCache[snap.key] = snap.val();
+    });
+    ref.on('child_removed', (snap) => {
+      delete searchIndexCache[snap.key];
+    });
+  }).catch(err => {
+    logger.error('❌ [CACHE] Failed to preload search index cache:', err);
+  });
+}
+
+// Pre-warm the cache
+setTimeout(initSearchIndexCache, 2000);
 
 function isProcessRunning(pid) {
   if (!pid || Number.isNaN(pid)) return false;
@@ -816,16 +847,19 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0 } = req.query;
+    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0, nocache } = req.query;
+    const isNoCache = nocache === 'true';
     
     // Create cache key
     const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}`;
     
     // Check cache first (increased TTL to 10 minutes for deals)
-    const cached = cacheService.get(cacheKey);
-    if (cached) {
-      logger.debug('Returning cached deals', { cacheKey });
-      return res.json(cached);
+    if (!isNoCache) {
+      const cached = cacheService.get(cacheKey);
+      if (cached) {
+        logger.debug('Returning cached deals', { cacheKey });
+        return res.json(cached);
+      }
     }
     
     // Determine which database to query
@@ -838,7 +872,7 @@ router.get('/', async (req, res, next) => {
     if (!queryDate) {
       // Check cache for latest date first
       const latestDateCacheKey = `latest_date_${targetDb}`;
-      queryDate = cacheService.get(latestDateCacheKey);
+      queryDate = !isNoCache ? cacheService.get(latestDateCacheKey) : null;
       
       if (!queryDate) {
         logger.info('No date specified, finding most recent date with deals...');
@@ -859,7 +893,7 @@ router.get('/', async (req, res, next) => {
     if (queryDate) {
       // Check cache for raw deals on this date
       const rawDealsCacheKey = `raw_deals_${targetDb}_${queryDate}`;
-      deals = cacheService.get(rawDealsCacheKey);
+      deals = !isNoCache ? cacheService.get(rawDealsCacheKey) : null;
       
       if (!deals) {
         logger.info(`Fetching raw deals from Firebase for date ${queryDate}...`);
@@ -895,7 +929,7 @@ router.get('/', async (req, res, next) => {
       );
     }
 
-    // Filter by categoryGroup if specified
+    // Filter by categoryGroup if specified (only return the requested category)
     if (categoryGroup) {
       dealsArray = dealsArray.filter(deal => 
         deal.categoryGroup === categoryGroup
@@ -909,24 +943,71 @@ router.get('/', async (req, res, next) => {
       );
     }
 
-    // Apply sorting
-    if (queryDate) {
-      // If date is specified, Firebase natively sorts identical dates by key ascending.
-      // We must match this behavior so the Admin portal exactly matches the Website.
-      dealsArray.sort((a, b) => {
-        if (a.productCode < b.productCode) return -1;
-        if (a.productCode > b.productCode) return 1;
-        return 0;
-      });
-    } else {
-      // Sort by timestamp in descending order (newest first)
-      // Priority: updatedatetime > datetime > updateTimestamp > 0
-      dealsArray.sort((a, b) => {
-        const aTime = Number(a.updatedatetime || a.datetime || a.updateTimestamp || 0);
-        const bTime = Number(b.updatedatetime || b.datetime || b.updateTimestamp || 0);
-        return bTime - aTime; // Descending order (newest first)
-      });
-    }
+    // Relevance scoring helper
+    const getRelevanceScore = (product) => {
+      let score = 0;
+      const price = parseFloat(String(product.price || '0').replace(/[^\d.-]/g, ''));
+      if (!isNaN(price) && price > 0) {
+        if (price >= 1500 && price <= 7000) score += 60; // Sweet spot for conversion
+        else if (price >= 7000 && price <= 15000) score += 40; // Mid-high range
+        else if (price >= 500 && price < 1500) score += 35; // Budget range
+        else if (price > 15000 && price <= 30000) score += 15;
+        else if (price > 50000) score -= 30; // Demote extremely expensive premium products
+      }
+      const discountStr = String(product.discount || '0');
+      const discountMatch = discountStr.match(/(\d+)/);
+      if (discountMatch) {
+        const pct = parseInt(discountMatch[1]);
+        if (!isNaN(pct)) score += pct * 1.2; // Higher discount adds relevance points
+      }
+      const rating = parseFloat(String(product.rating || '0'));
+      if (!isNaN(rating) && rating > 0) {
+        if (rating >= 4.5) score += 30;
+        else if (rating >= 4.0) score += 20;
+        else if (rating >= 3.5) score += 10;
+      }
+      const count = parseInt(String(product.ratingsCount || '0').replace(/[^\d]/g, ''));
+      if (!isNaN(count) && count > 100) {
+        score += Math.min(20, Math.floor(count / 50));
+      }
+      if (product.isDeal === true || product.isDeal === 'true') {
+        score += 40;
+      }
+      return score;
+    };
+
+    // Determine sort parameter (defaults to relevance)
+    const { sortBy = 'relevance', order = 'desc' } = req.query;
+    const isDesc = order.toLowerCase() !== 'asc';
+
+    dealsArray.sort((a, b) => {
+      if (sortBy === 'price') {
+        const aVal = parseFloat(String(a.price || '0').replace(/[^\d.-]/g, '')) || 0;
+        const bVal = parseFloat(String(b.price || '0').replace(/[^\d.-]/g, '')) || 0;
+        return isDesc ? bVal - aVal : aVal - bVal;
+      }
+      if (sortBy === 'discount') {
+        const aVal = parseInt(String(a.discount || '0').match(/(\d+)/)?.[1] || '0') || 0;
+        const bVal = parseInt(String(b.discount || '0').match(/(\d+)/)?.[1] || '0') || 0;
+        return isDesc ? bVal - aVal : aVal - bVal;
+      }
+      if (sortBy === 'date') {
+        const aTime = Number(a.updatedatetime || a.datetime || 0);
+        const bTime = Number(b.updatedatetime || b.datetime || 0);
+        return isDesc ? bTime - aTime : aTime - bTime;
+      }
+      
+      // Default: Relevance sort
+      const aScore = getRelevanceScore(a);
+      const bScore = getRelevanceScore(b);
+      if (aScore !== bScore) {
+        return bScore - aScore; // Highest relevance score first
+      }
+      // Fallback: newest update date first
+      const aTime = Number(a.updatedatetime || a.datetime || 0);
+      const bTime = Number(b.updatedatetime || b.datetime || 0);
+      return bTime - aTime;
+    });
 
     // Apply pagination
     const total = dealsArray.length;
@@ -1199,9 +1280,8 @@ router.get('/search', async (req, res, next) => {
 
     const query = q.toLowerCase().trim();
     
-    // Fetch the lightweight index
-    const snapshot = await productDealsDB.searchIndexRef.once('value');
-    const indexData = snapshot.val() || {};
+    // Fetch the lightweight index from in-memory cache (falls back to direct Firebase once read if not loaded yet)
+    const indexData = isCacheLoaded ? searchIndexCache : ((await productDealsDB.searchIndexRef.once('value')).val() || {});
     
     // Filter the index in-memory
     const matchedKeys = [];

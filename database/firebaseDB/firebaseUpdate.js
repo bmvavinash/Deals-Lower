@@ -18,7 +18,8 @@ let DB_Name=config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
 jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
-if (!admin.apps.length) {
+const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
+if (!defaultApp) {
   let serviceAccount;
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {

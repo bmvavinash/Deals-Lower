@@ -95,6 +95,10 @@ module.exports = {
         { type: "css", selector: ".product-description" }
     ],
     photo: [
+        { type: "css", selector: "img.image-grid-image", attribute: "src" },
+        { type: "css", selector: ".image-grid-imageContainer img", attribute: "src" },
+        { type: "css", selector: ".image-grid-col img", attribute: "src" },
+        { type: "css", selector: ".image-grid-image", attribute: "style" },
         { type: "xpath", selector: '//*[@id="mountRoot"]/div/div[1]/main/div[2]/div[1]/div[1]/div/div[1]', attribute: "style" },
         { type: "xpath", selector: '//*[@class="image-grid-image"][1]', attribute: "style" },
         { type: "xpath", selector: '//*[@class="image-grid-image"][2]', attribute: "style" },

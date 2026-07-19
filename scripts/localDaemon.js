@@ -11,9 +11,12 @@
  *    prevent a massive execution backlog when starting the daemon.
  */
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const admin = require('firebase-admin');
 const { exec } = require('child_process');
 const path = require('path');
+const os = require('os');
 const cron = require('node-cron');
 const constants = require('../config/constants');
 const config = require('../config/config');
@@ -47,7 +50,8 @@ const DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
-if (!admin.apps.length) {
+const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
+if (!defaultApp) {
   const databaseURL = DB_Name === 'lowerdealhub' 
     ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
     : `https://${DB_Name}-default-rtdb.firebaseio.com`;
@@ -116,8 +120,24 @@ function startCommandListener() {
 
     logger.info(`⚙️ Running command: "${commandData.command}"`);
 
-    // Execute script locally
+    // Execute script locally with a 30-minute watchdog timer to prevent hangs
+    const watchdogTimeoutMs = 30 * 60 * 1000;
+    const watchdogTimer = setTimeout(async () => {
+      logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" has exceeded max runtime of 30 minutes. Killing child process...`);
+      child.kill('SIGKILL');
+      try {
+        await queueRef.child(key).update({
+          status: 'failed',
+          error: 'Watchdog Timeout: Terminated after 30 minutes of inactivity',
+          completedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        logger.error('Failed to update timed out command in DB', err);
+      }
+    }, watchdogTimeoutMs);
+
     const child = exec(commandData.command, { cwd: path.join(__dirname, '../') }, async (error, stdout, stderr) => {
+      clearTimeout(watchdogTimer);
       const completedAt = new Date().toISOString();
       
       if (error) {
@@ -272,9 +292,89 @@ function startConfigListener() {
   });
 }
 
-function main() {
+function startHeartbeat() {
+  logger.info('💖 Starting local daemon heartbeat updater...');
+  
+  const writeHeartbeat = async () => {
+    try {
+      await db.ref('daemonHeartbeat').set({
+        timestamp: new Date().toISOString(),
+        role: runnerRole,
+        status: 'active',
+        pid: process.pid,
+        platform: os.platform(),
+        hostname: os.hostname(),
+        memoryUsage: {
+          rss: Math.round(process.memoryUsage().rss / (1024 * 1024)) + ' MB',
+          heapTotal: Math.round(process.memoryUsage().heapTotal / (1024 * 1024)) + ' MB',
+          heapUsed: Math.round(process.memoryUsage().heapUsed / (1024 * 1024)) + ' MB'
+        }
+      });
+      logger.info('💖 Daemon heartbeat successfully updated in Firebase.');
+    } catch (e) {
+      logger.warn('Failed to write daemon heartbeat to Firebase', { error: e.message });
+    }
+  };
+
+  // Run immediately on start
+  writeHeartbeat();
+  // Schedule to run every 20 seconds
+  setInterval(writeHeartbeat, 20000);
+}
+
+async function selfHealStaleExecution(isBoot = false) {
+  try {
+    const currentRef = db.ref('executionTracking/current');
+    const snapshot = await currentRef.once('value');
+    const current = snapshot.val();
+    if (current && current.status === 'running') {
+      let shouldHeal = false;
+      let reason = '';
+      let notes = '';
+
+      if (isBoot) {
+        shouldHeal = true;
+        reason = 'previous boot';
+        notes = 'Execution was interrupted and aborted due to daemon reboot / host server restart.';
+      } else {
+        const lastUpdate = new Date(current.lastUpdate || current.startTime).getTime();
+        const diffMs = Date.now() - lastUpdate;
+        const minutesSinceLastUpdate = diffMs / (1000 * 60);
+        // Stuck if running for > 22 minutes without progress updates
+        if (minutesSinceLastUpdate > 22) {
+          shouldHeal = true;
+          reason = `inactivity (${Math.round(minutesSinceLastUpdate)} minutes)`;
+          notes = `Execution was automatically marked as failed by daemon watchdog due to inactivity (${Math.round(minutesSinceLastUpdate)} minutes without progress updates).`;
+        }
+      }
+
+      if (shouldHeal) {
+        logger.info(`🧹 [SELF-HEAL] Found stale/hung running execution (${current.id || 'unknown'}) from ${reason}. Marking as failed...`);
+        const summary = {
+          ...current,
+          status: 'failed',
+          endedAt: new Date().toISOString(),
+          notes
+        };
+        await currentRef.set(summary);
+        
+        // Also write to execution history!
+        await db.ref('executionTracking/history').child(current.id || `stale_${Date.now()}`).set(summary);
+      }
+    }
+  } catch (err) {
+    logger.warn('Failed to self-heal stale running execution node:', { error: err.message });
+  }
+}
+
+async function main() {
+  await selfHealStaleExecution(true);
   startCommandListener();
   startConfigListener();
+  startHeartbeat();
+  
+  // Continuously check for hung/stuck executions every 60 seconds
+  setInterval(() => selfHealStaleExecution(false), 60000);
 }
 
 // Start the daemon

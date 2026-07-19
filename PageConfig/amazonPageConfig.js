@@ -1,5 +1,26 @@
 const { validatePrice, validateDiscount, extractAsin, extractProductUrl, extractBrand, validateRatingsCount, validateDiscountPercentage, validateBoughtInPastMonth, validateOriginalPrice } = require("../utils/commonUtils");
 
+const amazonDealSelectors = [
+  { type: "css", selector: "span.a-badge-label[data-a-badge-color='sx-cloud'] span.a-badge-text" },
+  { type: "css", selector: "span.a-badge-label span.a-badge-text" },
+  { type: "css", selector: "span.a-badge-label-inner span.a-badge-text" },
+  { type: "css", selector: "._cDEzb_savingsBadgeMessage_2JUtl" },
+  { type: "css", selector: "._multi-brand-video-desktop_style_dealLabel__1cgSU" },
+  { type: "css", selector: ".a-badge-text" },
+  { type: "css", selector: "span.a-color-base.a-badge-text" },
+  { type: "css", selector: "span.a-size-base.a-color-price.a-text-bold" },
+  { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" }
+];
+
+const amazonTimerSelectors = [
+  { type: "css", selector: "span[id*='deal-timer']" },
+  { type: "css", selector: "span[id*='dealTimer']" },
+  { type: "css", selector: "span[class*='deal-timer']" },
+  { type: "css", selector: "span[class*='dealTimer']" },
+  { type: "css", selector: "span.a-size-base.a-color-price" },
+  { type: "css", selector: ".a-size-mini.a-color-secondary" }
+];
+
 module.exports = {
   "searchPage": {
     "baseSelector": "div[data-component-type='s-search-result']",
@@ -162,13 +183,13 @@ module.exports = {
       
       // Stock and deal status
       "isOutOfStock": { type: "css", selector: "div.out-of-stock-message" },
-      "isDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDeal": amazonDealSelectors,
       "isOffer": { type: "css", selector: "span.s-coupon-unclipped" },
-      "isDisplay": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDisplay": amazonDealSelectors,
       
       // Deal information
-      "deal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "limitedTimeDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "deal": amazonDealSelectors,
+      "limitedTimeDeal": amazonDealSelectors,
       
       // Coupon and offers
       "coupon": { type: "css", selector: "span.s-coupon-unclipped" },
@@ -187,8 +208,8 @@ module.exports = {
       "storeType": { type: "static", value: "Amazon" },
       
       // Timer and deal progress (Amazon specific)
-      "timer": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "dealProgress": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "timer": amazonTimerSelectors,
+      "dealProgress": amazonTimerSelectors,
       
       // Additional product details
       "category": { type: "css", selector: "span.a-size-small.a-color-secondary" },
@@ -328,11 +349,11 @@ module.exports = {
       "seller": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "sizeFit": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "isOutOfStock": { type: "css", selector: "span.a-size-medium.a-color-price" },
-      "isDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDeal": amazonDealSelectors,
       "isOffer": { type: "css", selector: "span.s-coupon-unclipped" },
-      "isDisplay": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "deal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "limitedTimeDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDisplay": amazonDealSelectors,
+      "deal": amazonDealSelectors,
+      "limitedTimeDeal": amazonDealSelectors,
       "coupon": { type: "css", selector: "span.s-coupon-unclipped" },
       "couponAmount": { type: "css", selector: "span.s-highlighted-text-padding" },
       "extraOffers": { type: "css", selector: "span.s-coupon-unclipped" },
@@ -340,8 +361,8 @@ module.exports = {
       "delivery": { type: "css", selector: "span[aria-label*='delivery']" },
       "deliveryInfo": { type: "css", selector: "span[aria-label*='delivery']" },
       "boughtInPastMonth": { type: "css", selector: "div.a-row.a-size-base span.a-size-base.a-color-secondary", validate: validateBoughtInPastMonth },
-      "timer": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "dealProgress": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "timer": amazonTimerSelectors,
+      "dealProgress": amazonTimerSelectors,
       "offers": { type: "css", selector: "span.s-coupon-unclipped" },
       "storeType": { type: "static", value: "Amazon" }
     }
@@ -461,11 +482,11 @@ module.exports = {
       "seller": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "sizeFit": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "isOutOfStock": { type: "css", selector: "span.a-size-medium.a-color-price" },
-      "isDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDeal": amazonDealSelectors,
       "isOffer": { type: "css", selector: "span.s-coupon-unclipped" },
-      "isDisplay": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "deal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "limitedTimeDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDisplay": amazonDealSelectors,
+      "deal": amazonDealSelectors,
+      "limitedTimeDeal": amazonDealSelectors,
       "coupon": { type: "css", selector: "span.s-coupon-unclipped" },
       "couponAmount": { type: "css", selector: "span.s-highlighted-text-padding" },
       "extraOffers": { type: "css", selector: "span.s-coupon-unclipped" },
@@ -473,8 +494,8 @@ module.exports = {
       "delivery": { type: "css", selector: "span[aria-label*='delivery']" },
       "deliveryInfo": { type: "css", selector: "span[aria-label*='delivery']" },
       "boughtInPastMonth": { type: "css", selector: "div.a-row.a-size-base span.a-size-base.a-color-secondary", validate: validateBoughtInPastMonth },
-      "timer": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "dealProgress": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "timer": amazonTimerSelectors,
+      "dealProgress": amazonTimerSelectors,
       "offers": { type: "css", selector: "span.s-coupon-unclipped" },
       "storeType": { type: "static", value: "Amazon" }
     }
@@ -598,11 +619,11 @@ module.exports = {
       "seller": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "sizeFit": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "isOutOfStock": { type: "css", selector: "span.a-size-medium.a-color-price" },
-      "isDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDeal": amazonDealSelectors,
       "isOffer": { type: "css", selector: "span.s-coupon-unclipped" },
-      "isDisplay": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "deal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "limitedTimeDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDisplay": amazonDealSelectors,
+      "deal": amazonDealSelectors,
+      "limitedTimeDeal": amazonDealSelectors,
       "coupon": { type: "css", selector: "span.s-coupon-unclipped" },
       "couponAmount": { type: "css", selector: "span.s-highlighted-text-padding" },
       "extraOffers": { type: "css", selector: "span.s-coupon-unclipped" },
@@ -610,8 +631,8 @@ module.exports = {
       "delivery": { type: "css", selector: "span[aria-label*='delivery']" },
       "deliveryInfo": { type: "css", selector: "span[aria-label*='delivery']" },
       "boughtInPastMonth": { type: "css", selector: "div.a-row.a-size-base span.a-size-base.a-color-secondary", validate: validateBoughtInPastMonth },
-      "timer": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "dealProgress": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "timer": amazonTimerSelectors,
+      "dealProgress": amazonTimerSelectors,
       "offers": { type: "css", selector: "span.s-coupon-unclipped" },
       "storeType": { type: "static", value: "Amazon" }
     }
@@ -736,11 +757,11 @@ module.exports = {
       "seller": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "sizeFit": { type: "css", selector: "span.a-size-small.a-color-secondary" },
       "isOutOfStock": { type: "css", selector: "span.a-size-medium.a-color-price" },
-      "isDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDeal": amazonDealSelectors,
       "isOffer": { type: "css", selector: "span.s-coupon-unclipped" },
-      "isDisplay": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "deal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "limitedTimeDeal": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "isDisplay": amazonDealSelectors,
+      "deal": amazonDealSelectors,
+      "limitedTimeDeal": amazonDealSelectors,
       "coupon": { type: "css", selector: "span.s-coupon-unclipped" },
       "couponAmount": { type: "css", selector: "span.s-highlighted-text-padding" },
       "extraOffers": { type: "css", selector: "span.s-coupon-unclipped" },
@@ -748,8 +769,8 @@ module.exports = {
       "delivery": { type: "css", selector: "span[aria-label*='delivery']" },
       "deliveryInfo": { type: "css", selector: "span[aria-label*='delivery']" },
       "boughtInPastMonth": { type: "css", selector: "div.a-row.a-size-base span.a-size-base.a-color-secondary", validate: validateBoughtInPastMonth },
-      "timer": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
-      "dealProgress": { type: "css", selector: "span.a-badge-text[data-a-badge-color='sx-cloud']" },
+      "timer": amazonTimerSelectors,
+      "dealProgress": amazonTimerSelectors,
       "offers": { type: "css", selector: "span.s-coupon-unclipped" },
       "storeType": { type: "static", value: "Amazon" }
     }
