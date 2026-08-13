@@ -1,0 +1,49 @@
+name: '🔥 Hot Deals - Telegram Trigger'
+on:
+  workflow_dispatch:
+    inputs:
+      deal_url:
+        description: 'Product URL to process'
+        required: true
+        type: string
+      chat_id:
+        description: 'Telegram Chat ID for reply'
+        required: false
+        type: string
+      message_id:
+        description: 'Telegram Message ID for reply'
+        required: false
+        type: string
+
+env:
+  CI: 'true'
+  NODE_ENV: production
+
+jobs:
+  hot-deals-telegram:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: hot-deals-${{ github.event.inputs.deal_url }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 'stable'
+      - run: |
+          which google-chrome-stable || which google-chrome || which chromium-browser || echo 'Chrome not found'
+          google-chrome-stable --version || google-chrome --version || chromium-browser --version || echo 'Version check failed'
+      - run: node actions/hot-deals-runner.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          DEAL_URL: ${{ github.event.inputs.deal_url }}
+          CHAT_ID: ${{ github.event.inputs.chat_id }}
+          MESSAGE_ID: ${{ github.event.inputs.message_id }}
+          TELEGRAM_BOT_KEY: ${{ secrets.TELEGRAM_BOT_KEY }}
+          DEALS_GLOBAL_BOT_KEY: ${{ secrets.DEALS_GLOBAL_BOT_KEY }}

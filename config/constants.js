@@ -3,7 +3,7 @@
 // const { environment } = require('./config/constants');
 
 // const ENVIRONMENT = environment; // or 'stage' based on your current setup
-const pathToFile = "C:/Users/anila/keys"
+const pathToFile = process.env.FIREBASE_KEYS_PATH || "C:/Users/anila/keys"
 
 
 const facebookId="100094567890123" // Replace with your actual Facebook ID
@@ -37,11 +37,11 @@ const type="general"
 const env="production"
 // const env="stage"
 
-const TelegramBotKey="5759815900:AAFKWE5cmFlmIkDUlzXT_-4sqIT2NQix3Ws"
-const DealsGlobalBotKey="8177765543:AAF1lYt4e6dH6u-Cfb_Sd7oBEcl5VJadZz8"
+const TelegramBotKey=process.env.TELEGRAM_BOT_KEY || "5759815900:AAFKWE5cmFlmIkDUlzXT_-4sqIT2NQix3Ws"
+const DealsGlobalBotKey=process.env.DEALS_GLOBAL_BOT_KEY || "8177765543:AAF1lYt4e6dH6u-Cfb_Sd7oBEcl5VJadZz8"
 
 
-const FirebaseApiKey="AIzaSyCpZ8uisdsfodfjpowijfsuSbimONqtRufvR8WBiUBFt7-_UI"
+const FirebaseApiKey=process.env.FIREBASE_API_KEY || "AIzaSyCpZ8uisdsfodfjpowijfsuSbimONqtRufvR8WBiUBFt7-_UI"
 // Interval for bulk updates (in ms). If changed to invalid, fallback will be 2 hours.
 // RE-ENABLED AFTER FIXING productDealsDB.js
 const bulkUpdateIntervalMs = 2 * 60 * 60 * 1000; // 2 hours

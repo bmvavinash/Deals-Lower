@@ -1,0 +1,33 @@
+name: '🖼️ Banners Fetch'
+on:
+  schedule:
+    - cron: '30 * * * *'   # Every hour at :30
+  workflow_dispatch:        # Allow manual trigger
+
+env:
+  CI: 'true'
+  NODE_ENV: production
+
+jobs:
+  banners-fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: banners-fetch
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 'stable'
+      - run: |
+          which google-chrome-stable || which google-chrome || which chromium-browser || echo 'Chrome not found'
+          google-chrome-stable --version || google-chrome --version || chromium-browser --version || echo 'Version check failed'
+      - run: node actions/banners-runner.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}

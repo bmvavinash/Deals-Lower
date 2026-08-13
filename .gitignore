@@ -39,3 +39,25 @@ frontend/dist
 # scratch
 scratch/
 
+# Firebase service account keys
+*.json.bak
+*-firebase-adminsdk-*.json
+*-adminsdk-*.json
+keys/
+
+# Logs
+logs/
+*.log
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store

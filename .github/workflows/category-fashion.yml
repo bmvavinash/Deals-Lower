@@ -1,0 +1,39 @@
+name: '👗 Category: Fashion'
+on:
+  schedule:
+    - cron: '10 */2 * * *'
+  workflow_dispatch:
+    inputs:
+      category:
+        description: 'Category to scrape (overrides default)'
+        required: false
+        default: 'fashion'
+
+env:
+  CI: 'true'
+  NODE_ENV: production
+
+jobs:
+  category-fashion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: category-fashion
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 'stable'
+      - run: |
+          which google-chrome-stable || which google-chrome || which chromium-browser || echo 'Chrome not found'
+          google-chrome-stable --version || google-chrome --version || chromium-browser --version || echo 'Version check failed'
+      - run: node actions/category-runner.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          CATEGORY: ${{ github.event.inputs.category || 'fashion' }}
