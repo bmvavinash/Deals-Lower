@@ -21,13 +21,14 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-      - run: npm ci
       - uses: browser-actions/setup-chrome@v1
         with:
           chrome-version: 'stable'
+      - run: npm ci
       - run: |
           which google-chrome-stable || which google-chrome || which chromium-browser || echo 'Chrome not found'
           google-chrome-stable --version || google-chrome --version || chromium-browser --version || echo 'Version check failed'
       - run: node actions/banners-runner.js
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+
