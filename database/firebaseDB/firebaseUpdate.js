@@ -18,7 +18,7 @@ let DB_Name=config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
 jsonFileName = config.DATABASE_CONFIG.JSON_FILE_NAME
-if (!admin.apps.length) {
+if (!admin.apps.some(app => app.name === '[DEFAULT]')) {
   let serviceAccount;
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
@@ -291,3 +291,4 @@ module.exports = updateProduct;
 
 // response = updateProduct(productCode, updatedData);
 // console.log("Response is ",response)
+

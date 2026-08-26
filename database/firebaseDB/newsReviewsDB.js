@@ -505,3 +505,4 @@ module.exports = {
   getNewsById,
   getReviewById
 };
+

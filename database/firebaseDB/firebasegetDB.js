@@ -12,3 +12,4 @@ ref.child('yourKey').once('value', (snapshot) => {
     console.log('Key does not exist!');
   }
 });
+

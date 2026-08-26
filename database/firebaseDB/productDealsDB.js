@@ -12,7 +12,7 @@ const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
 console.log(`Initializing Firebase with DB: ${DB_Name}, Token File: ${filePath}`);
 
-if (!admin.apps.length) {
+if (!admin.apps.some(app => app.name === '[DEFAULT]')) {
 	let serviceAccount;
 	if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 		try {
@@ -724,3 +724,4 @@ module.exports = {
 	getAllProductDeals: productDealsDB.getAllProductDeals.bind(productDealsDB),
 	updateProductDeal: productDealsDB.updateProductDeal.bind(productDealsDB)
 };
+

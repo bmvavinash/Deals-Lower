@@ -42,7 +42,7 @@ const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
-if (!admin.apps.length) {
+if (!admin.apps.some(app => app.name === '[DEFAULT]')) {
   let serviceAccount;
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     try {
@@ -734,3 +734,4 @@ module.exports = {
     testBannerDB,
     TestBannerDB
 };
+

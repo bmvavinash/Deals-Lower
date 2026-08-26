@@ -750,3 +750,4 @@ const userFavoritesDB = new UserFavoritesDB();
 module.exports = { userFavoritesDB, getSecondaryApp };
 
 
+
