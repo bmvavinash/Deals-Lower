@@ -16,9 +16,9 @@ const Sidebar: React.FC = () => {
   const menuItems: MenuItem[] = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊' },
     { path: '/users', label: 'Users', icon: '👥' },
+    { path: '/affiliates', label: 'Affiliates', icon: '🔗' },
     { path: '/banners', label: 'Banners', icon: '🖼️' },
     { path: '/deals', label: 'Deals', icon: '🛍️' },
-    { path: '/banners', label: 'Banners', icon: '🖼️' },
     { path: '/stocks', label: 'Stocks', icon: '📈' },
     { path: '/execution', label: 'Execution Monitor', icon: '🔄' },
     { path: '/logs', label: 'Logs', icon: '📝' },
