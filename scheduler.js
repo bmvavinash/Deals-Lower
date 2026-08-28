@@ -13,7 +13,7 @@ const { firebasepost } = require("./database/firebasepost");
 const constants = require('./config/constants.js');
 const config = require('./config/config.js');
 
-require("chromedriver");
+// require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
 const firebasePut = require("./database/firebaseput.js");
 const { shortenProductText, getAsin, getformattedDate, getFlipkartProductId, getAjioCode, getMyntraCode } = require("./utils/commonUtils.js");

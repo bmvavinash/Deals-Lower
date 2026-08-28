@@ -12,6 +12,58 @@ const categoryHierarchyDB = new CategoryHierarchyDB();
 // Flag to temporarily disable execution tracker for debugging
 const DISABLE_EXECUTION_TRACKER = process.env.DISABLE_EXECUTION_TRACKER === 'true' || false;
 
+function getCategoryGroupFromUrl(url) {
+  if (!url || typeof url !== 'string') return 'general';
+  const urlLower = url.toLowerCase();
+  if (urlLower.includes('laptop') || urlLower.includes('mobile') || urlLower.includes('headphone') || urlLower.includes('smartwatch') || urlLower.includes('audio') || urlLower.includes('television') || urlLower.includes('camera') || urlLower.includes('electronic') || urlLower.includes('phone') || urlLower.includes('earbud') || urlLower.includes('tablet')) {
+    return 'electronics';
+  }
+  if (urlLower.includes('shirt') || urlLower.includes('kurta') || urlLower.includes('tshirt') || urlLower.includes('dress') || urlLower.includes('shoe') || urlLower.includes('fashion') || urlLower.includes('clothing') || urlLower.includes('wear') || urlLower.includes('bag') || urlLower.includes('jean') || urlLower.includes('saree') || urlLower.includes('accessory')) {
+    return 'fashion';
+  }
+  if (urlLower.includes('decor') || urlLower.includes('furniture') || urlLower.includes('kitchen') || urlLower.includes('cookware') || urlLower.includes('home') || urlLower.includes('bedsheet') || urlLower.includes('appliance')) {
+    return 'home-kitchen';
+  }
+  if (urlLower.includes('beauty') || urlLower.includes('skin') || urlLower.includes('hair') || urlLower.includes('makeup') || urlLower.includes('perfume') || urlLower.includes('fragrance') || urlLower.includes('cosmetic')) {
+    return 'beauty-personal-care';
+  }
+  if (urlLower.includes('sport') || urlLower.includes('fitness') || urlLower.includes('gym') || urlLower.includes('athletic')) {
+    return 'sports-fitness';
+  }
+  if (urlLower.includes('book') || urlLower.includes('stationery') || urlLower.includes('academic') || urlLower.includes('novel')) {
+    return 'books-stationery';
+  }
+  if (urlLower.includes('baby') || urlLower.includes('kids') || urlLower.includes('toy') || urlLower.includes('child')) {
+    return 'baby-kids';
+  }
+  if (urlLower.includes('grocery') || urlLower.includes('food') || urlLower.includes('beverage') || urlLower.includes('snack')) {
+    return 'grocery';
+  }
+  if (urlLower.includes('tool') || urlLower.includes('hardware') || urlLower.includes('diy') || urlLower.includes('drill')) {
+    return 'tools-hardware';
+  }
+  if (urlLower.includes('pet') || urlLower.includes('dog') || urlLower.includes('cat') || urlLower.includes('bird')) {
+    return 'pet-supplies';
+  }
+  if (urlLower.includes('music') || urlLower.includes('instrument') || urlLower.includes('guitar')) {
+    return 'music-entertainment';
+  }
+  if (urlLower.includes('car') || urlLower.includes('bike') || urlLower.includes('automotive') || urlLower.includes('tyre')) {
+    return 'automotive';
+  }
+  return 'general';
+}
+
+function getRoundedExpiryTime() {
+  const now = new Date();
+  const rounded = new Date(now.getTime());
+  rounded.setHours(now.getHours() + 1);
+  rounded.setMinutes(0);
+  rounded.setSeconds(0);
+  rounded.setMilliseconds(0);
+  return rounded.getTime();
+}
+
 // Comprehensive seed URLs for all platforms and categories
 const PLATFORM_SEEDS = {
   amazon: {
@@ -227,11 +279,24 @@ const PLATFORM_SEEDS = {
     ]
   }
 };
+
+// Filter platform seeds for fast test runs if requested
+if (process.env.FAST_TEST === 'true') {
+  for (const platform of Object.keys(PLATFORM_SEEDS)) {
+    const firstCat = Object.keys(PLATFORM_SEEDS[platform])[0];
+    if (firstCat) {
+      PLATFORM_SEEDS[platform] = {
+        [firstCat]: [PLATFORM_SEEDS[platform][firstCat][0]]
+      };
+    }
+  }
+}
+
 // #region agent log
 fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bulkUpdateAllPlatforms.js:224',message:'PLATFORM_SEEDS defined',data:{PLATFORM_SEEDS_type:typeof PLATFORM_SEEDS,PLATFORM_SEEDS_isUndefined:PLATFORM_SEEDS===undefined,PLATFORM_SEEDS_keys:PLATFORM_SEEDS?Object.keys(PLATFORM_SEEDS).join(','):'N/A'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
 // #endregion
 
-async function runBulkUpdateForCategory(platform, category, urls, sourceType = 'website', targetDb = 'deals') {
+async function runBulkUpdateForCategory(platform, category, urls, sourceType = 'website', targetDb = 'deals', existingDriver = null) {
   // DEBUG: Log function entry with all parameters
   console.log(`\n[DEBUG] ========== runBulkUpdateForCategory ENTRY ==========`);
   console.log(`[DEBUG] platform=${platform}, category=${category}, urls=${Array.isArray(urls) ? urls.length : typeof urls}, sourceType=${sourceType}, targetDb=${targetDb}`);
@@ -320,7 +385,7 @@ async function runBulkUpdateForCategory(platform, category, urls, sourceType = '
         category,
         firstUrl: urls[0] || 'N/A'
       });
-      result = await runBatch(urls, sourceType, categoryKey, targetDb);
+      result = await runBatch(urls, sourceType, categoryKey, targetDb, existingDriver);
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'bulkUpdateAllPlatforms.js:255',message:'runBatch completed',data:{totalExtracted:result?.totalExtracted||0,totalStored:result?.totalStored||0},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
       // #endregion
@@ -488,42 +553,86 @@ async function runBulkUpdateForPlatform(platform, sourceType = 'website', target
       throw new Error(`Unknown platform: ${platform}`);
     }
     
+    const { initializeDriver, closeDriver } = require('../dataSources/batchProductExtractor');
+    let platformDriver = null;
+    try {
+      logger.info(`🌐 Initializing shared platform driver for ${platform}...`);
+      platformDriver = await initializeDriver();
+      logger.info(`✅ Shared platform driver for ${platform} initialized successfully`);
+    } catch (driverInitError) {
+      logger.error(`❌ Failed to initialize shared platform driver for ${platform}, categories will fall back to individual initialization`, { error: driverInitError.message });
+    }
+
     const results = {};
     let totalProducts = 0;
     let totalSuccess = 0;
     let totalErrors = 0;
     
-    for (const [category, urls] of Object.entries(platformData)) {
-      // DEBUG: Log before calling runBulkUpdateForCategory
-      console.log(`[DEBUG] About to call runBulkUpdateForCategory: platform=${platform}, category=${category}, urls=${Array.isArray(urls) ? urls.length : 'NOT_ARRAY'}`);
-      logger.debug('About to process category', { platform, category, urlsType: typeof urls, urlsIsArray: Array.isArray(urls), urlsLength: Array.isArray(urls) ? urls.length : 'N/A' });
-      
-      try {
-        const categoryResult = await runBulkUpdateForCategory(platform, category, urls, sourceType, targetDb);
-        results[category] = categoryResult;
-        totalProducts += categoryResult.totalProducts || 0;
-        totalSuccess += categoryResult.successCount || 0;
-        totalErrors += categoryResult.errorCount || 0;
-      } catch (error) {
-        // Log full error details including stack trace
-        const errorDetails = {
-          error: error.message,
-          stack: error.stack,
-          errorName: error.name,
-          platform,
-          category,
-          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
-          errorToString: String(error),
-          errorConstructor: error.constructor?.name
-        };
+    try {
+      for (const [category, urls] of Object.entries(platformData)) {
+        const admin = require('firebase-admin');
+        const db = admin.database();
+        const checkpointRef = db.ref(`executionCheckpoint/completedCategories/${platform}/${category}`);
         
-        // Also log to console for immediate visibility
-        console.error(`[CRITICAL ERROR] Failed to process ${platform} - ${category}:`, error);
-        console.error(`[STACK TRACE]:`, error.stack);
+        try {
+          const checkpointSnap = await checkpointRef.once('value');
+          if (checkpointSnap.exists() && checkpointSnap.val() === true) {
+            logger.info(`⏩ [RESUME] Category platform=${platform}, category=${category} was completed in previous run, skipping.`);
+            continue;
+          }
+        } catch (checkErr) {
+          logger.warn(`Failed to verify category checkpoint for platform=${platform}, category=${category}`, { error: checkErr.message });
+        }
+
+        // DEBUG: Log before calling runBulkUpdateForCategory
+        console.log(`[DEBUG] About to call runBulkUpdateForCategory: platform=${platform}, category=${category}, urls=${Array.isArray(urls) ? urls.length : 'NOT_ARRAY'}`);
+        logger.debug('About to process category', { platform, category, urlsType: typeof urls, urlsIsArray: Array.isArray(urls), urlsLength: Array.isArray(urls) ? urls.length : 'N/A' });
         
-        logger.error(`❌ Failed to process ${platform} - ${category}`, errorDetails);
-        results[category] = { error: error.message };
-        totalErrors++;
+        try {
+          const categoryResult = await runBulkUpdateForCategory(platform, category, urls, sourceType, targetDb, platformDriver);
+          results[category] = categoryResult;
+          totalProducts += categoryResult.totalProducts || 0;
+          totalSuccess += categoryResult.successCount || 0;
+          totalErrors += categoryResult.errorCount || 0;
+          
+          // Save checkpoint
+          try {
+            await checkpointRef.set(true);
+            logger.info(`💾 [CHECKPOINT] Saved checkpoint for platform=${platform}, category=${category}`);
+          } catch (saveCheckErr) {
+            logger.warn('Failed to save completion checkpoint:', saveCheckErr.message);
+          }
+        } catch (error) {
+          // Log full error details including stack trace
+          const errorDetails = {
+            error: error.message,
+            stack: error.stack,
+            errorName: error.name,
+            platform,
+            category,
+            fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)),
+            errorToString: String(error),
+            errorConstructor: error.constructor?.name
+          };
+          
+          // Also log to console for immediate visibility
+          console.error(`[CRITICAL ERROR] Failed to process ${platform} - ${category}:`, error);
+          console.error(`[STACK TRACE]:`, error.stack);
+          
+          logger.error(`❌ Failed to process ${platform} - ${category}`, errorDetails);
+          results[category] = { error: error.message };
+          totalErrors++;
+        }
+      }
+    } finally {
+      if (platformDriver) {
+        logger.info(`🌐 Closing shared platform driver for ${platform}...`);
+        try {
+          await closeDriver(platformDriver);
+          logger.info(`✅ Shared platform driver for ${platform} closed successfully`);
+        } catch (closeErr) {
+          logger.warn(`Failed to close shared platform driver for ${platform}`, { error: closeErr.message });
+        }
       }
     }
     
@@ -552,6 +661,7 @@ async function runBulkUpdateForPlatform(platform, sourceType = 'website', target
 }
 
 async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals', clientMetadata = null) {
+  const runStartTime = Date.now();
   try {
     logger.info('🚀 [ENTRY] Starting bulk update for all platforms', { 
       sourceType, 
@@ -572,6 +682,48 @@ async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals', clie
         stack: trackerError.stack
       });
       // Continue execution even if tracker fails
+    }
+
+    // 1. Live Homepage Deals Discovery Scan
+    global.discoveredDealsMap = global.discoveredDealsMap || new Map();
+    try {
+      logger.info('🔍 [DISCOVERY] Starting homepage banner discovery scans...');
+      const { ImprovedBannerExtractor } = require('../dataSources/improvedBannerExtractor');
+      const extractor = new ImprovedBannerExtractor();
+      let extractedBanners = await extractor.extractAllBanners() || [];
+      if (process.env.FAST_TEST === 'true') {
+        logger.info('🧪 [FAST_TEST] Limiting discovered banners to 1 to speed up execution.');
+        extractedBanners = extractedBanners.slice(0, 1);
+      }
+      logger.info(`🔍 [DISCOVERY] Extracted ${extractedBanners.length} live banners from homepages.`);
+      
+      const expiryTimeMs = getRoundedExpiryTime();
+      
+      extractedBanners.forEach(banner => {
+        const url = banner.clickRedirectUrl || banner.url;
+        if (!url || typeof url !== 'string' || !url.startsWith('http')) return;
+        
+        const platform = banner.platform || Object.keys(PLATFORM_SEEDS).find(p => url.toLowerCase().includes(p)) || 'amazon';
+        const categoryGroup = getCategoryGroupFromUrl(url);
+        
+        if (PLATFORM_SEEDS[platform]) {
+          PLATFORM_SEEDS[platform][categoryGroup] = PLATFORM_SEEDS[platform][categoryGroup] || [];
+          // Prepend URL to Category seeds
+          if (!PLATFORM_SEEDS[platform][categoryGroup].includes(url)) {
+            PLATFORM_SEEDS[platform][categoryGroup].unshift(url);
+            logger.info(`🔥 [DISCOVERY] Added high-priority deal seed: platform=${platform}, category=${categoryGroup}, url=${url}`);
+          }
+          
+          // Clean/normalize URL to index in map
+          let cleanUrl = url.trim();
+          global.discoveredDealsMap.set(cleanUrl, {
+            dealName: banner.title || banner.altText || banner.description || `${platform.toUpperCase()} Deal`,
+            dealExpiresAt: banner.expirationTimestamp ? new Date(banner.expirationTimestamp).getTime() : expiryTimeMs
+          });
+        }
+      });
+    } catch (discoveryError) {
+      logger.error('❌ [DISCOVERY] Homepage banner discovery scan failed (non-fatal)', { error: discoveryError.message });
     }
     
     const allResults = {};
@@ -618,6 +770,14 @@ async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals', clie
     
     logger.info('✅ Bulk update for all platforms completed', summary);
     
+    // Run expired deals and banners database cleanup
+    try {
+        const { cleanupExpiredDealsAndBanners } = require('./cleanupExpiredDeals');
+        await cleanupExpiredDealsAndBanners();
+    } catch (cleanupErr) {
+        logger.error('Failed to run expired deals/banners cleanup:', cleanupErr);
+    }
+    
     // Log comprehensive stats
     comprehensiveLoggingService.logBulkUpdateComplete('ALL_PLATFORMS', 'ALL_CATEGORIES', targetDb, sourceType, Date.now(), totalProducts, totalSuccess, totalErrors);
     
@@ -625,6 +785,55 @@ async function runBulkUpdateAll(sourceType = 'website', targetDb = 'deals', clie
     try {
       await executionTracker.completeBulkExecution(summary);
       logger.info('✅ Execution tracker completed');
+      
+      // Centralized stale deals targeted sweep
+      try {
+        const admin = require('firebase-admin');
+        const db = admin.database();
+        
+        logger.info('🧹 Starting centralized targeted sweep of leftover active deals...');
+        const snapshot = await db.ref('productdeals').once('value');
+        const allProducts = snapshot.val() || {};
+        
+        const leftoverUrls = [];
+        for (const [key, product] of Object.entries(allProducts)) {
+          const updateTime = product.updatedatetime || (product.datetime ? Number(product.datetime) : 0);
+          // Sweep active deals that were NOT updated in this crawler run
+          if (updateTime < runStartTime && (product.isDeal === true || product.isDeal === 'true')) {
+            if (product.url || product.productUrl) {
+              leftoverUrls.push(product.url || product.productUrl);
+            }
+          }
+        }
+        
+        logger.info(`🔍 [SWEEP] Found ${leftoverUrls.length} leftover active deals to verify.`);
+        if (leftoverUrls.length > 0) {
+          const { runBatch } = require('../dataSources/batchProductExtractor');
+          // Process in smaller batches sequentially to optimize resource usage
+          const batchSize = 30;
+          for (let i = 0; i < leftoverUrls.length; i += batchSize) {
+            const batch = leftoverUrls.slice(i, i + batchSize);
+            logger.info(`[SWEEP] Verifying batch ${i/batchSize + 1} of ${Math.ceil(leftoverUrls.length/batchSize)}...`);
+            try {
+              await runBatch(batch, 'website', 'ALL', 'productdeals');
+            } catch (batchErr) {
+              logger.warn('[SWEEP] Failed to process batch:', batchErr.message);
+            }
+          }
+        }
+      } catch (sweepErr) {
+        logger.error('❌ [ERROR] Failed to run centralized leftover sweep:', sweepErr);
+      }
+      
+      // Clear completed categories checkpoint database node
+      try {
+        const admin = require('firebase-admin');
+        const db = admin.database();
+        await db.ref('executionCheckpoint/completedCategories').remove();
+        logger.info('🧹 [CHECKPOINT] Cleared completed categories checkpoint for fresh run.');
+      } catch (clearErr) {
+        logger.warn('Failed to clear checkpoint database node:', clearErr.message);
+      }
     } catch (trackerError) {
       logger.error('❌ [ERROR] Failed to complete execution tracker', { 
         error: trackerError.message,

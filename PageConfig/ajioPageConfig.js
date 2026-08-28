@@ -119,14 +119,8 @@ module.exports = {
         type: "css",
         selector: ".nameCls"
       },
-      "isDeal": {
-        type: "css",
-        selector: ".discount"
-      },
-      "isOffer": {
-        type: "css",
-        selector: ".discount"
-      },
+      "isDeal": { type: "css", selector: ".promo-desc, .deal-badge" },
+      "isOffer": { type: "css", selector: ".promo-desc, .deal-badge" },
       "isDisplay": {
         type: "css",
         selector: ".exclusive-new"
@@ -135,14 +129,8 @@ module.exports = {
         type: "css",
         selector: ".exclusive-new"
       },
-      "deal": {
-        type: "css",
-        selector: ".discount"
-      },
-      "limitedTimeDeal": {
-        type: "css",
-        selector: ".discount"
-      },
+      "deal": { type: "css", selector: ".promo-desc, .deal-badge" },
+      "limitedTimeDeal": { type: "css", selector: ".promo-desc, .deal-badge" },
       "coupon": {
         type: "css",
         selector: ".discount"
@@ -171,14 +159,8 @@ module.exports = {
         type: "css",
         selector: ".exclusive-new"
       },
-      "timer": {
-        type: "css",
-        selector: ".discount"
-      },
-      "dealProgress": {
-        type: "css",
-        selector: ".discount"
-      },
+      "timer": { type: "css", selector: ".promo-desc, .deal-badge" },
+      "dealProgress": { type: "css", selector: ".promo-desc, .deal-badge" },
       "offers": {
         type: "css",
         selector: ".discount"

@@ -184,6 +184,39 @@ if (require.main === module) {
       timestamp: new Date().toISOString()
     });
     
+    // Auto-start Local Daemon if offline on API startup
+    try {
+      if (admin.apps.length) {
+        const db = admin.database();
+        const heartbeatRef = db.ref('daemonHeartbeat');
+        heartbeatRef.once('value', (snapshot) => {
+          const heartbeat = snapshot.val();
+          let isDaemonAlive = false;
+          if (heartbeat && heartbeat.timestamp) {
+            const lastTime = new Date(heartbeat.timestamp).getTime();
+            const diffMs = Date.now() - lastTime;
+            isDaemonAlive = diffMs < 60000;
+          }
+          if (!isDaemonAlive) {
+            logger.info('🔄 Local Daemon is offline. Automatically starting localDaemon process...');
+            const { exec } = require('child_process');
+            const path = require('path');
+            const daemonScript = path.join(__dirname, '../../scripts/localDaemon.js');
+            const daemonProcess = exec(`node "${daemonScript}"`, {
+              cwd: path.join(__dirname, '../../'),
+              detached: true,
+              stdio: 'ignore'
+            });
+            daemonProcess.unref();
+          } else {
+            logger.info('💖 Local Daemon is already active and healthy.');
+          }
+        });
+      }
+    } catch (daemonError) {
+      logger.error('Failed to auto-start Local Daemon helper', { error: daemonError.message });
+    }
+
     // Initialize the Telegram bot (polling disabled here; hosted separately via Cloud Functions Webhook)
     /*
     try {

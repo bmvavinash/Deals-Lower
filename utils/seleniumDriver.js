@@ -1,6 +1,6 @@
 const { Builder } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
-require('chromedriver');
+// require('chromedriver');
 
 /**
  * Returns true when the WebDriver session can execute commands.
@@ -44,6 +44,36 @@ async function connectDebuggerChromeDriver(debuggerAddress = 'localhost:9222') {
   return chrome.Driver.createSession(options);
 }
 
+const net = require('net');
+
+function isPortOpen(port, host = '127.0.0.1', timeout = 1500) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let status = false;
+
+    socket.setTimeout(timeout);
+    
+    socket.on('connect', () => {
+      status = true;
+      socket.destroy();
+    });
+
+    socket.on('timeout', () => {
+      socket.destroy();
+    });
+
+    socket.on('error', () => {
+      socket.destroy();
+    });
+
+    socket.on('close', () => {
+      resolve(status);
+    });
+
+    socket.connect(port, host);
+  });
+}
+
 /**
  * Prefer an existing Chrome on debugger port; fall back to headless Chrome.
  */
@@ -53,16 +83,23 @@ async function createChromeDriver(options = {}) {
 
   if (preferDebugger) {
     try {
-      const debuggerDriver = await connectDebuggerChromeDriver(debuggerAddress);
-      if (await isDriverSessionValid(debuggerDriver)) {
-        return { driver: debuggerDriver, mode: 'debugger', debuggerAddress };
+      const parts = debuggerAddress.split(':');
+      const host = parts[0] || '127.0.0.1';
+      const port = parseInt(parts[1] || '9222', 10);
+      const isDebuggerOpen = await isPortOpen(port, host);
+      
+      if (isDebuggerOpen) {
+        const debuggerDriver = await connectDebuggerChromeDriver(debuggerAddress);
+        if (await isDriverSessionValid(debuggerDriver)) {
+          return { driver: debuggerDriver, mode: 'debugger', debuggerAddress };
+        }
+        try {
+          await debuggerDriver.quit();
+        } catch {
+          // ignore
+        }
       }
-      try {
-        await debuggerDriver.quit();
-      } catch {
-        // ignore
-      }
-    } catch {
+    } catch (err) {
       // fall through to headless
     }
   }

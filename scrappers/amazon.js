@@ -627,8 +627,13 @@ async function extractMultiple(driver, config) {
     try {
       if (c.multiple && c.attribute) {
         // For images
-        let elements = await driver.findElements(By.css(c.selector));
-        logger.debug(`[extractMultiple] Images selector: ${c.selector}, Found: ${elements.length}`);
+        let elements;
+        if (c.type === "xpath") {
+          elements = await driver.findElements(By.xpath(c.selector));
+        } else {
+          elements = await driver.findElements(By.css(c.selector));
+        }
+        logger.debug(`[extractMultiple] Images selector: ${c.selector} (type: ${c.type || 'css'}), Found: ${elements.length}`);
         let values = [];
         if (c.type === 'css-background-image') {
           // Special handling: extract only the URL from background-image style

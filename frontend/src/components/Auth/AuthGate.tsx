@@ -142,15 +142,24 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         )}
 
         {isConfigured && auth ? (
-          <button onClick={handleGoogleLogin} style={styles.googleButton}>
-            <svg style={styles.googleSvg} viewBox="0 0 24 24">
-              <path
-                fill="#EA4335"
-                d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.34 0-6.05-2.71-6.05-6.05s2.71-6.05 6.05-6.05c1.478 0 2.825.53 3.882 1.408l3.111-3.11C18.98 2.868 15.86 1.5 12.24 1.5c-5.79 0-10.5 4.71-10.5 10.5s4.71 10.5 10.5 10.5c5.312 0 9.878-3.8 9.878-10.5 0-.616-.073-1.136-.208-1.714H12.24z"
-              />
-            </svg>
-            Sign in with Google
-          </button>
+          <div>
+            <button onClick={handleGoogleLogin} style={styles.googleButton}>
+              <svg style={styles.googleSvg} viewBox="0 0 24 24">
+                <path
+                  fill="#EA4335"
+                  d="M12.24 10.285V14.4h6.887c-.648 2.41-2.519 4.114-5.136 4.114-3.34 0-6.05-2.71-6.05-6.05s2.71-6.05 6.05-6.05c1.478 0 2.825.53 3.882 1.408l3.111-3.11C18.98 2.868 15.86 1.5 12.24 1.5c-5.79 0-10.5 4.71-10.5 10.5s4.71 10.5 10.5 10.5c5.312 0 9.878-3.8 9.878-10.5 0-.616-.073-1.136-.208-1.714H12.24z"
+                />
+              </svg>
+              Sign in with Google
+            </button>
+            {isLocalhost() && (
+              <div style={{ marginTop: '16px' }}>
+                <button onClick={handleBypassLogin} style={styles.bypassButton}>
+                  Bypass as Developer ({ALLOWED_EMAIL})
+                </button>
+              </div>
+            )}
+          </div>
         ) : (
           isLocalhost() ? (
             <div style={styles.bypassContainer}>

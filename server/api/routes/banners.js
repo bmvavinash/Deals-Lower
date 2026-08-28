@@ -393,7 +393,7 @@ router.get('/', async (req, res, next) => {
       // Server-side filtering to optimize RAM consumption (0.12 MB constraint)
       let processedBanners = [...unique];
       if (activeOnly === 'true' || activeOnly === true) {
-        processedBanners = processedBanners.filter(b => b && b.isActive === true);
+        processedBanners = processedBanners.filter(b => b && b.isActive === true && (!b.expirationTimestamp || Number(b.expirationTimestamp) > Date.now()));
       }
       if (platform && platform !== 'all') {
         processedBanners = processedBanners.filter(b => b && b.platform?.toLowerCase() === platform.toLowerCase());

@@ -12,7 +12,7 @@ const extractFacebookToken = require("./socialMedia/extractFacebookToken.js");
 async function postDeals(driver, product, link, shortUrl, username) {
     try {
 
-        require("chromedriver");
+        // require("chromedriver");
 
         // var chrome = require("selenium-webdriver/chrome");
 

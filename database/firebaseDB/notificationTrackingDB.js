@@ -37,12 +37,16 @@ try {
         throw e;
       }
     }
+    const dbUrl = DB_Name === 'lowerdealhub' 
+      ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+      : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+
     admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
-      databaseURL: `https://${DB_Name}-default-rtdb.firebaseio.com`
+      databaseURL: dbUrl
     });
     db = admin.database();
-    logger.info(`Firebase initialized for notification tracking: ${DB_Name}`);
+    logger.info(`Firebase initialized for notification tracking: ${DB_Name} on ${dbUrl}`);
   } catch (initError) {
     logger.error('Failed to initialize Firebase for notification tracking', { error: initError.message });
     throw initError;

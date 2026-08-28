@@ -87,11 +87,11 @@ export const dealsAPI = {
   bulkRefreshTimestamps: (options: { source: 'productdeals' | 'deals' | 'both'; limit?: number; order?: 'newest' | 'oldest' }) =>
     api.post('/deals/bulk-refresh-timestamps', options),
   retriggerProduct: (productCode: string, db?: string) =>
-    api.post(`/deals/${encodeURIComponent(productCode)}/retrigger`, {}, { params: { db } }),
+    api.post(`/deals/${encodeURIComponent(productCode)}/retrigger`, {}, { params: { db }, timeout: 120000 }),
   retriggerToday: (fields: string[], priority?: string) =>
-    api.post('/deals/retrigger-today', { fields, priority }),
+    api.post('/deals/retrigger-today', { fields, priority }, { timeout: 120000 }),
   processProduct: (url: string, postProduct: boolean = false) =>
-    api.post('/deals/process-product', { url, postProduct }),
+    api.post('/deals/process-product', { url, postProduct }, { timeout: 120000 }),
   updateProduct: (productCode: string, updates: any, db?: string) =>
     api.put(`/deals/${productCode}`, updates, { params: { db } }),
   deleteProduct: (productCode: string, db?: string) =>
@@ -171,7 +171,12 @@ export const executionAPI = {
   triggerTask: (type: string, params?: any, forceParallel?: boolean) => 
     api.post('/execution/trigger', { type, params, forceParallel }),
   cancelTask: (taskId: string) => 
-    api.post('/execution/queue/cancel', { taskId })
+    api.post('/execution/queue/cancel', { taskId }),
+  getHeartbeat: () => api.get('/execution/heartbeat'),
+  restartDaemon: () => api.post('/execution/daemon/restart'),
+  getSchedulerConfig: () => api.get('/execution/scheduler/config'),
+  saveSchedulerConfig: (config: any) => api.post('/execution/scheduler/config', config),
+  getLogs: (file?: string) => api.get('/execution/logs', { params: { file } })
 };
 
 // Banners API

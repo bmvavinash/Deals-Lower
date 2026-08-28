@@ -49,7 +49,8 @@ class TelegramDeduplicationService {
    * Get Firebase database reference
    */
   _getDb() {
-    if (!admin.apps.length) {
+    const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
+    if (!defaultApp) {
       const dbname = constants.postingTypesConfig[constants.type].DB;
       const DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
       const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];

@@ -1,6 +1,6 @@
 const { Builder } = require("selenium-webdriver");
 const chrome = require("selenium-webdriver/chrome");
-require("chromedriver");
+// require("chromedriver");
 const { runBulkUpdateAll } = require('./scripts/bulkUpdateAllPlatforms');
 const { runTelegramBot } = require('./run_telegram_bot');
 const constants = require('./config/constants');

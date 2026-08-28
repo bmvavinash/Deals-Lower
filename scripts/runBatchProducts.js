@@ -14,8 +14,9 @@ function getPlatformUrl(platform, searchTerm, page) {
 		case 'flipkart':
 			return `https://www.flipkart.com/search?q=${encodedTerm}&page=${page}`;
 		case 'myntra':
-			// Myntra uses p=2
-			return `https://www.myntra.com/${encodedTerm.replace(/\s+/g, '-')}${page > 1 ? `?p=${page}` : ''}`;
+			// Myntra uses hyphens for search terms in URL path (e.g. men-casual-shoes)
+			const myntraTerm = encodeURIComponent(searchTerm.toLowerCase().trim().replace(/\s+/g, '-'));
+			return `https://www.myntra.com/${myntraTerm}${page > 1 ? `?p=${page}` : ''}`;
 		case 'ajio':
 			// Ajio pagination relies on API usually but we can append page param to query
 			return `https://www.ajio.com/search/?text=${encodedTerm}${page > 1 ? `&page=${page}` : ''}`;

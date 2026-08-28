@@ -120,12 +120,33 @@ module.exports = {
           "materialCare": { type: 'css', selector: '.PkadOy div' },
           "seller": { type: 'css', selector: '.PkadOy div' },
           "sizeFit": { type: 'css', selector: '.PkadOy div' },
-          "isDeal": { type: 'css', selector: '.M4DNwV .yiggsN' },
+          "isDeal": [
+            { type: 'css', selector: 'div[class*="deal"]' },
+            { type: 'css', selector: 'span[class*="deal"]' },
+            { type: 'css', selector: 'div[class*="badge"]' },
+            { type: 'css', selector: 'span[class*="badge"]' },
+            { type: 'css', selector: '.yiggsN' },
+            { type: 'css', selector: '.M4DNwV' }
+          ],
           "isOffer": { type: 'css', selector: '.M4DNwV .yiggsN' },
           "isDisplay": { type: 'css', selector: '.M4DNwV .yiggsN' },
           "isOutOfStock": { type: 'css', selector: '.dVXNbG img' },
-          "deal": { type: 'css', selector: '.M4DNwV .yiggsN' },
-          "limitedTimeDeal": { type: 'css', selector: '.M4DNwV .yiggsN' },
+          "deal": [
+            { type: 'css', selector: 'div[class*="deal"]' },
+            { type: 'css', selector: 'span[class*="deal"]' },
+            { type: 'css', selector: 'div[class*="badge"]' },
+            { type: 'css', selector: 'span[class*="badge"]' },
+            { type: 'css', selector: '.yiggsN' },
+            { type: 'css', selector: '.M4DNwV' }
+          ],
+          "limitedTimeDeal": [
+            { type: 'css', selector: 'div[class*="deal"]' },
+            { type: 'css', selector: 'span[class*="deal"]' },
+            { type: 'css', selector: 'div[class*="badge"]' },
+            { type: 'css', selector: 'span[class*="badge"]' },
+            { type: 'css', selector: '.yiggsN' },
+            { type: 'css', selector: '.M4DNwV' }
+          ],
           "coupon": { type: 'css', selector: '.M4DNwV .yiggsN' },
           "couponAmount": { type: 'css', selector: '.M4DNwV .yiggsN' },
           "extraOffers": { type: 'css', selector: '.M4DNwV .yiggsN' },
@@ -133,7 +154,11 @@ module.exports = {
           "delivery": { type: 'css', selector: '.PkadOy div' },
           "deliveryInfo": { type: 'css', selector: '.PkadOy div' },
           "boughtInPastMonth": { type: 'css', selector: '.PkadOy div' },
-          "timer": { type: 'css', selector: '.M4DNwV .yiggsN' },
+          "timer": [
+            { type: 'css', selector: 'div[class*="timer"]' },
+            { type: 'css', selector: 'span[class*="timer"]' },
+            { type: 'css', selector: '.yiggsN' }
+          ],
           "dealProgress": { type: 'css', selector: '.M4DNwV .yiggsN' },
           "offers": { type: 'css', selector: '.M4DNwV .yiggsN' }
       }

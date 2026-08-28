@@ -28,7 +28,8 @@ async function getStaleProducts(daysOld = 7) {
     const staleUrls = [];
     
     for (const [key, product] of Object.entries(data)) {
-        if (!product.url) continue;
+        const productUrl = product.productUrl || product.url;
+        if (!productUrl) continue;
         
         // Check if updatedAt exists and is older than threshold
         let isStale = false;
@@ -44,7 +45,7 @@ async function getStaleProducts(daysOld = 7) {
         }
         
         if (isStale) {
-            staleUrls.push(product.url);
+            staleUrls.push(productUrl);
         }
     }
     
@@ -95,6 +96,15 @@ async function main() {
         }
         
         logger.info('Stale products update complete.');
+        
+        // Run expired deals and banners database cleanup
+        try {
+            const { cleanupExpiredDealsAndBanners } = require('./cleanupExpiredDeals');
+            await cleanupExpiredDealsAndBanners();
+        } catch (cleanupErr) {
+            logger.error('Failed to run expired deals/banners cleanup:', cleanupErr);
+        }
+
         await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: staleUrls.length, processedCount });
     } catch (error) {
         logger.error('Stale products update failed:', error);

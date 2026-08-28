@@ -85,7 +85,7 @@ class FavoritesNotificationService {
       // 2. Process each user's favorites and notifications
       for (const user of users) {
         const userStats = await this.processUserNotifications(user) || {};
-        totalFavorites += userStats.favorites || 0;
+        totalFavorites += Object.keys(user.favorites || {}).length;
         totalNotifications += userStats.notifications || 0;
         priceTracking += userStats.priceTracking || 0;
         lowStock += userStats.lowStock || 0;
@@ -151,7 +151,7 @@ class FavoritesNotificationService {
   // Process notifications for a specific user
   async processUserNotifications(user) {
     try {
-      const { uid, preferences = {} } = user;
+      const { uid, preferences = {}, favorites = {} } = user;
 
       // Check if user has notifications enabled
       if (!preferences.notifications?.enabled) {
@@ -169,13 +169,13 @@ class FavoritesNotificationService {
       await this.processPriceTrackingNotifications(uid, preferences);
 
       // 2. Favorite products low stock notifications
-      await this.processLowStockNotifications(uid, preferences);
+      await this.processLowStockNotifications(uid, preferences, favorites);
 
       // 3. Favorite deals expiring notifications
-      await this.processFavoriteDealsExpiring(uid, preferences);
+      await this.processFavoriteDealsExpiring(uid, preferences, favorites);
 
       // 4. Favorite state changes (Price Drop and In-Stock Transitions)
-      await this.processFavoriteStateChanges(uid, preferences);
+      await this.processFavoriteStateChanges(uid, preferences, favorites);
 
       return {}; // return empty stats object to prevent undefined errors
     } catch (error) {
@@ -185,9 +185,9 @@ class FavoritesNotificationService {
   }
 
   // Process state changes for all favorites (price drop and out-of-stock -> in-stock)
-  async processFavoriteStateChanges(uid, preferences) {
+  async processFavoriteStateChanges(uid, preferences, favorites = {}) {
     try {
-      const favoritesData = await userFavoritesDB.getFavoriteProductsData(uid);
+      const favoritesData = favorites;
       
       for (const [productCode, favoriteData] of Object.entries(favoritesData)) {
         const currentProduct = await this.getCurrentProductData(productCode);
@@ -277,9 +277,9 @@ class FavoritesNotificationService {
   }
 
   // Process low stock notifications for favorite products
-  async processLowStockNotifications(uid, preferences) {
+  async processLowStockNotifications(uid, preferences, favorites = {}) {
     try {
-      const favoriteProducts = await userFavoritesDB.getFavoriteProducts(uid);
+      const favoriteProducts = Object.keys(favorites);
       
       for (const productCode of favoriteProducts) {
         const currentProduct = await this.getCurrentProductData(productCode);
@@ -295,9 +295,9 @@ class FavoritesNotificationService {
   }
 
   // Process favorite deals expiring notifications
-  async processFavoriteDealsExpiring(uid, preferences) {
+  async processFavoriteDealsExpiring(uid, preferences, favorites = {}) {
     try {
-      const favoriteProducts = await userFavoritesDB.getFavoriteProducts(uid);
+      const favoriteProducts = Object.keys(favorites);
       
       for (const productCode of favoriteProducts) {
         const currentProduct = await this.getCurrentProductData(productCode);
@@ -319,13 +319,8 @@ class FavoritesNotificationService {
     try {
       logger.info('Processing deal expiry notifications');
 
-      // Get products with timers from both databases
-      const [productdealsWithTimers, dealsWithTimers] = await Promise.all([
-        productDealsDB.getProductsWithTimers('productdeals'),
-        productDealsDB.getProductsWithTimers('deals')
-      ]);
-
-      const allProductsWithTimers = [...productdealsWithTimers, ...dealsWithTimers];
+      // Get products with timers from active productdeals database only
+      const allProductsWithTimers = await productDealsDB.getProductsWithTimers('productdeals');
 
       for (const [productCode, product] of allProductsWithTimers) {
         const timerVal = product.timer || product.dealEndAt;
@@ -349,12 +344,12 @@ class FavoritesNotificationService {
       const users = await this.getAllUsers();
       
       for (const user of users) {
-        const { uid, preferences = {} } = user;
+        const { uid, preferences = {}, favorites = {} } = user;
         
         // Check if user has this product in favorites
-        const favoriteProducts = await userFavoritesDB.getFavoriteProducts(uid);
+        const isFav = favorites && favorites[productCode];
         
-        if (favoriteProducts.includes(productCode)) {
+        if (isFav) {
           const message = this.buildDealExpiringMessage(product);
           await this.sendNotification(uid, message, preferences, 'deal_expiring');
           sentCount++;

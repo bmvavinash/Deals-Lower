@@ -1,5 +1,5 @@
 const { Builder, By, until } = require('selenium-webdriver');
-require('chromedriver');
+// require('chromedriver');
 const chrome = require('selenium-webdriver/chrome');
 const { getModuleLogger } = require('../logger/logger');
 const { loadConfig, scrapePage, postProcessProductData } = require('../pageScheduler');
@@ -38,9 +38,91 @@ function deriveSectionName(url, usedPageType) {
 }
 
 function deriveDealName(raw) {
-	if (raw.deal && typeof raw.deal === 'string') return raw.deal;
-	if (raw.discountPercentage && typeof raw.discountPercentage === 'string') return raw.discountPercentage;
+	if (raw.deal && typeof raw.deal === 'string' && raw.deal.trim() !== '') return raw.deal;
+	if (raw.limitedTimeDeal && typeof raw.limitedTimeDeal === 'string' && raw.limitedTimeDeal.trim() !== '') return raw.limitedTimeDeal;
+	if (raw.isDeal && typeof raw.isDeal === 'string' && raw.isDeal.trim() !== '') return raw.isDeal;
 	return '';
+}
+
+function parseTimerText(text) {
+	if (!text || typeof text !== 'string') return null;
+	const clean = text.toLowerCase().replace(/ends\s*in|ending\s*in/i, '').trim();
+	const parts = clean.match(/(\d+)\s*(?:d|day|days)?\s*:\s*(\d+)\s*(?:h|hour|hours)?\s*:\s*(\d+)\s*(?:m|minute|minutes)?(?:\s*:\s*(\d+)\s*(?:s|second|seconds)?)?/i);
+	if (parts) {
+		let days = 0, hours = 0, minutes = 0, seconds = 0;
+		if (parts[4] !== undefined) {
+			days = parseInt(parts[1], 10) || 0;
+			hours = parseInt(parts[2], 10) || 0;
+			minutes = parseInt(parts[3], 10) || 0;
+			seconds = parseInt(parts[4], 10) || 0;
+		} else {
+			const colons = clean.split(':').map(s => parseInt(s.trim(), 10) || 0);
+			if (colons.length === 3) {
+				hours = colons[0];
+				minutes = colons[1];
+				seconds = colons[2];
+			} else if (colons.length === 2) {
+				hours = colons[0];
+				minutes = colons[1];
+			}
+		}
+		const totalMs = (days * 24 * 3600 + hours * 3600 + minutes * 60 + seconds) * 1000;
+		if (totalMs > 0) return Date.now() + totalMs;
+	}
+	const hrMatch = clean.match(/(\d+)\s*(?:h|hour|hours)/);
+	const minMatch = clean.match(/(\d+)\s*(?:m|min|mins|minute|minutes)/);
+	const secMatch = clean.match(/(\d+)\s*(?:s|sec|secs|second|seconds)/);
+	let totalMs = 0;
+	if (hrMatch) totalMs += parseInt(hrMatch[1], 10) * 3600 * 1000;
+	if (minMatch) totalMs += parseInt(minMatch[1], 10) * 60 * 1000;
+	if (secMatch) totalMs += parseInt(secMatch[1], 10) * 1000;
+	if (totalMs > 0) return Date.now() + totalMs;
+	return null;
+}
+
+async function extractPageTimer(driver, platform) {
+	try {
+		const timerText = await driver.executeScript(() => {
+			const selectors = [
+				'span[id*="timer"]',
+				'span[class*="timer"]',
+				'div[class*="timer"]',
+				'span[id*="expiry"]',
+				'div[class*="expiry"]',
+				'.deal-timer',
+				'._cDEzb_savingsBadgeMessage_2JUtl'
+			];
+			for (const sel of selectors) {
+				const el = document.querySelector(sel);
+				if (el && el.innerText && /ends\s*in|\d+\s*h\s*:\s*\d+\s*m|\d{2}\s*:\s*\d{2}\s*:\s*\d{2}/i.test(el.innerText)) {
+					return el.innerText;
+				}
+			}
+			const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+			let node;
+			while (node = walk.nextNode()) {
+				const txt = node.nodeValue;
+				if (txt && /ends\s*in|\d+\s*h\s*:\s*\d+\s*m|\d{2}\s*:\s*\d{2}\s*:\s*\d{2}/i.test(txt)) {
+					const parent = node.parentElement;
+					if (parent && !['SCRIPT', 'STYLE'].includes(parent.tagName)) {
+						return parent.innerText || txt;
+					}
+				}
+			}
+			return null;
+		});
+		if (timerText) {
+			const lines = timerText.split('\n');
+			for (const line of lines) {
+				if (/ends\s*in|\d+\s*h\s*:\s*\d+\s*m|\d{2}\s*:\s*\d{2}\s*:\s*\d{2}/i.test(line)) {
+					return line.trim();
+				}
+			}
+		}
+	} catch (e) {
+		// ignore
+	}
+	return null;
 }
 
 function checkMissingDetails(product, sourceUrl) {
@@ -680,7 +762,7 @@ function getHierarchyFromSearchQuery(searchQuery) {
 	return null;
 }
 
-async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = '', usedPageType = null) {
+async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = '', usedPageType = null, pageExpiresAt = null) {
 	const productUrl = raw.productUrl || url || '';
 	const hostname = (() => { try { return new URL(productUrl).hostname; } catch { return ''; } })();
 	let productCode = '';
@@ -699,6 +781,19 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 	const isoNow = now.toISOString();
 	const dateOnly = isoNow.slice(0, 10);
 	const links = raw.links || {};
+	
+	let productExpiresAt = null;
+	if (raw.timer && typeof raw.timer === 'string' && raw.timer.trim() !== '') {
+		try {
+			const parsed = parseTimerText(raw.timer);
+			if (parsed) {
+				productExpiresAt = parsed;
+				logger.info(`🕒 [PRODUCT TIMER DISCOVERY] Found active timer on product card: "${raw.timer}" -> expires at: ${new Date(productExpiresAt).toISOString()}`);
+			}
+		} catch (e) {
+			logger.warn('Failed to parse product-card timer', { error: e.message, timer: raw.timer });
+		}
+	}
 	
 	// Set avinashbmvINR based on platform
 	const isAmazon = /amazon\./i.test(hostname) || (raw.storeType || '').toLowerCase() === 'amazon';
@@ -790,9 +885,14 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 	// categoryGroup should be lowercase, hyphenated (e.g., 'home-kitchen', 'beauty-personal-care')
 	let categoryGroup = '';
 	if (categoryKey && typeof categoryKey === 'string' && categoryKey.includes('_')) {
-		// categoryKey is like "electronics_air-conditioners", we want "electronics"
-		const categoryFromKey = categoryKey.split('_')[0] || '';
-		categoryGroup = categoryFromKey.toLowerCase();
+		// Handles keys starting with platform names (e.g. ajio_fashion) or standard categories (e.g. electronics_audio)
+		const parts = categoryKey.split('_');
+		const platforms = ['amazon', 'flipkart', 'myntra', 'ajio'];
+		if (platforms.includes(parts[0].toLowerCase())) {
+			categoryGroup = (parts[1] || 'general').toLowerCase();
+		} else {
+			categoryGroup = parts[0].toLowerCase();
+		}
 	} else {
 		// Fallback: try to derive from hierarchy or use default
 		const mainCat = hierarchy?.mainCategory || '';
@@ -1039,6 +1139,29 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		});
 	}
 
+	// Look up in global.discoveredDealsMap to set homepage discovery live deal attributes
+	if (global.discoveredDealsMap && url) {
+		const cleanUrl = url.trim();
+		if (global.discoveredDealsMap.has(cleanUrl)) {
+			const match = global.discoveredDealsMap.get(cleanUrl);
+			normalized.isDeal = true;
+			normalized.dealName = match.dealName;
+			normalized.dealLabel = match.dealName;
+			normalized.dealExpiresAt = match.dealExpiresAt;
+			logger.info(`🔥 [DEAL ENRICHMENT] Set product deal attributes for ${normalized.productCode || 'unknown'}: dealName="${match.dealName}"`);
+		}
+	}
+
+	if (!normalized.dealExpiresAt) {
+		if (productExpiresAt) {
+			normalized.dealExpiresAt = productExpiresAt;
+			logger.info(`🔥 [DEAL EXPIRED AT] Mapped product-card timer to product: ${normalized.productCode || 'unknown'} -> ${new Date(productExpiresAt).toISOString()}`);
+		} else if (pageExpiresAt) {
+			normalized.dealExpiresAt = pageExpiresAt;
+			logger.info(`🔥 [DEAL EXPIRED AT] Mapped page-level timer to product: ${normalized.productCode || 'unknown'} -> ${new Date(pageExpiresAt).toISOString()}`);
+		}
+	}
+
 	return normalized;
 }
 
@@ -1186,10 +1309,59 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 		if (ctx) {
 			ctx.pageTypeHits[usedPageType || 'none'] = (ctx.pageTypeHits[usedPageType || 'none'] || 0) + 1;
 		}
-		const products = Array.isArray(rawProducts) ? await Promise.all(rawProducts.map(p => normalizeProduct(p, url, sourceType, categoryKey, usedPageType))) : [];
+		
+		// Extract page-level timer if present
+		let pageExpiresAt = null;
+		try {
+			const pageTimerText = await extractPageTimer(driver, detectedPlatform);
+			if (pageTimerText) {
+				const parsedExpiry = parseTimerText(pageTimerText);
+				if (parsedExpiry) {
+					pageExpiresAt = parsedExpiry;
+					logger.info(`🕒 [TIMER DISCOVERY] Found active timer on page: "${pageTimerText}" -> expires at: ${new Date(pageExpiresAt).toISOString()}`);
+				}
+			}
+		} catch (timerErr) {
+			logger.warn('Failed to extract page-level timer', { error: timerErr.message });
+		}
+		
+		const products = Array.isArray(rawProducts) ? await Promise.all(rawProducts.map(p => normalizeProduct(p, url, sourceType, categoryKey, usedPageType, pageExpiresAt))) : [];
 		if (products.length === 0) {
 			logger.warn('No products extracted', { url });
 			if (ctx) ctx.noProductUrls.push(url);
+			
+			// Deactivate the deal if this is a targeted details page and the product is no longer found
+			try {
+				const { getCode } = require('../utils/commonUtils');
+				const codeRes = getCode(url, detectedPlatform);
+				if (codeRes.isValid && codeRes.value) {
+					logger.info(`🧹 [DEACTIVATION] Deactivating stale/expired deal that returned no products: ${codeRes.value}`);
+					const admin = require('firebase-admin');
+					const db = admin.database();
+					const cleanKey = codeRes.value.replace(/[\.\#\$\[\]]/g, '_');
+					
+					const now = new Date().toISOString();
+					const updateData = {
+						isDeal: false,
+						updatedAt: now,
+						updatedatetime: Date.now()
+					};
+					
+					await db.ref(`productdeals/${cleanKey}`).update(updateData);
+					
+					// Update search index to reflect deactivation
+					try {
+						await db.ref(`search_index/${cleanKey}`).update({
+							t: "",
+							b: "",
+							p: ""
+						});
+					} catch (searchIndexErr) {}
+				}
+			} catch (deactErr) {
+				logger.warn('Failed to deactivate expired deal on 0 products page:', deactErr.message);
+			}
+			
 			return { extracted: 0, stored: 0, products: [] };
 		}
 
@@ -1479,7 +1651,7 @@ async function closeDriver(driver) {
 	}
 }
 
-async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '', targetDb = 'deals') {
+async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '', targetDb = 'deals', existingDriver = null) {
 	// #region agent log
 	fetch('http://127.0.0.1:7243/ingest/3efbc81e-9538-4d65-80a7-bcca86ddef6e',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'batchProductExtractor.js:952',message:'runBatch entry',data:{seedUrlsCount:seedUrls.length,sourceType,categoryKey,targetDb,storeMap_type:typeof storeMap,storeMap_isUndefined:storeMap===undefined},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
 	// #endregion
@@ -1491,7 +1663,7 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 		firstUrl: seedUrls[0] || 'N/A'
 	});
 	
-	let driver;
+	let driver = existingDriver;
 	// Context to persist summary details until termination
 	const ctx = { noProductUrls: [], pageTypeHits: {}, missingFieldLogs: [], errors: [], dedupedCount: 0, skippedUnchangedCount: 0, failedCount: 0 };
 	
@@ -1512,9 +1684,13 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 	const { executionTracker } = require('../services/executionTracker');
 	
 	try {
-		logger.info('🚗 Initializing driver...');
-		driver = await initializeDriver();
-		logger.info('✅ Driver initialized successfully');
+		if (!driver) {
+			logger.info('🚗 Initializing driver...');
+			driver = await initializeDriver();
+			logger.info('✅ Driver initialized successfully');
+		} else {
+			logger.info('🚗 Using existing driver instance');
+		}
 		let totalExtracted = 0, totalStored = 0, createdCount = 0, updatedCount = 0;
 		for (let pageIndex = 0; pageIndex < seedUrls.length; pageIndex++) {
 			const url = seedUrls[pageIndex];
@@ -1541,12 +1717,12 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 				}
 			}
 			
-			await driver.get(url);
-			await withTimeout(driver.wait(until.elementLocated(By.css('body')), 15000), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE_WAIT');
-			await driver.sleep(2000);
-			
 			let extracted = 0, stored = 0, created = 0, updated = 0, products = [];
 			try {
+				await driver.get(url);
+				await withTimeout(driver.wait(until.elementLocated(By.css('body')), 15000), (require('../config/constants').maxPageTimeoutMs || 120000), 'PAGE_WAIT');
+				await driver.sleep(2000);
+				
 				const result = await extractAndStoreFromUrl(driver, url, sourceType, categoryKey, ctx, targetDb, platform, category, pageIndex);
 				extracted = result.extracted || 0;
 				stored = result.stored || 0;
@@ -1554,14 +1730,13 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 				updated = result.updated || 0;
 				products = result.products || [];
 			} catch (extractError) {
-				logger.error('Error extracting from URL', { 
+				logger.error('Error loading or extracting from URL (continuing to next page)', { 
 					url, 
 					error: extractError.message,
 					platform,
 					category,
 					pageIndex
 				});
-				// Still update tracker with error count
 				extracted = 0;
 				stored = 0;
 			}
@@ -1635,7 +1810,7 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 		logger.error('runBatch error', { error: error.message });
 		throw error;
 	} finally {
-		if (driver) await closeDriver(driver);
+		if (driver && !existingDriver) await closeDriver(driver);
 	}
 }
 
