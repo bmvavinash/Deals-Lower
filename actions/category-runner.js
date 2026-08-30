@@ -68,6 +68,8 @@ const PLATFORM_SEEDS = {
   ]
 };
 
+const { executionTracker } = require('../services/executionTracker');
+
 /**
  * Runner script to scrape products for a specific category across all platforms
  */
@@ -89,13 +91,16 @@ async function main() {
   }, 15 * 60 * 1000);
 
   try {
+    await executionTracker.startBulkExecution('github-actions', 'deals', { origin: 'GitHub Actions', category: CATEGORY });
     const results = await runBatch(seeds, 'website', CATEGORY);
+    await executionTracker.completeBulkExecution({ category: CATEGORY, ...results });
     console.log(`[${new Date().toISOString()}] Results summary:`, JSON.stringify(results, null, 2));
     console.log(`[${new Date().toISOString()}] Completed successfully.`);
     clearTimeout(timeoutId);
     process.exit(0);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] ERROR in category-runner:`, error);
+    try { await executionTracker.completeBulkExecution({ status: 'failed', error: error.message }); } catch(e){}
     clearTimeout(timeoutId);
     process.exit(1);
   }
