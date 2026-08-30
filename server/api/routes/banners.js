@@ -1579,6 +1579,24 @@ router.post('/scrape-sale', async (req, res, next) => {
     // Trigger background process immediately
     runScrapingTask(saleName, platform, category, urls);
 
+    // Broadcast global notification so users see the clickable link
+    try {
+      const fetchModule = await import('node-fetch');
+      const fetch = fetchModule.default || fetchModule;
+      await fetch('http://localhost:3001/api/favorites/global-notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: '🔥 New Sale Alert!',
+          message: `The "${saleName}" sale is now active on ${platform}. Tap to view deals!`,
+          channel: 'Global Broadcast',
+          link: `/sale/${encodeURIComponent(saleName)}`
+        })
+      });
+    } catch (notifyErr) {
+      logger.warn('Failed to broadcast global sale notification', { error: notifyErr.message });
+    }
+
     res.json({
       success: true,
       message: `Sale scraping process started in the background for "${saleName}". You can monitor progress on the dashboard.`
