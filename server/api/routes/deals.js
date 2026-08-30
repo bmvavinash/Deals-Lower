@@ -965,7 +965,7 @@ router.get('/sale/:saleName', async (req, res, next) => {
         .equalTo(saleName)
         .limitToLast(Number(limit))
         .once('value'),
-      productDealsDB.productDealsStaticRef
+      productDealsDB.staticRef
         .orderByChild('saleName')
         .equalTo(saleName)
         .limitToLast(Number(limit))

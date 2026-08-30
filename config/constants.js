@@ -176,7 +176,7 @@ module.exports = {
 
   // Frontend API configuration
   frontend: {
-    apiPort: 3001,
+    apiPort: 3003,
     enableWebSocket: true,
     logRetentionDays: 30
   }

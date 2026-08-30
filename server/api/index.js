@@ -69,7 +69,7 @@ const categoriesRoutes = require('./routes/categories');
 const matchingConfigRoutes = require('./routes/matchingConfig');
 
 const app = express();
-const PORT = constants.frontend?.apiPort || 3001;
+const PORT = constants.frontend?.apiPort || 3003;
 
 // Middleware
 app.use(cors());
@@ -140,6 +140,14 @@ if (require.main === module) {
       timestamp: new Date().toISOString()
     });
     
+    // Start Notification Queue Worker
+    try {
+      const { notificationQueue } = require('../../services/NotificationQueueService');
+      notificationQueue.startWorker();
+    } catch (error) {
+      logger.error('Failed to start Notification Queue Worker', { error: error.message });
+    }
+
     // Initialize the Telegram bot (polling disabled here; hosted separately via Cloud Functions Webhook)
     /*
     try {

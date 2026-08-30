@@ -387,6 +387,38 @@ class UserFavoritesDB {
     }
   }
 
+  async saveFcmToken(userId, token) {
+    try {
+      if (isLocalFallback) {
+        const data = this.getLocalData();
+        if (!data.users[userId]) {
+          data.users[userId] = { createdAt: Date.now(), favorites: {}, trackedProducts: {}, preferences: {}, channels: {} };
+        }
+        data.users[userId].channels = data.users[userId].channels || {};
+        data.users[userId].channels.webpush = token;
+        this.saveLocalData(data);
+        return true;
+      }
+      
+      const db = getSecondaryDb();
+      const userRef = db.ref(`users/${userId}`);
+      
+      const snapshot = await userRef.once('value');
+      if (!snapshot.exists()) {
+        await userRef.set({
+          createdAt: admin.database.ServerValue.TIMESTAMP,
+          channels: { webpush: token }
+        });
+      } else {
+        await userRef.child('channels/webpush').set(token);
+      }
+      return true;
+    } catch (error) {
+      console.error(`Error saving FCM token for user ${userId}:`, error);
+      return false;
+    }
+  }
+
   async updateUserPreferences(userId, preferences) {
     try {
       if (isLocalFallback) {

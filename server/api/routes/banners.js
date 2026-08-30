@@ -1583,7 +1583,7 @@ router.post('/scrape-sale', async (req, res, next) => {
     try {
       const fetchModule = await import('node-fetch');
       const fetch = fetchModule.default || fetchModule;
-      await fetch('http://localhost:3001/api/favorites/global-notifications', {
+      await fetch('http://localhost:3003/api/favorites/global-notifications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

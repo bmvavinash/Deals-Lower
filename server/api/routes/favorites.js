@@ -389,4 +389,20 @@ router.post('/global-notifications', async (req, res) => {
   }
 });
 
+// Save user FCM webpush token
+router.post('/token', async (req, res) => {
+  try {
+    const { userId, token } = req.body;
+    if (!userId || !token) {
+      return res.status(400).json({ success: false, message: 'Missing userId or token' });
+    }
+    
+    const success = await userFavoritesDB.saveFcmToken(userId, token);
+    res.json({ success });
+  } catch (error) {
+    logger.error(`Error in /token API:`, error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 module.exports = router;
