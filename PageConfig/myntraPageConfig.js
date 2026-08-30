@@ -65,6 +65,9 @@ module.exports = {
       "sizes": { type: "css", selector: "h4.product-sizes" },
       "availableSizes": { type: "css", selector: "span.product-sizeInventoryPresent" },
       "offerBadge": { type: "css", selector: "div.xcelerator-plpXceleratorInfoTag" },
+      "isDeal": { type: "css", selector: "div.xcelerator-plpXceleratorInfoTag, .product-coupon, .product-badge" },
+      "deal": { type: "css", selector: "div.xcelerator-plpXceleratorInfoTag, .product-coupon, .product-badge" },
+      "limitedTimeDeal": { type: "css", selector: "div.xcelerator-plpXceleratorInfoTag, .product-coupon, .product-badge" },
       "productCategory": { type: "css", selector: "a[href*='/dresses/']", attribute: "href" },
       // Store type
       "storeType": { type: "static", value: "Myntra" },

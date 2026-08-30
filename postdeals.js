@@ -12,7 +12,7 @@ const { notificationQueue } = require("./services/NotificationQueueService");
 async function postDeals(driver, product, link, shortUrl, username) {
     try {
 
-        require("chromedriver");
+        // require("chromedriver");
 
         let text = "";
         let othertext = "";

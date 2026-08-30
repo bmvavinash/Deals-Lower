@@ -178,7 +178,7 @@ async function openAmazonWebsite() {
 
     // Initialize Chrome driver
     logger.info('🌐 Initializing Chrome WebDriver...');
-    require("chromedriver");
+    // require("chromedriver");
     var chrome = require("selenium-webdriver/chrome");
     let options = await new chrome.Options();
     let product = {}

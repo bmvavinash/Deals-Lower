@@ -7,6 +7,42 @@ const { bannerDB } = require('../database/firebaseDB/bannerDB');
 
 const logger = getModuleLogger('improvedBannerExtractor');
 
+function parseTimerText(text) {
+    if (!text || typeof text !== 'string') return null;
+    const clean = text.toLowerCase().replace(/ends\s*in|ending\s*in/i, '').trim();
+    const parts = clean.match(/(\d+)\s*(?:d|day|days)?\s*:\s*(\d+)\s*(?:h|hour|hours)?\s*:\s*(\d+)\s*(?:m|minute|minutes)?(?:\s*:\s*(\d+)\s*(?:s|second|seconds)?)?/i);
+    if (parts) {
+        let days = 0, hours = 0, minutes = 0, seconds = 0;
+        if (parts[4] !== undefined) {
+            days = parseInt(parts[1], 10) || 0;
+            hours = parseInt(parts[2], 10) || 0;
+            minutes = parseInt(parts[3], 10) || 0;
+            seconds = parseInt(parts[4], 10) || 0;
+        } else {
+            const colons = clean.split(':').map(s => parseInt(s.trim(), 10) || 0);
+            if (colons.length === 3) {
+                hours = colons[0];
+                minutes = colons[1];
+                seconds = colons[2];
+            } else if (colons.length === 2) {
+                hours = colons[0];
+                minutes = colons[1];
+            }
+        }
+        const totalMs = (days * 24 * 3600 + hours * 3600 + minutes * 60 + seconds) * 1000;
+        if (totalMs > 0) return Date.now() + totalMs;
+    }
+    const hrMatch = clean.match(/(\d+)\s*(?:h|hour|hours)/);
+    const minMatch = clean.match(/(\d+)\s*(?:m|min|mins|minute|minutes)/);
+    const secMatch = clean.match(/(\d+)\s*(?:s|sec|secs|second|seconds)/);
+    let totalMs = 0;
+    if (hrMatch) totalMs += parseInt(hrMatch[1], 10) * 3600 * 1000;
+    if (minMatch) totalMs += parseInt(minMatch[1], 10) * 60 * 1000;
+    if (secMatch) totalMs += parseInt(secMatch[1], 10) * 1000;
+    if (totalMs > 0) return Date.now() + totalMs;
+    return null;
+}
+
 /**
  * Improved Banner Extractor
  * 
@@ -24,6 +60,42 @@ class ImprovedBannerExtractor {
         this.maxBannersPerPlatform = 50; // Remove limit to fetch all banners
         this.enableDatabase = false; // Flag to control database storage
         this.extractedUrls = new Set(); // Track extracted URLs to avoid duplicates
+    }
+
+    /**
+     * Search ancestral DOM tree of element for ticking countdown timers
+     */
+    async findBannerTimer(element) {
+        if (!this.driver || !element) return null;
+        try {
+            const timerText = await this.driver.executeScript((el) => {
+                let parent = el.parentElement;
+                const timerPattern = /ends\s*in|\d+\s*h\s*:\s*\d+\s*m|\d{2}\s*:\s*\d{2}\s*:\s*\d{2}/i;
+                for (let i = 0; i < 6 && parent; i++) {
+                    const text = parent.innerText || '';
+                    if (timerPattern.test(text)) {
+                        const walk = document.createTreeWalker(parent, NodeFilter.SHOW_TEXT, null, false);
+                        let node;
+                        while (node = walk.nextNode()) {
+                            const val = node.nodeValue;
+                            if (val && timerPattern.test(val)) {
+                                return val.trim();
+                            }
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+                return null;
+            }, element);
+            
+            if (timerText) {
+                logger.info(`🕒 [TIMER DISCOVERY] Found nearby timer on homepage: "${timerText}"`);
+                return timerText;
+            }
+        } catch (e) {
+            logger.debug('Error searching for nearby timer:', { error: e.message });
+        }
+        return null;
     }
 
     /**
@@ -73,11 +145,12 @@ class ImprovedBannerExtractor {
     async initializeNewDriver() {
         try {
             const options = new chrome.Options();
-            options.addArguments('--headless');
+            options.addArguments('--headless=new');
             options.addArguments('--no-sandbox');
             options.addArguments('--disable-dev-shm-usage');
             options.addArguments('--disable-gpu');
-            options.addArguments('--window-size=1920,1080');
+            options.addArguments('--window-size=450,850');
+            options.addArguments('--user-agent=Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36');
 
             this.driver = await new Builder()
                 .forBrowser('chrome')
@@ -127,6 +200,17 @@ class ImprovedBannerExtractor {
                 
                 // Wait for page to load completely
                 await this.driver.wait(until.elementLocated(By.css('body')), 15000);
+                
+                // Dismiss login overlay on Flipkart
+                if (platformKey === 'flipkart') {
+                    try {
+                        const { Key } = require('selenium-webdriver');
+                        await this.driver.findElement(By.css('body')).sendKeys(Key.ESCAPE);
+                        await this.driver.sleep(1000);
+                    } catch (e) {
+                        logger.debug('Flipkart login modal dismiss skipped:', { error: e.message });
+                    }
+                }
                 
                 // Additional wait for dynamic content
                 await this.driver.sleep(5000);
@@ -451,6 +535,20 @@ class ImprovedBannerExtractor {
             const bannerId = this.generateBannerId(platformKey, category.category);
             const timestamp = this.generateBannerTimestamp();
             
+            let expirationTimestamp = "";
+            try {
+                const nearbyTimerText = await this.findBannerTimer(imageElement);
+                if (nearbyTimerText) {
+                    const parsedExpiry = parseTimerText(nearbyTimerText);
+                    if (parsedExpiry) {
+                        expirationTimestamp = new Date(parsedExpiry).toISOString();
+                        logger.info(`🕒 [BANNER TIMER] Set expiration for banner ${bannerId} to ${expirationTimestamp}`);
+                    }
+                }
+            } catch (timerErr) {
+                logger.warn('Failed to scan nearby banner timer', { error: timerErr.message });
+            }
+
             const banner = {
                 id: bannerId,
                 url: imageUrl,
@@ -459,7 +557,7 @@ class ImprovedBannerExtractor {
                 order: 0,
                 creationTimestamp: timestamp,
                 updateTimestamp: timestamp,
-                expirationTimestamp: "", // Leave empty - don't generate random expiration
+                expirationTimestamp: expirationTimestamp,
                 targetDealId: "",
                 platform: platformKey,
                 category: category.category,
@@ -531,6 +629,20 @@ class ImprovedBannerExtractor {
             const bannerId = this.generateBannerId(platformKey, category.category);
             const timestamp = this.generateBannerTimestamp();
             
+            let expirationTimestamp = "";
+            try {
+                const nearbyTimerText = await this.findBannerTimer(imageElement);
+                if (nearbyTimerText) {
+                    const parsedExpiry = parseTimerText(nearbyTimerText);
+                    if (parsedExpiry) {
+                        expirationTimestamp = new Date(parsedExpiry).toISOString();
+                        logger.info(`🕒 [BANNER TIMER] Set expiration for banner ${bannerId} to ${expirationTimestamp}`);
+                    }
+                }
+            } catch (timerErr) {
+                logger.warn('Failed to scan nearby banner timer', { error: timerErr.message });
+            }
+
             const banner = {
                 id: bannerId,
                 url: imageUrl,
@@ -539,7 +651,7 @@ class ImprovedBannerExtractor {
                 order: 0,
                 creationTimestamp: timestamp,
                 updateTimestamp: timestamp,
-                expirationTimestamp: "", // Leave empty - don't generate random expiration
+                expirationTimestamp: expirationTimestamp,
                 targetDealId: "",
                 platform: platformKey,
                 category: category.category,

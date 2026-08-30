@@ -2,6 +2,7 @@ const { getModuleLogger } = require('../logger/logger');
 const { scrapePage } = require('../pageScheduler');
 const { loadConfig } = require('../pageScheduler');
 const { getAsin, getFlipkartProductId, getAjioCode, getMyntraCode } = require('../utils/commonUtils');
+const { resolvePlatformFromUrl } = require('../utils/platformUtils');
 
 const logger = getModuleLogger('missingDataRecoveryService');
 
@@ -196,8 +197,8 @@ class MissingDataRecoveryService {
       // Increment attempt counter
       this.recoveryAttempts.set(productCode, attempts + 1);
 
-      // Determine platform from storeType
-      const platform = product.storeType?.toLowerCase() || 'amazon';
+      // Determine platform from URL domain first, fallback to storeType
+      const platform = resolvePlatformFromUrl(product.productUrl || product.sourceUrl) || product.storeType?.toLowerCase() || 'amazon';
       
       // Build source URL with pagination
       const sourceUrl = this.buildSourceUrlWithPagination(
@@ -218,33 +219,23 @@ class MissingDataRecoveryService {
         }
       });
 
-      // Get enhanced selectors
-      const selectors = this.getEnhancedSelectors(platform, 'searchPage');
-      
-      // Load page configuration
-      let pageConfig = {};
+      // Scrape the product page directly
+      let matchingProduct = null;
       try {
-        const configPath = `./PageConfig/${platform}PageConfig.js`;
-        pageConfig = await loadConfig(configPath);
+        const { scrapeProduct } = require('../scrappers/amazon');
+        if (platform === 'ajio' || platform === 'myntra') {
+          const homepage = platform === 'ajio' ? 'https://www.ajio.com/' : 'https://www.myntra.com/';
+          logger.info(`Navigating to ${platform} homepage first to establish session...`);
+          await driver.get(homepage);
+          await new Promise(resolve => setTimeout(resolve, 4000));
+        }
+        logger.info(`Navigating driver to source URL for recovery: ${sourceUrl}`);
+        await driver.get(sourceUrl);
+        await new Promise(resolve => setTimeout(resolve, 4000));
+        
+        matchingProduct = await scrapeProduct(sourceUrl, platform, driver);
       } catch (error) {
-        logger.warn('Failed to load page config, using default', { 
-          platform, 
-          error: error.message 
-        });
-      }
-      
-      // Scrape the page with enhanced selectors
-      let scrapedData = null;
-      try {
-        const rawProducts = await scrapePage(
-          sourceUrl,
-          driver,
-          pageConfig,
-          'searchPage'
-        );
-        scrapedData = { products: rawProducts || [] };
-      } catch (error) {
-        logger.error('Failed to scrape page for recovery', { 
+        logger.error('Failed to scrape product page for recovery', { 
           sourceUrl, 
           platform, 
           error: error.message 
@@ -252,38 +243,7 @@ class MissingDataRecoveryService {
         return product;
       }
 
-      if (scrapedData && scrapedData.products && scrapedData.products.length > 0) {
-        // Find the matching product in scraped data
-        const productIdentifier = this.extractProductIdentifier(
-          product.productUrl || product.sourceUrl, 
-          platform
-        );
-        
-        let matchingProduct = null;
-        
-        if (productIdentifier) {
-          // Try to find exact match by identifier
-          matchingProduct = scrapedData.products.find(p => 
-            p.productCode === productIdentifier || 
-            p.asin === productIdentifier ||
-            p.productId === productIdentifier
-          );
-        }
-        
-        // If no exact match, try to find by title similarity
-        if (!matchingProduct && product.title) {
-          matchingProduct = scrapedData.products.find(p => 
-            p.title && product.title && 
-            p.title.toLowerCase().includes(product.title.toLowerCase().substring(0, 20))
-          );
-        }
-        
-        // If still no match, use the first product as fallback
-        if (!matchingProduct) {
-          matchingProduct = scrapedData.products[0];
-        }
-
-        if (matchingProduct) {
+      if (matchingProduct) {
           // Update missing fields
           const updatedProduct = { ...product };
           
@@ -336,11 +296,9 @@ class MissingDataRecoveryService {
 
           return updatedProduct;
         }
-      }
 
       logger.warn('No matching product found for recovery', { productCode, sourceUrl });
       return product;
-
     } catch (error) {
       logger.error('Error in missing data recovery', {
         productCode: product.productCode || product.id,

@@ -12,9 +12,25 @@ const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
 
 console.log(`Initializing Firebase with DB: ${DB_Name}, Token File: ${filePath}`);
 
-const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
-
-if (!admin.apps.length) {
+const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
+if (!defaultApp) {
+	let serviceAccount;
+	if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+		try {
+			serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+		} catch (e) {
+			console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", e.message);
+		}
+	}
+	
+	if (!serviceAccount) {
+		try {
+			serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+		} catch (e) {
+			console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
+			throw e;
+		}
+	}
 	const dbUrl = DB_Name === 'lowerdealhub' 
 		? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
 		: `https://${DB_Name}-default-rtdb.firebaseio.com`;
@@ -97,16 +113,19 @@ class ProductDealsDB {
 			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
 			// Only fetch the existing records for the products we are updating to avoid downloading the entire node
 			const existingRecords = {};
-			const fetchPromises = products.map(async (product) => {
+			const fetchPromises = products.map(async (product, index) => {
 				const key = product.productCode || product.id || product.asin || product.title || '';
 				const safeKey = String(key).replace(/[.#$/\[\]]/g, '_');
 				if (safeKey) {
 					try {
-						// Implement a 3-second timeout per read to avoid hanging on network lag
+						// Stagger the requests to spread network load
+						await new Promise(resolve => setTimeout(resolve, index * 60));
+						
+						// Implement a 10-second timeout per read to avoid hanging on network lag
 						let timeoutId;
 						const readPromise = targetRef.child(safeKey).once('value');
 						const timeoutPromise = new Promise((_, reject) => {
-							timeoutId = setTimeout(() => reject(new Error('TIMEOUT')), 3000);
+							timeoutId = setTimeout(() => reject(new Error('TIMEOUT')), 10000);
 						});
 						const snapshot = await Promise.race([readPromise, timeoutPromise]);
 						clearTimeout(timeoutId);
@@ -428,6 +447,18 @@ class ProductDealsDB {
 					// Extracted attributes
 					attributes: product.attributes || null
 				};
+
+				// Whitelist and preserve specifications and parsed specification fields
+				const customSpecFields = [
+					'specifications', 'productTable', 'processor', 'ram', 'storage', 
+					'storageType', 'screenSize', 'starRating', 'capacity', 'acType', 
+					'resolution', 'processorBrand', 'refreshRate', 'fridgeType', 'modelNumber'
+				];
+				for (const field of customSpecFields) {
+					if (product[field] !== undefined) {
+						normalized[field] = product[field];
+					}
+				}
 				
 				updates[safeKey] = normalized;
 				
@@ -446,6 +477,14 @@ class ProductDealsDB {
 				try {
 					await this.searchIndexRef.update(searchIndexUpdates);
 					isIndexUpdated = true;
+					
+					// Trigger Cloudflare R2 upload in background post-bulk upsert
+					try {
+						const { uploadSearchIndexToR2 } = require('../../scripts/uploadSearchIndexToR2');
+						uploadSearchIndexToR2().catch(() => {});
+					} catch (r2Err) {
+						logger.warn('Failed to require uploadSearchIndexToR2 in bulkUpsert', { error: r2Err.message });
+					}
 				} catch (searchErr) {
 					logger.error('Failed to update search index', { error: searchErr.message });
 				}

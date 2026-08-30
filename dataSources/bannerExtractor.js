@@ -55,8 +55,46 @@ class BannerExtractor {
                 req.on('error', () => {
                     // Chrome debugger not running, try to start it
                     logger.info('Chrome debugger not running, attempting to start it...');
-                    const chromePath = process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
-                    const userDataDir = process.env.CHROME_USER_DATA || 'C:\\selenum\\ChromeProfile';
+                    const os = require('os');
+                    const platform = os.platform();
+                    let chromePath = process.env.CHROME_PATH;
+                    if (!chromePath) {
+                        if (platform === 'win32') {
+                            const possiblePaths = [
+                                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                                'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                                path.join(process.env.LOCALAPPDATA || '', 'Google/Chrome/Application/chrome.exe')
+                            ];
+                            for (const p of possiblePaths) {
+                                if (fs.existsSync(p)) {
+                                    chromePath = p;
+                                    break;
+                                }
+                            }
+                        } else if (platform === 'darwin') {
+                            chromePath = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+                        } else {
+                            const possiblePaths = [
+                                '/usr/bin/google-chrome',
+                                '/usr/bin/chromium-browser',
+                                '/usr/bin/chromium'
+                            ];
+                            for (const p of possiblePaths) {
+                                if (fs.existsSync(p)) {
+                                    chromePath = p;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (!chromePath) {
+                        chromePath = platform === 'win32' ? 'chrome.exe' : 'google-chrome';
+                    }
+
+                    let userDataDir = process.env.CHROME_USER_DATA;
+                    if (!userDataDir) {
+                        userDataDir = platform === 'win32' ? 'C:\\selenum\\ChromeProfile' : path.join(os.homedir(), '.selenium/ChromeProfile');
+                    }
                     
                     if (fs.existsSync(chromePath)) {
                         const args = [

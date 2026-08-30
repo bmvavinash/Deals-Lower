@@ -1,14 +1,74 @@
-import axios from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
-// Use relative URL to leverage Vite proxy, or fallback to direct backend URL
-const API_BASE_URL = (import.meta as any).env?.VITE_API_URL || '/api';
+// ─────────────────────────────────────────────
+// Multi-Backend Resilient API Client
+// Primary  → Oracle Cloud (via Cloudflare Tunnel HTTPS) — faster, more RAM
+// Fallback → Render — kept alive via UptimeRobot ping every 10 min
+// ─────────────────────────────────────────────
 
-const api = axios.create({
+const PRIMARY_URL  = (import.meta as any).env?.VITE_PRIMARY_API_URL  || null;  // Oracle Cloud HTTPS
+const FALLBACK_URL = (import.meta as any).env?.VITE_FALLBACK_API_URL || null;  // Render HTTPS
+const LEGACY_URL   = (import.meta as any).env?.VITE_API_URL          || '/api'; // Legacy single-backend
+
+// Determine which URL to use based on available env vars
+const API_BASE_URL = PRIMARY_URL || LEGACY_URL;
+
+// Track whether we are currently in fallback mode
+let usingFallback = false;
+let fallbackCheckedAt = 0;
+const FALLBACK_RETRY_MS = 2 * 60 * 1000; // Re-try primary every 2 minutes
+
+// Create the primary axios instance
+const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json'
-  }
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 12000,
 });
+
+// ─────────────────────────────────────────────
+// Request interceptor: switch to fallback when in fallback mode
+// ─────────────────────────────────────────────
+api.interceptors.request.use((config) => {
+  if (usingFallback && FALLBACK_URL) {
+    config.baseURL = FALLBACK_URL;
+    // Periodically attempt to return to primary
+    if (Date.now() - fallbackCheckedAt > FALLBACK_RETRY_MS) {
+      usingFallback = false; // optimistically try primary again
+    }
+  } else if (PRIMARY_URL) {
+    config.baseURL = PRIMARY_URL;
+  }
+  return config;
+});
+
+// ─────────────────────────────────────────────
+// Response interceptor: on network error, switch to fallback and retry once
+// ─────────────────────────────────────────────
+api.interceptors.response.use(
+  (response) => {
+    // Successful response — if we were in fallback, stay there until next check
+    return response;
+  },
+  async (error) => {
+    const config = error.config as AxiosRequestConfig & { _retried?: boolean };
+
+    // Only attempt fallback if:
+    // 1. We have a fallback URL configured
+    // 2. This is a network/timeout error (not a 4xx/5xx API error)
+    // 3. We haven't already retried this request
+    const isNetworkError = !error.response;
+    if (FALLBACK_URL && isNetworkError && !config._retried) {
+      config._retried = true;
+      usingFallback = true;
+      fallbackCheckedAt = Date.now();
+      config.baseURL = FALLBACK_URL;
+      console.warn('[API] Primary backend unreachable. Switching to fallback (Render).');
+      return api.request(config);
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // Deals API
 export const dealsAPI = {
@@ -27,11 +87,11 @@ export const dealsAPI = {
   bulkRefreshTimestamps: (options: { source: 'productdeals' | 'deals' | 'both'; limit?: number; order?: 'newest' | 'oldest' }) =>
     api.post('/deals/bulk-refresh-timestamps', options),
   retriggerProduct: (productCode: string, db?: string) =>
-    api.post(`/deals/${encodeURIComponent(productCode)}/retrigger`, {}, { params: { db } }),
+    api.post(`/deals/${encodeURIComponent(productCode)}/retrigger`, {}, { params: { db }, timeout: 120000 }),
   retriggerToday: (fields: string[], priority?: string) =>
-    api.post('/deals/retrigger-today', { fields, priority }),
+    api.post('/deals/retrigger-today', { fields, priority }, { timeout: 120000 }),
   processProduct: (url: string, postProduct: boolean = false) =>
-    api.post('/deals/process-product', { url, postProduct }),
+    api.post('/deals/process-product', { url, postProduct }, { timeout: 120000 }),
   updateProduct: (productCode: string, updates: any, db?: string) =>
     api.put(`/deals/${productCode}`, updates, { params: { db } }),
   deleteProduct: (productCode: string, db?: string) =>
@@ -53,7 +113,9 @@ export const logsAPI = {
   getStats: (params?: { startDate?: string; endDate?: string }) =>
     api.get('/logs/stats', { params }),
   clear: (params?: { startDate?: string; endDate?: string; level?: string; module?: string }) =>
-    api.delete('/logs', { data: params })
+    api.delete('/logs', { data: params }),
+  fix: (logData: { productCode: string; productUrl: string; storeType: string; targetDb?: string; issue?: string }) =>
+    api.post('/logs/fix', logData)
 };
 
 // News API
@@ -109,7 +171,12 @@ export const executionAPI = {
   triggerTask: (type: string, params?: any, forceParallel?: boolean) => 
     api.post('/execution/trigger', { type, params, forceParallel }),
   cancelTask: (taskId: string) => 
-    api.post('/execution/queue/cancel', { taskId })
+    api.post('/execution/queue/cancel', { taskId }),
+  getHeartbeat: () => api.get('/execution/heartbeat'),
+  restartDaemon: () => api.post('/execution/daemon/restart'),
+  getSchedulerConfig: () => api.get('/execution/scheduler/config'),
+  saveSchedulerConfig: (config: any) => api.post('/execution/scheduler/config', config),
+  getLogs: (file?: string) => api.get('/execution/logs', { params: { file } })
 };
 
 // Banners API

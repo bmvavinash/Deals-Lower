@@ -1,5 +1,5 @@
 const { Builder, By } = require("selenium-webdriver");
-require("chromedriver");
+// require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
 const { getProductDetails } = require("../scheduler");
 const { firebaseget } = require("../database/firebaseget");

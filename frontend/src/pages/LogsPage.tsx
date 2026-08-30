@@ -18,10 +18,21 @@ const LogsPage: React.FC = () => {
 
   const { data: logsData, isLoading } = useQuery(
     ['logs', filters],
-    () => logsAPI.getAll(filters)
+    () => logsAPI.getAll(filters),
+    {
+      refetchInterval: 3000,
+      keepPreviousData: true
+    }
   );
 
-  const { data: statsData } = useQuery('log-stats', () => logsAPI.getStats());
+  const { data: statsData } = useQuery(
+    'log-stats',
+    () => logsAPI.getStats(),
+    {
+      refetchInterval: 3000,
+      keepPreviousData: true
+    }
+  );
 
   const handleClearLogs = async () => {
     if (confirm('Are you sure you want to clear logs? This action cannot be undone.')) {

@@ -155,6 +155,7 @@ class ExecutionTracker {
       targetDb,
       status: 'running',
       startTime: new Date().toISOString(),
+      lastUpdate: new Date().toISOString(),
       platforms: {}, // Ensure platforms is always an object
       currentPlatform: null,
       currentCategory: null,
@@ -208,6 +209,7 @@ class ExecutionTracker {
       status: 'running',
       sourceType,
       startTime: new Date().toISOString(),
+      lastUpdate: new Date().toISOString(),
       messages: {
         total: 0,
         processed: 0,
@@ -261,6 +263,7 @@ class ExecutionTracker {
       sourceType,
       status: 'running',
       startTime: new Date().toISOString(),
+      lastUpdate: new Date().toISOString(),
       errors: [],
       host: {
         hostname: hostInfo.hostname,
@@ -385,6 +388,7 @@ class ExecutionTracker {
       this.currentExecution.messages.failed += 1;
     }
     this.currentExecution.messages.total += 1;
+    this.currentExecution.lastUpdate = new Date().toISOString();
     
     if (this.ref) {
       await this.ref.child('current').set(this.currentExecution);
@@ -414,6 +418,7 @@ class ExecutionTracker {
     }
 
     products.total += 1;
+    this.currentExecution.lastUpdate = new Date().toISOString();
     
     if (status === 'created') {
       products.created += 1;
@@ -1204,6 +1209,7 @@ class ExecutionTracker {
       saleName,
       status: 'running',
       startTime: new Date().toISOString(),
+      lastUpdate: new Date().toISOString(),
       totalUrls: urlsCount,
       processedUrls: 0,
       extractedBanners: 0,
@@ -1241,6 +1247,7 @@ class ExecutionTracker {
     if (this.currentExecution && this.currentExecution.type === 'sale_scraper') {
       this.currentExecution.processedUrls = processedUrls;
       this.currentExecution.extractedBanners = extractedBanners;
+      this.currentExecution.lastUpdate = new Date().toISOString();
       if (newLogs.length > 0) {
         this.currentExecution.logs = [...(this.currentExecution.logs || []), ...newLogs];
       }

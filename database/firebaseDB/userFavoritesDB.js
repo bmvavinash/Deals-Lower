@@ -13,29 +13,39 @@ function getSecondaryApp() {
   if (isLocalFallback) return null;
   
   try {
-    // Use service account for users database (like main Firebase)
-    let serviceAccountPath = constants.userFirebase?.serviceAccountPath;
-    const databaseURL = constants.userFirebase?.databaseURL;
-    
-    // If serviceAccountPath is set but points to directory, construct full file path
-    if (serviceAccountPath && appConfig?.DATABASE_CONFIG?.USERS_DB_TOKEN_FILE) {
-      // Check if it's a directory (ends with no extension or is a directory)
-      if (fs.existsSync(serviceAccountPath) && fs.statSync(serviceAccountPath).isDirectory()) {
-        serviceAccountPath = path.join(serviceAccountPath, `${appConfig.DATABASE_CONFIG.USERS_DB_TOKEN_FILE}.json`);
+    let serviceAccount;
+    let databaseURL = constants.userFirebase?.databaseURL;
+
+    if (process.env.USERS_FIREBASE_SERVICE_ACCOUNT_JSON) {
+      serviceAccount = JSON.parse(process.env.USERS_FIREBASE_SERVICE_ACCOUNT_JSON);
+      if (!databaseURL) {
+        databaseURL = "https://dealshub-users-default-rtdb.asia-southeast1.firebasedatabase.app";
+      }
+    } else {
+      // Use service account for users database (like main Firebase)
+      let serviceAccountPath = constants.userFirebase?.serviceAccountPath;
+      
+      // If serviceAccountPath is set but points to directory, construct full file path
+      if (serviceAccountPath && appConfig?.DATABASE_CONFIG?.USERS_DB_TOKEN_FILE) {
+        // Check if it's a directory (ends with no extension or is a directory)
+        if (fs.existsSync(serviceAccountPath) && fs.statSync(serviceAccountPath).isDirectory()) {
+          serviceAccountPath = path.join(serviceAccountPath, `${appConfig.DATABASE_CONFIG.USERS_DB_TOKEN_FILE}.json`);
+          console.log('Constructed service account path:', serviceAccountPath);
+        }
+      }
+      // If not explicitly set, derive from configured tokens path and USERS_DB_TOKEN_FILE
+      else if (!serviceAccountPath && appConfig?.DATABASE_CONFIG?.USERS_DB_TOKEN_FILE && constants?.pathToFile) {
+        serviceAccountPath = path.join(constants.pathToFile, `${appConfig.DATABASE_CONFIG.USERS_DB_TOKEN_FILE}.json`);
         console.log('Constructed service account path:', serviceAccountPath);
       }
-    }
-    // If not explicitly set, derive from configured tokens path and USERS_DB_TOKEN_FILE
-    else if (!serviceAccountPath && appConfig?.DATABASE_CONFIG?.USERS_DB_TOKEN_FILE && constants?.pathToFile) {
-      serviceAccountPath = path.join(constants.pathToFile, `${appConfig.DATABASE_CONFIG.USERS_DB_TOKEN_FILE}.json`);
-      console.log('Constructed service account path:', serviceAccountPath);
+
+      if (!serviceAccountPath || !databaseURL || !fs.existsSync(serviceAccountPath)) {
+        throw new Error(`Users Firebase credentials file not found at ${serviceAccountPath || 'undefined'}`);
+      }
+      
+      serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
     }
 
-    if (!serviceAccountPath || !databaseURL || !fs.existsSync(serviceAccountPath)) {
-      throw new Error(`Users Firebase credentials file not found at ${serviceAccountPath || 'undefined'}`);
-    }
-    
-    const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, 'utf8'));
     secondaryApp = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL

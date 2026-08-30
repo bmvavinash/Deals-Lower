@@ -67,7 +67,7 @@
       "id": "beauty-personal-care",
       "name": "Beauty & Personal Care",
       "priority": 5,
-      "platforms": ["amazon", "flipkart", "myntra"],
+      "platforms": ["amazon", "flipkart", "myntra", "ajio"],
       "subcategories": [
         { "id": "skincare", "name": "Skincare", "priority": 1, "searchTerm": "face wash", "searchTermAlt": ["moisturizer", "sunscreen spf 50"] },
         { "id": "haircare", "name": "Hair Care", "priority": 2, "searchTerm": "shampoo", "searchTermAlt": ["hair oil", "hair dryer"] },

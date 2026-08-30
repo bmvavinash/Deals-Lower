@@ -13,7 +13,7 @@ const { firebasepost } = require("./database/firebasepost");
 const constants = require('./config/constants.js');
 const config = require('./config/config.js');
 
-require("chromedriver");
+// require("chromedriver");
 const chrome = require("selenium-webdriver/chrome");
 const firebasePut = require("./database/firebaseput.js");
 const { shortenProductText, getAsin, getformattedDate, getFlipkartProductId, getAjioCode, getMyntraCode } = require("./utils/commonUtils.js");
@@ -318,7 +318,7 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
         functionName: 'getProductDetails',
         productUrl: link,
         searchUrl: shortUrl || link,
-        productCode: product?.productCode,
+        productCode: product?.productCode || product?.id || product?.asin,
         storeType: product?.storeType,
         price: product?.price,
         hasPrice: !!(product?.price > 0),
@@ -327,7 +327,10 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
         hasAffiliateLinkINR: !!(product?.links?.avinashbmvINR),
         hasProductUrl: !!product?.productUrl,
         username: username,
-        validationReason: reason || 'Unknown validation failure'
+        validationReason: reason || 'Unknown validation failure',
+        category: product?.category?.mainCategory || product?.categoryGroup || 'Unknown',
+        targetDb: 'deals',
+        attributesFailed: !hasValidPriceOrStock ? ['price'] : (!hasImage ? ['photo'] : [])
       });
 
       if (errorContext) {

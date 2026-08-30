@@ -41,10 +41,26 @@ const buildBannerKey = (banner = {}) => {
 const dbname = constants.postingTypesConfig[constants.type].DB;
 let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
-const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
-// Initialize Firebase Admin if not already initialized
-if (!admin.apps.length) {
+const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
+if (!defaultApp) {
+  let serviceAccount;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } catch (e) {
+      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:", e.message);
+    }
+  }
+
+  if (!serviceAccount) {
+    try {
+      serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+    } catch (e) {
+      console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
+      throw e;
+    }
+  }
   const databaseURL = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
@@ -114,10 +130,12 @@ class BannerDB {
         const results = [];
         let existingKeys = new Set();
         let productImageKeys = new Set();
+        let existingBannersData = null;
 
         try {
             const existing = await this.getAllBanners();
             if (existing.status === 200 && existing.data) {
+                existingBannersData = existing.data;
                 existingKeys = new Set(
                     Object.values(existing.data)
                         .map(buildBannerKey)
@@ -142,10 +160,28 @@ class BannerDB {
         for (const banner of banners) {
             const bannerKey = buildBannerKey(banner);
             
-            // Skip if it's a duplicate
+            // If duplicate banner is encountered, check if we can extend the expiration time
             if (bannerKey && existingKeys.has(bannerKey)) {
-                logger.info(`Skipping duplicate banner (production): ${banner.id || banner.url || 'unknown'}`);
-                results.push({ id: banner.id, status: 409, message: 'Duplicate banner skipped' });
+                const existingBanner = Object.values(existingBannersData || {}).find(b => buildBannerKey(b) === bannerKey);
+                if (existingBanner) {
+                    const newExpiry = Number(banner.expirationTimestamp);
+                    const oldExpiry = Number(existingBanner.expirationTimestamp);
+                    
+                    if (newExpiry && (!oldExpiry || newExpiry > oldExpiry)) {
+                        logger.info(`Extending expiration time for existing banner ${existingBanner.id} from ${oldExpiry} to ${newExpiry}`);
+                        await this.bannersRef.child(existingBanner.id).update({
+                            expirationTimestamp: newExpiry,
+                            updateTimestamp: new Date().toISOString()
+                        });
+                        results.push({ id: existingBanner.id, status: 200, message: 'Banner expiration extended' });
+                    } else {
+                        logger.info(`Existing banner ${existingBanner.id} has same or newer expiration time (${oldExpiry} >= ${newExpiry}), skipping duplicate`);
+                        results.push({ id: existingBanner.id, status: 409, message: 'Duplicate banner skipped' });
+                    }
+                } else {
+                    logger.info(`Skipping duplicate banner (production): ${banner.id || banner.url || 'unknown'}`);
+                    results.push({ id: banner.id, status: 409, message: 'Duplicate banner skipped' });
+                }
                 continue;
             }
             
