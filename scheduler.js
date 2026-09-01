@@ -32,7 +32,7 @@ const logger = getModuleLogger('scheduler');
 // let productCounter = 0;
 // const PRODUCT_LIMIT = 30;
 
-async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="", categoryOverride = null, errorContext = {}) {
+async function getProductDetails(driver, link, text = "", len = 0, access_token = "", data = {}, todayData = {}, postProduct=true, username, generateLink=false,shortUrl="", categoryOverride = null, errorContext = {}, saleName = null) {
 
   let postflag = false;
   let postStatus = "";
@@ -173,6 +173,10 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
           error: error.message
         });
       }
+    }
+    
+    if (saleName) {
+      product.saleName = saleName;
     }
 
     let env = constants.env

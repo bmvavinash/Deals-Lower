@@ -12,7 +12,7 @@ const { resolvePlatformFromUrl } = require("../utils/platformUtils");
 
 const logger = getModuleLogger('handleProductProcessing');
 
-async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username, generateLink, shortUrl = "", categoryOverride = null) {
+async function processProduct(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct = true, username, generateLink, shortUrl = "", categoryOverride = null, saleName = null) {
   const isProductPosted = await getProductDetails(
     driver,
     link,
@@ -25,7 +25,9 @@ async function processProduct(driver, link, text, len, accessToken, jsonData, to
     username,
     constants.generateLink,
     shortUrl,
-    categoryOverride
+    categoryOverride,
+    {},
+    saleName
   );
 
   if (isProductPosted === productStatus.PRODUCT_ERROR) {

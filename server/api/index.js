@@ -112,7 +112,7 @@ const matchingConfigRoutes = require('./routes/matchingConfig');
 const affiliatesRoutes = require('./routes/affiliates');
 
 const app = express();
-const PORT = constants.frontend?.apiPort || 3001;
+const PORT = constants.frontend?.apiPort || 3003;
 
 // Middleware
 app.use(cors());
@@ -184,6 +184,14 @@ if (require.main === module) {
       timestamp: new Date().toISOString()
     });
     
+    // Start Notification Queue Worker
+    try {
+      const { notificationQueue } = require('../../services/NotificationQueueService');
+      notificationQueue.startWorker();
+    } catch (error) {
+      logger.error('Failed to start Notification Queue Worker', { error: error.message });
+    }
+
     // Auto-start Local Daemon if offline on API startup
     try {
       if (admin.apps.length) {
@@ -198,7 +206,7 @@ if (require.main === module) {
             isDaemonAlive = diffMs < 60000;
           }
           if (!isDaemonAlive) {
-            logger.info('🔄 Local Daemon is offline. Automatically starting localDaemon process...');
+            logger.info('💞 Local Daemon is offline. Automatically starting localDaemon process...');
             const { exec } = require('child_process');
             const path = require('path');
             const daemonScript = path.join(__dirname, '../../scripts/localDaemon.js');
