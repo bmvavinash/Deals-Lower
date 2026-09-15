@@ -1,0 +1,36 @@
+name: '🔄 Stale Products Update'
+on:
+  schedule:
+    - cron: '0 */6 * * *'    # Every 6 hours to keep deals fresh
+  workflow_dispatch:        # Allow manual trigger
+
+env:
+  CI: 'true'
+  NODE_ENV: production
+
+jobs:
+  stale-products-update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: stale-products-update
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - uses: browser-actions/setup-chrome@v1
+        with:
+          chrome-version: 'stable'
+      - run: npm ci
+      - run: |
+          which google-chrome-stable || which google-chrome || which chromium-browser || echo 'Chrome not found'
+          google-chrome-stable --version || google-chrome --version || chromium-browser --version || echo 'Version check failed'
+      - run: node actions/stale-products-runner.js
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          USERS_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.USERS_FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_KEY: ${{ secrets.TELEGRAM_BOT_KEY }}
+          DEALS_GLOBAL_BOT_KEY: ${{ secrets.DEALS_GLOBAL_BOT_KEY }}
