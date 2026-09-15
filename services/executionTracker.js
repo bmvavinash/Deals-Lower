@@ -171,9 +171,9 @@ class ExecutionTracker {
         envType: hostInfo.envType
       },
       client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
+        ip: clientMetadata.ip || 'N/A',
+        origin: clientMetadata.origin || 'API/Script',
+        userAgent: clientMetadata.userAgent || 'N/A'
       } : {
         ip: 'N/A',
         origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
@@ -230,9 +230,9 @@ class ExecutionTracker {
         envType: hostInfo.envType
       },
       client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
+        ip: clientMetadata.ip || 'N/A',
+        origin: clientMetadata.origin || 'API/Script',
+        userAgent: clientMetadata.userAgent || 'N/A'
       } : {
         ip: 'N/A',
         origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
@@ -270,9 +270,9 @@ class ExecutionTracker {
         envType: hostInfo.envType
       },
       client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
+        ip: clientMetadata.ip || 'N/A',
+        origin: clientMetadata.origin || 'API/Script',
+        userAgent: clientMetadata.userAgent || 'N/A'
       } : {
         ip: 'N/A',
         origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
@@ -330,9 +330,9 @@ class ExecutionTracker {
         envType: hostInfo.envType
       },
       client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
+        ip: clientMetadata.ip || 'N/A',
+        origin: clientMetadata.origin || 'API/Script',
+        userAgent: clientMetadata.userAgent || 'N/A'
       } : {
         ip: 'N/A',
         origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
@@ -1217,9 +1217,9 @@ class ExecutionTracker {
         envType: hostInfo.envType
       },
       client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
+        ip: clientMetadata.ip || 'N/A',
+        origin: clientMetadata.origin || 'API/Script',
+        userAgent: clientMetadata.userAgent || 'N/A'
       } : {
         ip: 'N/A',
         origin: 'API/Script',
