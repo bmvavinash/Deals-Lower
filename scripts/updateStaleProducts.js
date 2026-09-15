@@ -7,7 +7,7 @@ const config = require('../config/config');
 
 const logger = getModuleLogger('updateStaleProducts');
 
-async function getStaleProducts(daysOld = 7) {
+async function getStaleProducts(hoursOld = 12) {
   try {
     const DB_Name = config.DATABASE_CONFIG.DB1_NAME || 'lowerdealhub';
     const apiUrl = DB_Name === 'lowerdealhub' 
@@ -21,9 +21,7 @@ async function getStaleProducts(daysOld = 7) {
     const data = await response.json();
     if (!data) return [];
     
-    const staleThreshold = new Date();
-    staleThreshold.setDate(staleThreshold.getDate() - daysOld);
-    const staleThresholdTime = staleThreshold.getTime();
+    const staleThresholdTime = Date.now() - (hoursOld * 60 * 60 * 1000);
     
     const staleUrls = [];
     
@@ -63,7 +61,7 @@ async function main() {
     await executionTracker.startDbUpdateExecution('updateStaleProducts', sourceType);
     
     try {
-        const staleUrls = await getStaleProducts(7);
+        const staleUrls = await getStaleProducts(12);
         logger.info(`Found ${staleUrls.length} stale products to update.`);
         
         if (staleUrls.length === 0) {
