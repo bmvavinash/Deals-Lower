@@ -1,5 +1,5 @@
 const { Builder, By, until } = require('selenium-webdriver');
-require('chromedriver');
+
 const chrome = require('selenium-webdriver/chrome');
 const { getModuleLogger } = require('../logger/logger');
 const { loadConfig, scrapePage, postProcessProductData } = require('../pageScheduler');

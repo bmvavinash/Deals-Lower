@@ -1,5 +1,5 @@
 const { Builder, By, until } = require('selenium-webdriver');
-require('chromedriver');
+
 const chrome = require('selenium-webdriver/chrome');
 
 async function browserTelegramScrap() {

@@ -11,7 +11,7 @@ const { getformattedDate, getISTTimestamp, getCode } = require('../../../utils/c
 const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
 const { Builder } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
-require('chromedriver');
+
 const { getProductDetails } = require('../../../scheduler');
 const { productStatus } = require('../../../config/const');
 const constants = require('../../../config/constants');

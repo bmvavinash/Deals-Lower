@@ -18,7 +18,6 @@
     "@types/node-telegram-bot-api": "^0.64.7",
     "async": "^3.2.6",
     "cheerio": "^1.0.0",
-    "chromedriver": "^151.0.5",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^4.18.2",
@@ -42,6 +41,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@types/async": "^3.2.24"
+    "@types/async": "^3.2.24",
+    "concurrently": "^10.0.5"
   }
 }
