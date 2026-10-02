@@ -19,7 +19,10 @@ async function isDriverSessionValid(driver) {
 
 async function createHeadlessChromeDriver() {
   const options = new chrome.Options();
-  options.addArguments('--headless=new');
+  
+  if (process.env.HEADFUL !== 'true') {
+    options.addArguments('--headless=new');
+  }
   options.addArguments('--no-sandbox');
   options.addArguments('--disable-dev-shm-usage');
   options.addArguments('--window-size=1920,1080');

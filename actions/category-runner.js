@@ -19,52 +19,72 @@ const PLATFORM_SEEDS = {
     'https://www.amazon.in/s?k=mobile+phones',
     'https://www.amazon.in/s?k=headphones',
     'https://www.amazon.in/s?k=smartwatch',
-    'https://www.amazon.in/s?k=tablets',
-    'https://www.amazon.in/s?k=cameras'
+    'https://www.flipkart.com/search?q=laptop',
+    'https://www.flipkart.com/search?q=mobile+phones',
+    'https://www.flipkart.com/search?q=headphones',
+    'https://www.flipkart.com/search?q=smartwatch'
   ],
   'fashion': [
     'https://www.amazon.in/s?k=men+shirts',
     'https://www.amazon.in/s?k=women+dresses',
     'https://www.amazon.in/s?k=shoes',
-    'https://www.amazon.in/s?k=watches',
-    'https://www.amazon.in/s?k=handbags'
+    'https://www.flipkart.com/search?q=men+shirts',
+    'https://www.flipkart.com/search?q=women+dresses',
+    'https://www.myntra.com/men-shirts',
+    'https://www.myntra.com/women-dresses',
+    'https://www.myntra.com/shoes',
+    'https://www.ajio.com/search/?text=men%20shirts',
+    'https://www.ajio.com/search/?text=women%20dresses'
   ],
   'home-kitchen': [
     'https://www.amazon.in/s?k=kitchen+appliances',
     'https://www.amazon.in/s?k=furniture',
-    'https://www.amazon.in/s?k=home+decor',
-    'https://www.amazon.in/s?k=cookware'
+    'https://www.flipkart.com/search?q=kitchen+appliances',
+    'https://www.flipkart.com/search?q=furniture'
   ],
   'sports-fitness': [
     'https://www.amazon.in/s?k=fitness+equipment',
     'https://www.amazon.in/s?k=sports+shoes',
-    'https://www.amazon.in/s?k=gym+equipment'
+    'https://www.flipkart.com/search?q=fitness+equipment',
+    'https://www.flipkart.com/search?q=sports+shoes',
+    'https://www.myntra.com/sports-shoes',
+    'https://www.ajio.com/search/?text=sports%20shoes'
   ],
   'beauty-personal-care': [
     'https://www.amazon.in/s?k=skincare',
     'https://www.amazon.in/s?k=makeup',
-    'https://www.amazon.in/s?k=hair+care'
+    'https://www.flipkart.com/search?q=skincare',
+    'https://www.flipkart.com/search?q=makeup',
+    'https://www.myntra.com/skincare',
+    'https://www.myntra.com/makeup'
   ],
   'automotive': [
     'https://www.amazon.in/s?k=car+accessories',
-    'https://www.amazon.in/s?k=automotive+parts'
+    'https://www.flipkart.com/search?q=car+accessories'
   ],
   'baby-kids': [
     'https://www.amazon.in/s?k=baby+products',
-    'https://www.amazon.in/s?k=kids+toys'
+    'https://www.amazon.in/s?k=kids+toys',
+    'https://www.flipkart.com/search?q=baby+products',
+    'https://www.flipkart.com/search?q=kids+toys',
+    'https://www.myntra.com/kids-wear',
+    'https://www.ajio.com/search/?text=kids%20wear'
   ],
   'grocery': [
     'https://www.amazon.in/s?k=grocery',
-    'https://www.amazon.in/s?k=food+items'
+    'https://www.flipkart.com/search?q=grocery'
   ],
   'books-stationery': [
     'https://www.amazon.in/s?k=books',
     'https://www.amazon.in/s?k=stationery',
-    'https://www.amazon.in/s?k=office+supplies'
+    'https://www.flipkart.com/search?q=books',
+    'https://www.flipkart.com/search?q=stationery'
   ],
   'deals-trending': [
     'https://www.amazon.in/deals',
-    'https://www.amazon.in/gp/bestsellers'
+    'https://www.amazon.in/gp/bestsellers',
+    'https://www.flipkart.com/offers-store',
+    'https://www.myntra.com/shop/offers'
   ]
 };
 

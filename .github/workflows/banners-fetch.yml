@@ -5,6 +5,7 @@ on:
   workflow_dispatch:        # Allow manual trigger
 
 env:
+  HEADFUL: 'true'
   CI: 'true'
   NODE_ENV: production
 
@@ -25,10 +26,11 @@ jobs:
         with:
           chrome-version: 'stable'
       - run: npm ci
+      - run: sudo apt-get update && sudo apt-get install -y xvfb
       - run: |
           which google-chrome-stable || which google-chrome || which chromium-browser || echo 'Chrome not found'
           google-chrome-stable --version || google-chrome --version || chromium-browser --version || echo 'Version check failed'
-      - run: node actions/banners-runner.js
+      - run: xvfb-run --auto-servernum node actions/banners-runner.js
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
