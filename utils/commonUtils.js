@@ -622,7 +622,41 @@ function getEmojiForCategory(category = "") {
 // }
 
 
-
+// Function to determine if a product is an excellent deal based on its category
+function isExcellentDeal(product) {
+    if (!product || !product.discount) return false;
+    
+    // Parse discount correctly regardless of type
+    const discount = parseInt(String(product.discount).replace(/[^\d]/g, ""), 10);
+    if (isNaN(discount)) return false;
+    
+    // Get category
+    let finalCategory = product?.category?.mainCategory || product?.category?.c1;
+    let genericCategory = "default";
+    
+    if (finalCategory && finalCategory.trim() !== "") {
+        const normalizedCategory = normalizeCategory(finalCategory);
+        genericCategory = getGenericCategory(normalizedCategory);
+    }
+    
+    // Apply category-specific thresholds
+    switch (genericCategory.toLowerCase()) {
+        case "mobile":
+            return discount >= 10;
+        case "appliance":
+        case "appliances":
+            return discount >= 7;
+        case "electronics":
+            return discount >= 25;
+        case "fashion":
+            return discount >= 60;
+        case "home":
+        case "kitchen":
+            return discount >= 50;
+        default:
+            return discount >= 75; // The old default
+    }
+}
 
 
 // Utility: Shorten text if needed (you already have this)
@@ -1103,5 +1137,6 @@ module.exports = {
     generateBannerTimestamp,
     categorizeBanner,
     isProductCarousel,
-    getCode
+    getCode,
+    isExcellentDeal
 };

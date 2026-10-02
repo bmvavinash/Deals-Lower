@@ -18,6 +18,7 @@ const CONFIG = {
     TELEGRAM_CHANNELS: {
         DEALS_ABOVE_75: "@all1appdealstest",
         ALL_DEALS: "@all1apptest",
+        LOWER_DEALS: "@all1applowerdealstest",
     },
     WHATSAPP_GROUPS: {
         DEALS_ABOVE_75: "CRJM1kOVpOy4jqfabIhlYc",
@@ -51,6 +52,7 @@ const CONFIG = {
     TELEGRAM_CHANNELS: {
         DEALS_ABOVE_75: "@all1appdealstest",
         ALL_DEALS: "@all1apptest",
+        LOWER_DEALS: "@all1applowerdealstest",
     },
     WHATSAPP_GROUPS: {
         DEALS_ABOVE_75: "CRJM1kOVpOy4jqfabIhlYc",
@@ -83,7 +85,8 @@ const CONFIG = {
   production: {
     TELEGRAM_CHANNELS: {
       DEALS_ABOVE_75: "@dealshubglobal2",
-      ALL_DEALS: "@dealshubglobal"
+      ALL_DEALS: "@dealshubglobal",
+      LOWER_DEALS: "@dealshubgloballower"
     },
     WHATSAPP_GROUPS: {
       DEALS_ABOVE_75: "CRJM1kOVpOy4jqfabIhlYc",

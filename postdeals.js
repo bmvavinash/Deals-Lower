@@ -4,9 +4,10 @@ const { scrapeFlipkartProduct } = require("./scrappers/flipkart");
 const { getAccessToken } = require("./database/getAccessToken");
 const { telegram } = require("./socialMedia/telegramPoster");
 const { whatsapp } = require("./socialMedia/whatsappPoster");
-const { formatProductInfo, getUserDetails } = require("./utils/commonUtils.js");
+const { formatProductInfo, getUserDetails, isExcellentDeal } = require("./utils/commonUtils.js");
 const { facebook } = require("./socialMedia/facebookPoster.js");
 const extractFacebookToken = require("./socialMedia/extractFacebookToken.js");
+const batchDealsService = require("./services/batchDealsService.js");
 
 
 async function postDeals(driver, product, link, shortUrl, username) {
@@ -38,7 +39,8 @@ async function postDeals(driver, product, link, shortUrl, username) {
 
         const dbname = constantsData.DB
         const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
-        if (product.discount > 75) {
+        let isExcellent = isExcellentDeal(product);
+        if (isExcellent) {
             telegramId = config.TELEGRAM_CHANNELS.DEALS_ABOVE_75;
             whatsappId = config.WHATSAPP_GROUPS.DEALS_ABOVE_75;
             facebookId = constants.facebookId
@@ -46,6 +48,13 @@ async function postDeals(driver, product, link, shortUrl, username) {
         else {
             telegramId = config.TELEGRAM_CHANNELS.ALL_DEALS;
             whatsappId = config.WHATSAPP_GROUPS.ALL_DEALS;
+            
+            // Queue the lower deal for the new batched channel
+            try {
+                await batchDealsService.queueLowerDeal(product, link, shortUrl);
+            } catch (err) {
+                console.error("Error queueing lower deal:", err);
+            }
         }
 
 
@@ -156,7 +165,7 @@ async function postDeals(driver, product, link, shortUrl, username) {
         //     response = await facebook(product, facebookId, text)
         // }
 
-        if (constantsData.postTo.facebook && product?.discount >= 75 && username.includes("dealsglobalhub")) {
+        if (constantsData.postTo.facebook && isExcellent && username.includes("dealsglobalhub")) {
             console.log("Facebook ID is ", facebookId);
             let facebookSuccess = false;
             let facebookError = null;
