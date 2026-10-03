@@ -1,4 +1,4 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 const admin = require('firebase-admin');
 const constants = require('./config/constants');
 const config = require('./config/config');
