@@ -7,7 +7,7 @@ interface DealCardProps {
   deal: Deal;
 }
 
-//trigger
+//trigger 2
 
 const DealCard: React.FC<DealCardProps> = ({ deal }) => {
   return (
