@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './Banners.css';
+import BannerCarousel from '../components/Deals/BannerCarousel';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -58,6 +59,8 @@ const Banners = () => {
   const [formOriginalUrl, setFormOriginalUrl] = useState('');
   const [isGeneratingAffUrl, setIsGeneratingAffUrl] = useState(false);
   const [useCacheLive, setUseCacheLive] = useState(false);
+  const [formCarouselType, setFormCarouselType] = useState('none');
+  const [formCarouselValue, setFormCarouselValue] = useState('');
 
   // Sale Scraper states
   const [scraperSaleName, setScraperSaleName] = useState('');
@@ -442,6 +445,13 @@ const Banners = () => {
     setFormDescription(banner.description || '');
     setFormIsActive(banner.isActive === true);
     setFormOrder(String(banner.order || 0));
+    if(banner.carouselConfig) {
+      setFormCarouselType(banner.carouselConfig.type || 'none');
+      setFormCarouselValue(banner.carouselConfig.value || '');
+    } else {
+      setFormCarouselType('none');
+      setFormCarouselValue('');
+    }
     setFormStatus(null);
   };
  
@@ -456,6 +466,8 @@ const Banners = () => {
     setFormDescription('');
     setFormIsActive(true);
     setFormOrder('0');
+    setFormCarouselType('none');
+    setFormCarouselValue('');
     setFormStatus(null);
   };
 
@@ -638,7 +650,32 @@ const Banners = () => {
               </button>
             )}
             
-            <div className="preview-image-container">
+            
+            <div style={{ padding: '20px', width: '100%', overflow: 'hidden' }}>
+              <BannerCarousel banner={selectedBanner} />
+              
+              <div style={{ marginTop: '20px' }}>
+                <button 
+                  onClick={async () => {
+                    const res = await fetch(`${API_BASE_URL}/api/banners/with-deals`);
+                    const data = await res.json();
+                    if(data.success) {
+                      const updated = data.data.find(b => b.id === selectedBanner.id);
+                      if(updated) {
+                         alert('Test API fetched deals successfully! Deals found: ' + (updated.carouselDeals ? updated.carouselDeals.length : 0));
+                         // We could set selectedBanner.carouselDeals to update the UI
+                      }
+                    }
+                  }}
+                  style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '5px', cursor: 'pointer' }}
+                >
+                  Test Fetch API Carousel Deals
+                </button>
+              </div>
+            </div>
+            
+            <div className="preview-image-container" style={{ display: 'none' }}>
+
               {selectedBanner.url ? (
                 <img 
                   src={selectedBanner.url} 
@@ -766,10 +803,30 @@ const Banners = () => {
                 />
               </div>
               
+              
+              <div className="form-group">
+                <label>Carousel Configuration (Deals Overlay)</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select value={formCarouselType} onChange={(e) => setFormCarouselType(e.target.value)}>
+                    <option value="none">No Carousel</option>
+                    <option value="category">Fetch by Category</option>
+                    <option value="platform">Fetch by Platform</option>
+                    <option value="search">Fetch by Search Term</option>
+                  </select>
+                  {formCarouselType !== 'none' && (
+                    <input 
+                      type="text" 
+                      value={formCarouselValue} 
+                      onChange={(e) => setFormCarouselValue(e.target.value)} 
+                      placeholder="Enter category / platform / term" 
+                      style={{ flex: 1 }}
+                    />
+                  )}
+                </div>
+              </div>
+
               <div className="form-group form-group-checkbox">
-                <input 
-                  type="checkbox" 
-                  id="formIsActive"
+                <input type="checkbox" id="formIsActive"
                   checked={formIsActive} 
                   onChange={(e) => setFormIsActive(e.target.checked)} 
                 />
