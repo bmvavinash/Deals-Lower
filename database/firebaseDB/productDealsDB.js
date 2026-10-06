@@ -504,7 +504,7 @@ class ProductDealsDB {
 			if (isIndexUpdated) {
 				try {
 					const { uploadSearchIndexToR2 } = require('../../scripts/uploadSearchIndexToR2');
-					uploadSearchIndexToR2().catch(err => logger.error('Cloudflare R2 index upload failed (background finally)', { error: err.message }));
+					await uploadSearchIndexToR2().catch(err => logger.error('Cloudflare R2 index upload failed (background finally)', { error: err.message }));
 				} catch (r2Err) {
 					logger.warn('Could not load Cloudflare R2 upload script in finally', { error: r2Err.message });
 				}
@@ -650,7 +650,7 @@ class ProductDealsDB {
 					// Trigger Cloudflare R2 upload in background
 					try {
 						const { uploadSearchIndexToR2 } = require('../../scripts/uploadSearchIndexToR2');
-						uploadSearchIndexToR2().catch(() => {});
+						await uploadSearchIndexToR2().catch(() => {});
 					} catch (r2Err) {}
 				} catch (err) {}
 			}
