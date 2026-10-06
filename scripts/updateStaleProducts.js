@@ -4,6 +4,7 @@ const { runBatch } = require('../dataSources/batchProductExtractor');
 const { getModuleLogger } = require('../logger/logger');
 const { executionTracker } = require('../services/executionTracker');
 const config = require('../config/config');
+const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
 
 const logger = getModuleLogger('updateStaleProducts');
 
@@ -23,18 +24,15 @@ async function getStaleProducts(hoursOld = 12) {
     
     const staleThresholdTime = Date.now() - (hoursOld * 60 * 60 * 1000);
     
-    const staleUrls = [];
+    const staleItems = [];
     
     for (const [key, product] of Object.entries(data)) {
         if (!product.url) continue;
         
-        // Check if updatedAt exists and is older than threshold
         let isStale = false;
         if (!product.updatedAt) {
             isStale = true;
         } else {
-            // parse updatedAt which might be "19-May-2026 12:00:00" or ISO string or timestamp
-            // For safety, let's parse it
             const updateTime = new Date(product.updatedAt).getTime();
             if (isNaN(updateTime) || updateTime < staleThresholdTime) {
                 isStale = true;
@@ -42,11 +40,11 @@ async function getStaleProducts(hoursOld = 12) {
         }
         
         if (isStale) {
-            staleUrls.push(product.url);
+            staleItems.push({ key, url: product.url, oldUpdatedAt: product.updatedAt });
         }
     }
     
-    return staleUrls;
+    return staleItems;
   } catch (error) {
     logger.error('Error fetching stale products:', { error: error.message });
     return [];
@@ -61,10 +59,10 @@ async function main() {
     await executionTracker.startDbUpdateExecution('updateStaleProducts', sourceType);
     
     try {
-        const staleUrls = await getStaleProducts(12);
-        logger.info(`Found ${staleUrls.length} stale products to update.`);
+        const staleItems = await getStaleProducts(12);
+        logger.info(`Found ${staleItems.length} stale products to update.`);
         
-        if (staleUrls.length === 0) {
+        if (staleItems.length === 0) {
             console.log("No stale products found.");
             await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: 0, message: 'No stale products found.' });
             return;
@@ -72,20 +70,57 @@ async function main() {
         
         if (isDryRun) {
             console.log("Dry run mode. Would update the following URLs:");
-            console.log(staleUrls.slice(0, 10).join('\n'));
-            if (staleUrls.length > 10) console.log(`...and ${staleUrls.length - 10} more.`);
-            await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: staleUrls.length, message: 'Dry run completed.' });
+            console.log(staleItems.slice(0, 10).map(i => i.url).join('\n'));
+            await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: staleItems.length, message: 'Dry run completed.' });
             return;
         }
         
-        // Process in smaller batches to avoid overwhelming the system
         const batchSize = 100;
         let processedCount = 0;
-        for (let i = 0; i < staleUrls.length; i += batchSize) {
-            const batchUrls = staleUrls.slice(i, i + batchSize);
-            logger.info(`Processing batch ${i/batchSize + 1} of ${Math.ceil(staleUrls.length/batchSize)}...`);
+        
+        for (let i = 0; i < staleItems.length; i += batchSize) {
+            const batch = staleItems.slice(i, i + batchSize);
+            const batchUrls = batch.map(item => item.url);
+            logger.info(`Processing batch ${i/batchSize + 1} of ${Math.ceil(staleItems.length/batchSize)}...`);
+            
             try {
+                // 1. Run the normal scraper to update prices
                 await runBatch(batchUrls, 'website', 'ALL', 'productdeals');
+                
+                // 2. Give Firebase a moment to settle
+                await new Promise(resolve => setTimeout(resolve, 5000));
+                
+                // 3. Check which ones FAILED to update (i.e. out of stock/page dead)
+                let markedOutOfStock = 0;
+                for (const item of batch) {
+                    try {
+                        const snap = await productDealsDB.productdealsRef.child(item.key).once('value');
+                        const currentData = snap.val();
+                        
+                        if (currentData) {
+                            // If the updatedAt is exactly the same, the scraper completely failed on it (out of stock)
+                            if (currentData.updatedAt === item.oldUpdatedAt) {
+                                await productDealsDB.productdealsRef.child(item.key).update({
+                                    isDisplay: false,
+                                    outOfStock: true,
+                                    updatedAt: new Date().toISOString() // Touch it so it isn't stale tomorrow
+                                });
+                                markedOutOfStock++;
+                                logger.info(`Marked product out of stock: ${item.key}`);
+                            } else {
+                                // Scraper successfully updated it! Make sure isDisplay is true.
+                                await productDealsDB.productdealsRef.child(item.key).update({
+                                    isDisplay: true,
+                                    outOfStock: false
+                                });
+                            }
+                        }
+                    } catch (dbErr) {
+                        logger.warn(`Failed to check/update out of stock for ${item.key}`, { error: dbErr.message });
+                    }
+                }
+                
+                logger.info(`Batch complete. Marked ${markedOutOfStock} items as out of stock.`);
                 processedCount += batchUrls.length;
             } catch (error) {
                 logger.error(`Error processing batch ${i/batchSize + 1}:`, { error: error.message });
@@ -93,7 +128,7 @@ async function main() {
         }
         
         logger.info('Stale products update complete.');
-        await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: staleUrls.length, processedCount });
+        await executionTracker.endDbUpdateExecution('completed', { staleUrlsCount: staleItems.length, processedCount });
     } catch (error) {
         logger.error('Stale products update failed:', error);
         await executionTracker.endDbUpdateExecution('failed', { error: error.message });
