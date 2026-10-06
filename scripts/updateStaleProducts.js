@@ -98,20 +98,22 @@ async function main() {
                         const currentData = snap.val();
                         
                         if (currentData) {
-                            // If the updatedAt is exactly the same, the scraper completely failed on it (out of stock)
+                            // If the updatedAt is exactly the same, the scraper completely failed on it
                             if (currentData.updatedAt === item.oldUpdatedAt) {
                                 await productDealsDB.productdealsRef.child(item.key).update({
                                     isDisplay: false,
-                                    outOfStock: true,
+                                    // User requested to leave outOfStock untouched unless we definitively know it's OOS
+                                    errorStatus: 'ScrapeFailed',
                                     updatedAt: new Date().toISOString() // Touch it so it isn't stale tomorrow
                                 });
                                 markedOutOfStock++;
-                                logger.info(`Marked product out of stock: ${item.key}`);
+                                logger.info(`Marked product with ScrapeFailed error: ${item.key}`);
                             } else {
-                                // Scraper successfully updated it! Make sure isDisplay is true.
+                                // Scraper successfully updated it! Make sure isDisplay is true and clear errors
                                 await productDealsDB.productdealsRef.child(item.key).update({
                                     isDisplay: true,
-                                    outOfStock: false
+                                    outOfStock: false,
+                                    errorStatus: null
                                 });
                             }
                         }

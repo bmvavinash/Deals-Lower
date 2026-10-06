@@ -816,7 +816,7 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0 } = req.query;
+    const { dealType, platform, date, categoryGroup, staticSubcategory, errorStatus, limit = 100, offset = 0 } = req.query;
     
     // Create cache key
     const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}`;
@@ -885,10 +885,15 @@ router.get('/', async (req, res, next) => {
       const hasAnyTitle = (deal.title && deal.title.trim() !== '') || 
                           (deal.shortText && deal.shortText.trim() !== '') || 
                           (deal.productText && deal.productText.trim() !== '');
-      return hasAnyTitle && deal.price;
+      return (hasAnyTitle && deal.price) || (errorStatus && deal.errorStatus === errorStatus);
     });
 
-    // Filter by platform if specified
+    // Filter by errorStatus
+      if (errorStatus) {
+        dealsArray = dealsArray.filter(deal => deal.errorStatus === errorStatus);
+      }
+
+      // Filter by platform if specified
     if (platform) {
       dealsArray = dealsArray.filter(deal => 
         deal.storeType?.toLowerCase() === platform.toLowerCase()

@@ -9,6 +9,7 @@ interface DealFiltersProps {
     limit: number;
     offset: number;
     q?: string;
+    errorStatus?: string;
   };
   onFilterChange: (filters: any) => void;
   isLoading?: boolean;
