@@ -1187,11 +1187,44 @@ async function extractAndStoreFromUrl(driver, url, sourceType = 'website', categ
 			ctx.pageTypeHits[usedPageType || 'none'] = (ctx.pageTypeHits[usedPageType || 'none'] || 0) + 1;
 		}
 		const products = Array.isArray(rawProducts) ? await Promise.all(rawProducts.map(p => normalizeProduct(p, url, sourceType, categoryKey, usedPageType))) : [];
-		if (products.length === 0) {
+				if (products.length === 0) {
 			logger.warn('No products extracted', { url });
+            try {
+                if (driver) {
+                    const bodyText = await driver.findElement(By.css('body')).getText();
+                    const lowerText = bodyText.toLowerCase();
+                    const isOOS = lowerText.includes('currently unavailable') || 
+                                  lowerText.includes('out of stock') || 
+                                  lowerText.includes('sold out') ||
+                                  lowerText.includes('we don\'t know when or if this item will be back in stock');
+                    if (isOOS) {
+                        logger.info('Detected Out of Stock text on page for ' + url);
+                        let productCode = '';
+                        if (/amazon\./i.test(url)) productCode = getAsin(url);
+                        else if (/flipkart\./i.test(url)) productCode = getFlipkartProductId(url);
+                        else if (/myntra\./i.test(url)) productCode = getMyntraCode(url);
+                        else if (/ajio\./i.test(url)) productCode = getAjioCode(url);
+                        if (productCode) {
+                            const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
+                            await productDealsDB.productdealsRef.child(productCode).update({
+                                isDisplay: false,
+                                outOfStock: true,
+                                errorStatus: null,
+                                updatedAt: new Date().toISOString()
+                            });
+                            logger.info('Updated DB for OOS: ' + productCode);
+                            if (ctx) ctx.noProductUrls.push(url);
+                            return { extracted: 1, stored: 1, created: 0, updated: 1, products: [{ productCode }] };
+                        }
+                    }
+                }
+            } catch (oosErr) {
+                logger.debug('Failed to check OOS text on page', { error: oosErr.message });
+            }
 			if (ctx) ctx.noProductUrls.push(url);
 			return { extracted: 0, stored: 0, products: [] };
 		}
+
 
 		// Deduplicate by productCode for accurate counts
 		const beforeCount = products.length;

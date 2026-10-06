@@ -110,11 +110,7 @@ async function main() {
                                 logger.info(`Marked product with ScrapeFailed error: ${item.key}`);
                             } else {
                                 // Scraper successfully updated it! Make sure isDisplay is true and clear errors
-                                await productDealsDB.productdealsRef.child(item.key).update({
-                                    isDisplay: true,
-                                    outOfStock: false,
-                                    errorStatus: null
-                                });
+                                if (currentData.outOfStock !== true) { await productDealsDB.productdealsRef.child(item.key).update({ isDisplay: true, outOfStock: false, errorStatus: null }); } else { await productDealsDB.productdealsRef.child(item.key).update({ errorStatus: null }); }
                             }
                         }
                     } catch (dbErr) {
