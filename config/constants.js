@@ -3,7 +3,7 @@
 // const { environment } = require('./config/constants');
 
 // const ENVIRONMENT = environment; // or 'stage' based on your current setup
-const pathToFile = "C:/Users/anila/keys"
+const pathToFile = process.env.KEYS_DIR_PATH || (process.env.KEYS_DIR_PATH || "C:/Users/anila/keys")
 
 
 const facebookId="100094567890123" // Replace with your actual Facebook ID
@@ -150,7 +150,7 @@ module.exports = {
 
   // Secondary Firebase project for user favourites/preferences (uses Admin SDK)
   userFirebase: {
-    serviceAccountPath: process.env.USERS_FIREBASE_SERVICE_ACCOUNT_PATH || 'C:/Users/anila/keys',
+    serviceAccountPath: process.env.USERS_FIREBASE_SERVICE_ACCOUNT_PATH || (process.env.KEYS_DIR_PATH || "C:/Users/anila/keys"),
     databaseURL: process.env.USERS_FIREBASE_DATABASE_URL || 'https://dealshub-users-default-rtdb.asia-southeast1.firebasedatabase.app',
     appName: 'user-favourites'
   },
@@ -176,7 +176,7 @@ module.exports = {
 
   // Frontend API configuration
   frontend: {
-    apiPort: 3001,
+    apiPort: 3003,
     enableWebSocket: true,
     logRetentionDays: 30
   }

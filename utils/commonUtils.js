@@ -434,6 +434,10 @@ function formatProductInfo(product, tag = "", username = "dealsglobalhub", link 
     }
     // message += `\n\nBuy Here : https://dealshubglobal.com/p/${product?.id}\n\n` ;
 
+    if (product.saleName) {
+        message += `\n🎉 Sale is live! View all deals in ${product.saleName}: https://lowerdeal.com/sale/${encodeURIComponent(product.saleName)}\n\n`;
+    }
+
     if (product.discount > 85) {
         message += "⚡️⚡️ **Price Dropped** 📉\n";
     }

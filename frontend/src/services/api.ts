@@ -106,6 +106,12 @@ export const stocksAPI = {
   getAll: () => api.get('/stocks')
 };
 
+// IPO API
+export const ipoAPI = {
+  checkKfintechStatus: (data: { ipoKeyword: string; panNumbers: string[] }) =>
+    api.post('/ipo/check-kfintech', data)
+};
+
 // Logs API
 export const logsAPI = {
   getAll: (params?: { level?: string; module?: string; startDate?: string; endDate?: string; limit?: number; category?: string; database?: string; source?: string }) =>

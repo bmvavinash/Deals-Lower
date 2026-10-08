@@ -107,7 +107,7 @@ async function getOrCreateDriver() {
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
-    const { url, postProduct = false } = req.body;
+    const { url, postProduct = false, saleName = null } = req.body;
     
     if (!url || typeof url !== 'string') {
       return res.status(400).json({
@@ -190,7 +190,8 @@ router.post('/process-product', async (req, res) => {
         false, // generateLink
         '', // shortUrl
         null, // categoryOverride
-        errorContext // errorContext
+        errorContext, // errorContext
+        saleName // saleName
       );
       logger.info('getProductDetails returned', { result, errorContext });
     } else {
@@ -1323,6 +1324,55 @@ router.get('/search', async (req, res, next) => {
   } catch (error) {
     logger.error('Error in global search', { error: error.message, stack: error.stack });
     next(error);
+  }
+});
+
+/**
+ * GET /api/deals/sale/:saleName
+ * Get products matching a specific sale name
+ */
+router.get('/sale/:saleName', async (req, res, next) => {
+  try {
+    const { saleName } = req.params;
+    const { limit = 100 } = req.query;
+    
+    // Check both standard deals and static productdeals
+    const [dealsSnap, staticSnap] = await Promise.all([
+      productDealsDB.dealsRef
+        .orderByChild('saleName')
+        .equalTo(saleName)
+        .limitToLast(Number(limit))
+        .once('value'),
+      productDealsDB.staticRef
+        .orderByChild('saleName')
+        .equalTo(saleName)
+        .limitToLast(Number(limit))
+        .once('value')
+    ]);
+
+    let products = [];
+    if (dealsSnap.exists()) {
+      Object.values(dealsSnap.val()).forEach(p => products.push(p));
+    }
+    if (staticSnap.exists()) {
+      Object.values(staticSnap.val()).forEach(p => products.push(p));
+    }
+
+    // Sort descending by datetime if available
+    products.sort((a, b) => {
+      const timeA = a.datetime ? new Date(a.datetime).getTime() : 0;
+      const timeB = b.datetime ? new Date(b.datetime).getTime() : 0;
+      return timeB - timeA;
+    });
+    
+    res.json({
+      success: true,
+      data: products,
+      count: products.length
+    });
+  } catch (error) {
+    logger.error('Error fetching sale products', { saleName: req.params.saleName, error: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch sale products' });
   }
 });
 

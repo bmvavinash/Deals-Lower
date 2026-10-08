@@ -7,6 +7,8 @@ interface DealCardProps {
   deal: Deal;
 }
 
+//trigger 2
+
 const DealCard: React.FC<DealCardProps> = ({ deal }) => {
   return (
     <div className="deal-card">

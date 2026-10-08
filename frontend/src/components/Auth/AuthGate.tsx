@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { auth, googleProvider, isConfigured } from '../../config/firebase';
 
 interface AuthGateProps {
@@ -40,14 +40,16 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser && firebaseUser.email !== ALLOWED_EMAIL) {
         setError(`Access Denied: Email "${firebaseUser.email}" is not authorized.`);
+        await signOut(auth);
+        setUser(null);
       } else {
+        setUser(firebaseUser);
         setError(null);
       }
+      setLoading(false);
     });
 
     return () => unsubscribe();
@@ -58,6 +60,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     setLoading(true);
     setError(null);
     try {
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(auth, googleProvider);
+        return;
+      }
+      
       const result = await signInWithPopup(auth, googleProvider);
       const loggedUser = result.user;
       if (loggedUser.email !== ALLOWED_EMAIL) {
@@ -67,7 +75,6 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     } catch (err: any) {
       console.error('Google Sign-In failed:', err);
       setError(err.message || 'Failed to authenticate via Google.');
-    } finally {
       setLoading(false);
     }
   };
