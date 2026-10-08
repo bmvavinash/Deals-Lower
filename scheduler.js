@@ -200,9 +200,9 @@ async function getProductDetails(driver, link, text = "", len = 0, access_token 
     if (!hasAvinashbmv && !hasAvinashbmvINR) {
       // Create fallback affiliate link using productCode
       const fallbackLink = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
-      product.links.avinashbmv = "";
-      product.links.avinashbmvINR = fallbackLink;
-      logger.info(`Generated fallback Amazon affiliate link for ${product.productCode} (both links were empty) - assigned to avinashbmvINR`, { 
+      product.links.avinashbmv = fallbackLink;
+      product.links.avinashbmvINR = "";
+      logger.info(`Generated fallback Amazon affiliate link for ${product.productCode} (both links were empty) - assigned to avinashbmv`, { 
         functionName: 'getProductDetails',
         productCode: product.productCode
       });

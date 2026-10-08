@@ -111,7 +111,7 @@ const categoriesRoutes = require('./routes/categories');
 const matchingConfigRoutes = require('./routes/matchingConfig');
 
 const app = express();
-const PORT = constants.frontend?.apiPort || 3001;
+const PORT = process.env.PORT || constants.frontend?.apiPort || 3001;
 
 // Middleware
 app.use(cors());

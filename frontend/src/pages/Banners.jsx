@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './Banners.css';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
 
 const buildBannerKey = (banner = {}) => {
   const platform = (banner.platform || '').trim().toLowerCase();
