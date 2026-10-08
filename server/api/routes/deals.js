@@ -59,8 +59,10 @@ function initSearchIndexCache() {
   });
 }
 
-// Pre-warm the cache
-setTimeout(initSearchIndexCache, 2000);
+// Pre-warm the cache, but skip on Render to prevent OOM
+if (!process.env.RENDER) {
+  setTimeout(initSearchIndexCache, 2000);
+}
 
 function isProcessRunning(pid) {
   if (!pid || Number.isNaN(pid)) return false;

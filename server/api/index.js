@@ -192,9 +192,9 @@ if (require.main === module) {
       logger.error('Failed to start Notification Queue Worker', { error: error.message });
     }
 
-    // Auto-start Local Daemon if offline on API startup
+    // Auto-start Local Daemon if offline on API startup (SKIP ON RENDER)
     try {
-      if (admin.apps.length) {
+      if (admin.apps.length && !process.env.RENDER) {
         const db = admin.database();
         const heartbeatRef = db.ref('daemonHeartbeat');
         heartbeatRef.once('value', (snapshot) => {
