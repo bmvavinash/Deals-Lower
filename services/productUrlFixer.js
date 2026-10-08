@@ -66,18 +66,42 @@ class ProductUrlFixer {
     try {
       const platform = this.detectPlatform(product);
       const currentUrl = product.links?.avinashbmvINR || '';
+      const existingExtrapeUrl = product.links?.avinashbmv || '';
       
-      if (!currentUrl) {
+      // Check if it's an Extrape shortlink (they use various domains depending on the store)
+      const hasValidExtrape = existingExtrapeUrl && (
+        existingExtrapeUrl.includes('extp.in') || 
+        existingExtrapeUrl.includes('extrape.com') ||
+        existingExtrapeUrl.includes('ajiio.co') ||
+        existingExtrapeUrl.includes('fkrt.co') ||
+        existingExtrapeUrl.includes('myntr.in')
+      );
+      
+      const hasValidAmazon = platform === 'amazon' && (existingExtrapeUrl.includes('dealshubglo0c-21') || currentUrl.includes('dealshubglo0c-21'));
+      const hasInrDeals = (currentUrl && currentUrl.includes('avinashbmv')) || (existingExtrapeUrl && existingExtrapeUrl.includes('avinashbmv'));
+      
+      if (platform !== 'amazon' && (hasValidExtrape || hasInrDeals)) {
         this.skippedCount++;
-        logger.debug(`Skipping product ${productId} - no avinashbmvINR URL`);
-        return;
+        return; // Already fixed or already affiliated with INRDeals
+      }
+      if (platform === 'amazon' && hasValidAmazon) {
+        this.skippedCount++;
+        return; // Already fixed
       }
       
       const expectedUrl = await this.generateCorrectUrl(product, platform, currentUrl);
       
+      // Check if it's an Extrape URL (usually starts with extp.in or extrape.com)
+      const isExtrape = expectedUrl && (expectedUrl.includes('extp.in') || expectedUrl.includes('extrape.com'));
+      
       if (expectedUrl && expectedUrl !== currentUrl) {
-        // Update the URL in database
-        await productDealsDB.ref.child(productId).child('links').child('avinashbmvINR').set(expectedUrl);
+        if (isExtrape) {
+          // Update the Extrape URL to avinashbmv
+          await productDealsDB.ref.child(productId).child('links').child('avinashbmv').set(expectedUrl);
+        } else {
+          // Update INRDeals or Amazon URL to avinashbmvINR
+          await productDealsDB.ref.child(productId).child('links').child('avinashbmvINR').set(expectedUrl);
+        }
         
         this.fixedCount++;
         this.fixLog.push({
@@ -209,40 +233,31 @@ class ProductUrlFixer {
    */
   async generateNonAmazonUrl(product, currentUrl) {
     try {
+      // Try to use extrape first if we have a driver (since INRDeals is down)
+      if (global.driver && product.productUrl) {
+        try {
+          const extrapeUrl = await getExtrapeUrl(global.driver, product.productUrl);
+          if (extrapeUrl) {
+            return extrapeUrl;
+          }
+        } catch (error) {
+          logger.error('Error using extrape:', { error: error.message });
+        }
+      }
+
       // Check if current URL has tag=dealshubglo0c-21 (blunder case)
       if (currentUrl.includes('tag=dealshubglo0c-21')) {
         logger.warn('Non-Amazon product has Amazon tag - attempting to fix');
-        
-        // Try to use extrape if we have a driver
-        if (global.driver && product.productUrl) {
-          try {
-            const extrapeUrl = await getExtrapeUrl(global.driver, product.productUrl);
-            if (extrapeUrl) {
-              return extrapeUrl;
-            }
-          } catch (error) {
-            logger.error('Error using extrape:', { error: error.message });
-          }
-        }
-        
-        // Fallback: use productUrl with inrdeals.com wrapper
-        if (product.productUrl) {
-          return `inrdeals.com/avi646476329/${product.productUrl}`;
-        }
-        
+        // Extrape failed, we cannot generate a valid link. Return null to skip update.
         return null;
       }
       
       // Check if current URL is already in correct format
       if (currentUrl.startsWith('inrdeals.com/avi646476329/')) {
-        return currentUrl; // URL is already correct
+        return currentUrl; // URL is already correct (we leave it as is if it's already INRDeals)
       }
       
-      // If URL doesn't start with inrdeals.com, wrap it
-      if (product.productUrl) {
-        return `inrdeals.com/avi646476329/${product.productUrl}`;
-      }
-      
+      // Extrape is compulsory. If we reach here, Extrape failed, so return null to skip updating.
       return null;
       
     } catch (error) {

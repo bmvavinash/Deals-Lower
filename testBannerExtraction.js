@@ -1,8 +1,15 @@
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const { extractBanners } = require('./dataSources/bannerExtractor');
 const { bannerDB } = require('./database/firebaseDB/bannerDB');
 const { getModuleLogger } = require('./logger/logger');
 
 const logger = getModuleLogger('testBannerExtraction');
+
+// Global timeout of 90 seconds to prevent hanging
+setTimeout(() => {
+    logger.error('Test execution timed out after 90 seconds. Terminating.');
+    process.exit(1);
+}, 90000).unref();
 
 async function testBannerExtraction() {
     try {

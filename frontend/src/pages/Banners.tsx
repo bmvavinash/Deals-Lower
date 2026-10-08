@@ -14,6 +14,7 @@ interface Banner {
   clickRedirectUrl?: string;
   creationTimestamp?: string;
   updateTimestamp?: string;
+  priority?: number;
 }
 
 interface Stats {
@@ -439,7 +440,7 @@ const BannersPage: React.FC = () => {
             <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'}`}>
               <div className="banner-status-toggle">
                 <button 
-                  onClick={() => toggleBannerStatus(banner.id, banner.isActive)}
+                  onClick={() => toggleBannerStatus(banner.id, banner.isActive ?? false)}
                   className={`status-toggle-btn ${banner.isActive ? 'active' : 'inactive'}`}
                   title={`Click to ${banner.isActive ? 'deactivate' : 'activate'} this banner`}
                 >

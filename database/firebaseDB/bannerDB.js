@@ -45,7 +45,9 @@ const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 
 // Initialize Firebase Admin if not already initialized
 if (!admin.apps.length) {
-  const databaseURL = `https://${DB_Name}-default-rtdb.firebaseio.com`;
+  const databaseURL = DB_Name === 'lowerdealhub'
+    ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+    : `https://${DB_Name}-default-rtdb.firebaseio.com`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL
@@ -94,10 +96,12 @@ class BannerDB {
         const results = [];
         let existingKeys = new Set();
         let productImageKeys = new Set();
+        let existingBanners = {};
 
         try {
             const existing = await this.getAllBanners();
             if (existing.status === 200 && existing.data) {
+                existingBanners = existing.data;
                 existingKeys = new Set(
                     Object.values(existing.data)
                         .map(buildBannerKey)
@@ -119,6 +123,7 @@ class BannerDB {
             logger.warn('Could not pre-load existing banners for dedupe', { error: error.message });
         }
 
+        const updates = {};
         for (const banner of banners) {
             const bannerKey = buildBannerKey(banner);
             
@@ -136,11 +141,37 @@ class BannerDB {
                 continue;
             }
 
-            const result = await this.storeBanner(banner);
-            results.push({ id: banner.id, ...result });
+            const exists = existingBanners && existingBanners[banner.id];
+            if (exists) {
+                const existingData = existingBanners[banner.id];
+                const updatedData = {
+                    ...existingData,
+                    ...banner,
+                    updateTimestamp: new Date().toISOString()
+                };
+                updates[banner.id] = updatedData;
+                results.push({ id: banner.id, status: 200, message: 'Banner updated successfully' });
+            } else {
+                updates[banner.id] = banner;
+                results.push({ id: banner.id, status: 201, message: 'Banner created successfully' });
+            }
 
             if (bannerKey) {
                 existingKeys.add(bannerKey);
+            }
+        }
+
+        if (Object.keys(updates).length > 0) {
+            try {
+                await this.bannersRef.update(updates);
+                logger.info(`Bulk stored/updated ${Object.keys(updates).length} banners in Firebase`);
+            } catch (error) {
+                logger.error('Failed to bulk update banners in Firebase, falling back to sequential:', { error: error.message });
+                for (const banner of banners) {
+                    if (updates[banner.id]) {
+                        await this.storeBanner(banner);
+                    }
+                }
             }
         }
         
@@ -250,13 +281,19 @@ class BannerDB {
             
             const allBanners = allBannersResult.data;
             let deactivatedCount = 0;
+            const updates = {};
             
             // Deactivate banners that are not in the active list
             for (const [bannerId, bannerData] of Object.entries(allBanners)) {
                 if (bannerData.isActive && !activeBannerIds.includes(bannerId)) {
-                    await this.deactivateBanner(bannerId);
+                    updates[`${bannerId}/isActive`] = false;
+                    updates[`${bannerId}/updateTimestamp`] = new Date().toISOString();
                     deactivatedCount++;
                 }
+            }
+            
+            if (deactivatedCount > 0) {
+                await this.bannersRef.update(updates);
             }
             
             logger.info(`Deactivated ${deactivatedCount} old banners`);
@@ -432,10 +469,12 @@ class TestBannerDB {
         const results = [];
         let existingKeys = new Set();
         let productImageKeys = new Set();
+        let existingBanners = {};
 
         try {
             const existing = await this.getAllTestBanners();
             if (existing.status === 200 && existing.data) {
+                existingBanners = existing.data;
                 existingKeys = new Set(
                     Object.values(existing.data)
                         .map(buildBannerKey)
@@ -457,6 +496,7 @@ class TestBannerDB {
             logger.warn('Could not pre-load test banners for dedupe', { error: error.message });
         }
 
+        const updates = {};
         for (const banner of banners) {
             const bannerKey = buildBannerKey(banner);
             
@@ -474,11 +514,37 @@ class TestBannerDB {
                 continue;
             }
 
-            const result = await this.storeTestBanner(banner);
-            results.push({ id: banner.id, ...result });
+            const exists = existingBanners && existingBanners[banner.id];
+            if (exists) {
+                const existingData = existingBanners[banner.id];
+                const updatedData = {
+                    ...existingData,
+                    ...banner,
+                    updateTimestamp: new Date().toISOString()
+                };
+                updates[banner.id] = updatedData;
+                results.push({ id: banner.id, status: 200, message: 'Test banner updated successfully' });
+            } else {
+                updates[banner.id] = banner;
+                results.push({ id: banner.id, status: 201, message: 'Test banner created successfully' });
+            }
 
             if (bannerKey) {
                 existingKeys.add(bannerKey);
+            }
+        }
+
+        if (Object.keys(updates).length > 0) {
+            try {
+                await this.testBannersRef.update(updates);
+                logger.info(`Bulk stored/updated ${Object.keys(updates).length} test banners in Firebase`);
+            } catch (error) {
+                logger.error('Failed to bulk update test banners in Firebase, falling back to sequential:', { error: error.message });
+                for (const banner of banners) {
+                    if (updates[banner.id]) {
+                        await this.storeTestBanner(banner);
+                    }
+                }
             }
         }
         
@@ -563,13 +629,19 @@ class TestBannerDB {
             
             const allBanners = allBannersResult.data;
             let deactivatedCount = 0;
+            const updates = {};
             
             // Deactivate banners that are not in the active list
             for (const [bannerId, bannerData] of Object.entries(allBanners)) {
                 if (bannerData.isActive && !activeBannerIds.includes(bannerId)) {
-                    await this.deactivateTestBanner(bannerId);
+                    updates[`${bannerId}/isActive`] = false;
+                    updates[`${bannerId}/updateTimestamp`] = new Date().toISOString();
                     deactivatedCount++;
                 }
+            }
+            
+            if (deactivatedCount > 0) {
+                await this.testBannersRef.update(updates);
             }
             
             logger.info(`Deactivated ${deactivatedCount} old test banners`);

@@ -83,20 +83,12 @@ interface Banner {
   clickRedirectUrl?: string;
   creationTimestamp?: string;
   updateTimestamp?: string;
-}
-
-interface BannerStats {
-  total: number;
-  active: number;
-  inactive: number;
-  byPlatform?: Record<string, number>;
-  byCategory?: Record<string, number>;
-  source?: string;
+  priority?: number;
 }
 
 const DealsPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('deals');
-  const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', categoryGroup: '', staticSubcategory: '', limit: 100, offset: 0, q: '' });
+  const [filters, setFilters] = useState({ dealType: 'hotDeal', platform: '', date: '', categoryGroup: '', staticSubcategory: '', limit: 100, offset: 0, q: '', sortBy: 'default', order: 'desc' });
   const [newsFilters, setNewsFilters] = useState({ limit: 20, offset: 0, category: '', sortBy: 'publishDate', order: 'desc' });
   const [reviewsFilters, setReviewsFilters] = useState({ limit: 20, offset: 0, productName: '', minRating: '', sortBy: 'publishDate', order: 'desc' });
   
@@ -230,7 +222,7 @@ const DealsPage: React.FC = () => {
 
   // Banner state
   const [banners, setBanners] = useState<Banner[]>([]);
-  const [bannerStats, setBannerStats] = useState<BannerStats | null>(null);
+
   const [bannerLoading, setBannerLoading] = useState(false);
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [bannerFilter, setBannerFilter] = useState({ 
@@ -537,15 +529,6 @@ const DealsPage: React.FC = () => {
         // Apply filters and set banners
         applyBannerFilters(unique);
 
-        const updatedStats: BannerStats = {
-          ...(result.data.stats || {}),
-          total: unique.length,
-          active: unique.filter((b) => b && b.isActive).length,
-          inactive: unique.filter((b) => b && !b.isActive).length,
-          source: result.source || bannerSource,
-        };
-        setBannerStats(updatedStats);
-        
         // Initialize visibility state
         const visibilityState: Record<string, boolean> = {};
         unique.forEach((banner: Banner) => {
@@ -623,18 +606,6 @@ const DealsPage: React.FC = () => {
     }
   };
 
-  const fetchBannerStats = async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/api/banners/stats`);
-      const result = await response.json();
-      if (result.success) {
-        setBannerStats(result.data);
-      }
-    } catch (err) {
-      console.error('Error fetching banner stats:', err);
-    }
-  };
-
   const toggleBannerStatus = async (bannerId: string, currentStatus: boolean) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/banners/${bannerId}/toggle-active`, {
@@ -668,8 +639,7 @@ const DealsPage: React.FC = () => {
           timestamp: new Date().toISOString()
         }));
         
-        fetchBannerStats();
-      } else {
+              } else {
         setBannerError(`Failed to update banner: ${result.error}`);
       }
     } catch (err) {
@@ -707,8 +677,7 @@ const DealsPage: React.FC = () => {
         });
         
         // Update stats
-        fetchBannerStats();
-        
+                
         setShowDeleteConfirm(null);
       } else {
         throw new Error(result.error || 'Failed to delete banner');
@@ -756,8 +725,7 @@ const DealsPage: React.FC = () => {
         setSelectedBanners(new Set());
         
         // Update stats
-        fetchBannerStats();
-        
+                
         alert(`Successfully deleted ${result.data.deletedCount || bannerIds.length} banner(s)`);
       } else {
         throw new Error(result.error || 'Failed to delete banners');
@@ -1060,53 +1028,7 @@ const DealsPage: React.FC = () => {
       return 'Invalid date';
     }
   };
-
-  useEffect(() => {
-    if (viewMode === 'banners') {
-      fetchBannerSource();
-      fetchBannerStats();
-      
-      // Load from cache first, then fetch if needed
-      const cached = loadBannerCache();
-      if (cached && cached.source === bannerSource) {
-        const { unique } = dedupeBanners(cached.data);
-        applyBannerFilters(unique);
-      } else {
-        // Only fetch if cache is empty or source changed
-        fetchBannersFromAPI(false);
-      }
-      
-      const interval = setInterval(() => {
-        fetchBannerStats();
-      }, 30000);
-      return () => clearInterval(interval);
-    }
-  }, [viewMode]);
-  
   // Update filters when bannerFilter changes (re-filter cached data)
-  useEffect(() => {
-    if (viewMode === 'banners') {
-      const cached = loadBannerCache();
-      if (cached) {
-        // Ensure isProductImage field is preserved
-        const bannersWithProductFlag = cached.data.map((banner: Banner) => ({
-          ...banner,
-          isProductImage: banner.isProductImage === true
-        }));
-        const filtered = filterBanners(bannersWithProductFlag, bannerFilter);
-        setBanners(filtered);
-      } else if (bannerCache && bannerCache.data.length > 0) {
-        // Ensure isProductImage field is preserved
-        const bannersWithProductFlag = bannerCache.data.map((banner: Banner) => ({
-          ...banner,
-          isProductImage: banner.isProductImage === true
-        }));
-        const filtered = filterBanners(bannersWithProductFlag, bannerFilter);
-        setBanners(filtered);
-      }
-    }
-  }, [bannerFilter, viewMode]);
-
   const formatDate = (dateString?: string) => {
     if (!dateString) return 'N/A';
     try {
@@ -1122,21 +1044,21 @@ const DealsPage: React.FC = () => {
 
   return (
     <div className="deals-page">
-      {(dealsLoading || isSearchingCode || isTriggeringBanners) && (
-        <div className="global-loading-overlay" style={{
-          position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: 'rgba(255, 255, 255, 0.7)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          zIndex: 9999
-        }}>
-          <div className="spinner" style={{ fontSize: '3rem', marginBottom: '10px' }}>↻</div>
-          <h2>Loading...</h2>
-        </div>
-      )}
+      {(dealsLoading || isSearchingCode) && (
+                  <div className="global-loading-overlay" style={{
+                    position: 'fixed',
+                    top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    zIndex: 9999
+                  }}>
+                    <div className="spinner" style={{ fontSize: '3rem', marginBottom: '10px' }}>↻</div>
+                    <h2>Loading...</h2>
+                  </div>
+                )}
 
       <div className="view-mode-selector">
       <div className="page-header">
@@ -1246,12 +1168,7 @@ const DealsPage: React.FC = () => {
         >
           ⭐ Reviews
         </button>
-        <button 
-          className={`view-tab ${viewMode === 'banners' ? 'active' : ''}`}
-          onClick={() => setViewMode('banners')}
-        >
-          🖼️ Banners
-        </button>
+        
       </div>
       </div>
 
@@ -1622,359 +1539,7 @@ const DealsPage: React.FC = () => {
       )}
 
       {/* Banners View */}
-      {viewMode === 'banners' && (
-        <>
-          <div className="banners-header">
-            <h1>🖼️ Banner Management</h1>
-            {bannerStats && (
-              <div className="banner-stats-summary">
-                <span>Total: {bannerStats.total}</span>
-                <span className="active">Active: {bannerStats.active}</span>
-                <span>Inactive: {bannerStats.inactive}</span>
-                <span className="source-info">Source: {bannerStats.source || bannerSource}</span>
-              </div>
-            )}
-          </div>
-
-          <div className="banners-controls">
-            <div className="control-group">
-              <button 
-                onClick={handleTriggerBanners}
-                disabled={isTriggeringBanners}
-                className="trigger-button"
-              >
-                {isTriggeringBanners ? '🔄 Loading...' : '🚀 Display Banners'}
-              </button>
-              
-              <button 
-                onClick={handleExtractAllBanners}
-                disabled={isExtractingBanners}
-                className="extract-all-button"
-                title="Extract banners from all stores and store in DB (visibility OFF)"
-              >
-                {isExtractingBanners ? '⏳ Extracting...' : '🔍 Extract All Banners'}
-              </button>
-              
-              <div className="source-toggle">
-                <span className="source-label">Banner Source:</span>
-                <div className="toggle-switch">
-                  <button 
-                    onClick={async () => {
-                      try {
-                        const response = await fetch(`${API_BASE_URL}/api/banners/source/toggle`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' }
-                        });
-                        const result = await response.json();
-                        if (result.success) {
-                          setBannerSource(result.data.current);
-                        }
-                      } catch (err) {
-                        setBannerError((err as Error).message);
-                      }
-                    }}
-                    className={`source-button ${bannerSource === 'test-banners' ? 'active' : ''}`}
-                  >
-                    test-banners.json
-                  </button>
-                  <button 
-                    onClick={async () => {
-                      try {
-                        const response = await fetch(`${API_BASE_URL}/api/banners/source/toggle`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' }
-                        });
-                        const result = await response.json();
-                        if (result.success) {
-                          setBannerSource(result.data.current);
-                        }
-                      } catch (err) {
-                        setBannerError((err as Error).message);
-                      }
-                    }}
-                    className={`source-button ${bannerSource === 'production' ? 'active' : ''}`}
-                  >
-                    production
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {bannerDedupeInfo.removed > 0 && (
-            <div className="banners-info">
-              Removed {bannerDedupeInfo.removed} duplicate banners for this session.
-            </div>
-          )}
-
-          {bannerError && (
-            <div className="banners-error">⚠️ Error: {bannerError}</div>
-          )}
-
-          {bannerExtractionResult && (
-            <div className="banners-success">
-              ✅ Extraction Complete! 
-              Extracted: {bannerExtractionResult.extracted}, 
-              Stored: {bannerExtractionResult.stored}, 
-              Duplicates Skipped: {bannerExtractionResult.duplicates}
-              <br />
-              <small>All banners stored with visibility OFF. You can turn them on one by one in the UI.</small>
-            </div>
-          )}
-
-          {banners.length === 0 && !isTriggeringBanners && (
-            <div className="no-banners-message">
-              <p>No banners loaded yet. Click "Display Banners" to fetch from {bannerSource}.</p>
-            </div>
-          )}
-
-          <div className="banners-filters">
-            <select 
-              value={bannerFilter.platform} 
-              onChange={(e) => handleBannerFilterChange({ platform: e.target.value })}
-              className="filter-select"
-            >
-              <option value="all">All Platforms</option>
-              <option value="amazon">Amazon</option>
-              <option value="flipkart">Flipkart</option>
-              <option value="myntra">Myntra</option>
-              <option value="ajio">Ajio</option>
-            </select>
-            
-            <select 
-              value={bannerFilter.timestamp} 
-              onChange={(e) => handleBannerFilterChange({ timestamp: e.target.value })}
-              className="filter-select"
-            >
-              <option value="all">All Time</option>
-              <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
-              <option value="recent">Recent (Last 7 Days)</option>
-            </select>
-            
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={bannerFilter.activeOnly}
-                onChange={(e) => handleBannerFilterChange({ activeOnly: e.target.checked })}
-              />
-              Active Only
-            </label>
-            
-            <label className="filter-checkbox">
-              <input
-                type="checkbox"
-                checked={bannerFilter.hideProductImages}
-                onChange={(e) => handleBannerFilterChange({ hideProductImages: e.target.checked })}
-              />
-              Hide Product Images
-            </label>
-            
-            {banners.length > 0 && (
-              <>
-                <label className="filter-checkbox">
-                  <input
-                    type="checkbox"
-                    checked={selectedBanners.size === banners.length && banners.length > 0}
-                    onChange={selectAllBanners}
-                  />
-                  Select All ({selectedBanners.size})
-                </label>
-                
-                {selectedBanners.size > 0 && (
-                  <>
-                    <button
-                      onClick={() => handleBulkMarkAsProductImage(true)}
-                      className="trigger-button"
-                      style={{ backgroundColor: '#f39c12', fontSize: '14px', padding: '8px 16px' }}
-                      title={`Mark ${selectedBanners.size} selected banner(s) as product images`}
-                    >
-                      🏷️ Mark as Product Image ({selectedBanners.size})
-                    </button>
-                    <button
-                      onClick={() => handleBulkMarkAsProductImage(false)}
-                      className="trigger-button"
-                      style={{ backgroundColor: '#95a5a6', fontSize: '14px', padding: '8px 16px' }}
-                      title={`Unmark ${selectedBanners.size} selected banner(s) as product images`}
-                    >
-                      ✏️ Unmark as Product Image ({selectedBanners.size})
-                    </button>
-                    <button
-                      onClick={handleBulkDelete}
-                      className="trigger-button"
-                      style={{ backgroundColor: '#dc3545', fontSize: '14px', padding: '8px 16px' }}
-                      title={`Delete ${selectedBanners.size} selected banner(s)`}
-                    >
-                      🗑️ Delete Selected ({selectedBanners.size})
-                    </button>
-                  </>
-                )}
-                
-                <button
-                  onClick={handleDeleteFlightBanners}
-                  disabled={isDeletingFlights}
-                  className="trigger-button"
-                  style={{ backgroundColor: '#ff6b6b', fontSize: '14px', padding: '8px 16px' }}
-                  title="Delete all flight-related banners"
-                >
-                  {isDeletingFlights ? '⏳ Deleting...' : '✈️ Delete Flight Banners'}
-                </button>
-                
-                <button
-                  onClick={handleDeleteOldBanners}
-                  disabled={isDeletingOldBanners}
-                  className="trigger-button"
-                  style={{ backgroundColor: '#e74c3c', fontSize: '14px', padding: '8px 16px' }}
-                  title="Delete all banners from years before 2026"
-                >
-                  {isDeletingOldBanners ? '⏳ Deleting...' : '🗑️ Delete Old Banners (Before 2026)'}
-                </button>
-                
-                <button
-                  onClick={handleDeleteProductImages}
-                  disabled={isDeletingProductImages}
-                  className="trigger-button"
-                  style={{ backgroundColor: '#f39c12', fontSize: '14px', padding: '8px 16px' }}
-                  title="Delete all product image banners"
-                >
-                  {isDeletingProductImages ? '⏳ Deleting...' : '🖼️ Delete Product Images'}
-                </button>
-                
-                <button
-                  onClick={handleDeleteDuplicates}
-                  disabled={isDeletingDuplicates}
-                  className="trigger-button"
-                  style={{ backgroundColor: '#9b59b6', fontSize: '14px', padding: '8px 16px' }}
-                  title="Delete duplicate banners based on URL matching"
-                >
-                  {isDeletingDuplicates ? '⏳ Deleting...' : '🔄 Delete Duplicates'}
-                </button>
-              </>
-            )}
-            
-            <button
-              onClick={() => {
-                clearBannerCache();
-                fetchBannersFromAPI(true);
-              }}
-              className="trigger-button"
-              style={{ marginLeft: 'auto', fontSize: '14px', padding: '8px 16px' }}
-              title="Clear cache and refresh from database"
-            >
-              🔄 Refresh
-            </button>
-          </div>
-
-          {bannerStats && bannerStats.byPlatform && Object.keys(bannerStats.byPlatform).length > 0 && (
-            <div className="platform-breakdown">
-              <h3>Banners by Platform</h3>
-              <div className="platform-stats">
-                {Object.entries(bannerStats.byPlatform).map(([platform, count]) => (
-                  <div key={platform} className="platform-stat-item">
-                    <span className="platform-name">{platform}</span>
-                    <span className="platform-count">{count}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="banners-grid">
-            {banners.length === 0 && !isTriggeringBanners ? (
-              <div className="no-banners">No banners found matching the filters</div>
-            ) : (
-              banners
-                .filter(banner => bannerVisibility[banner.id] !== false)
-                .map((banner) => (
-                <div key={banner.id} className={`banner-card ${banner.isActive ? 'active' : 'inactive'} ${selectedBanners.has(banner.id) ? 'selected' : ''}`}>
-                  <div className="banner-card-header">
-                    <label className="banner-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={selectedBanners.has(banner.id)}
-                        onChange={() => toggleBannerSelection(banner.id)}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </label>
-                    <div className="banner-status-toggle">
-                      <button 
-                        onClick={() => toggleBannerStatus(banner.id, banner.isActive || false)}
-                        className={`status-toggle-btn ${banner.isActive ? 'active' : 'inactive'}`}
-                        title={`Click to ${banner.isActive ? 'deactivate' : 'activate'} this banner`}
-                      >
-                        {banner.isActive ? '✓ Active' : '✗ Inactive'}
-                      </button>
-                    </div>
-                    <button
-                      onClick={() => handleMarkAsProductImage(banner.id, !banner.isProductImage)}
-                      className="banner-mark-product-btn"
-                      style={{ 
-                        backgroundColor: banner.isProductImage ? '#f39c12' : '#95a5a6',
-                        fontSize: '11px',
-                        padding: '4px 8px',
-                        marginRight: '4px',
-                        minWidth: 'auto'
-                      }}
-                      title={banner.isProductImage ? 'Unmark as product image' : 'Mark as product image'}
-                    >
-                      {banner.isProductImage ? '🏷️' : '🖼️'}
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm({ id: banner.id, title: banner.title || banner.id })}
-                      className="banner-delete-btn"
-                      title="Delete this banner"
-                      disabled={deletingBannerId === banner.id}
-                    >
-                      {deletingBannerId === banner.id ? '⏳' : '🗑️'}
-                    </button>
-                  </div>
-                  <div className="banner-image">
-                    {banner.url ? (
-                      <img src={banner.url} alt={banner.title || banner.id} onError={(e) => {
-                        (e.target as HTMLImageElement).src = 'https://via.placeholder.com/300x150?text=Banner+Image';
-                      }} />
-                    ) : (
-                      <div className="banner-placeholder">No Image</div>
-                    )}
-                  </div>
-                  <div className="banner-info">
-                    <h3>{banner.title || banner.id}</h3>
-                    {banner.description && <p>{banner.description}</p>}
-                    <div className="banner-meta">
-                      <span className={`banner-status ${banner.isActive ? 'active' : 'inactive'}`}>
-                        {banner.isActive ? '✓ Active' : '✗ Inactive'}
-                      </span>
-                      {banner.platform && (
-                        <span className="banner-platform">{banner.platform}</span>
-                      )}
-                      {banner.category && (
-                        <span className="banner-category">{banner.category}</span>
-                      )}
-                      {banner.creationTimestamp && (
-                        <span className="banner-date" title={new Date(banner.creationTimestamp).toLocaleString()}>
-                          📅 {formatBannerDate(banner.creationTimestamp)}
-                        </span>
-                      )}
-                    </div>
-                    {banner.clickRedirectUrl && (
-                      <a 
-                        href={banner.clickRedirectUrl.startsWith('http://') || banner.clickRedirectUrl.startsWith('https://') 
-                          ? banner.clickRedirectUrl 
-                          : `https://${banner.clickRedirectUrl}`} 
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="banner-link"
-                      >
-                        View Link →
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </>
-      )}
+      
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (

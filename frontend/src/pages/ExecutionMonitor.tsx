@@ -147,10 +147,10 @@ const ExecutionMonitor: React.FC = () => {
                 </div>
               </>
             )}
-            {executionType === 'telegram_bot' && currentExec.channel && (
+            {executionType === 'telegram_bot' && (currentExec as any).channel && (
               <div className="info-row">
                 <span className="label">Channel:</span>
-                <span className="value">{currentExec.channel}</span>
+                <span className="value">{(currentExec as any).channel}</span>
               </div>
             )}
           </div>
@@ -179,23 +179,23 @@ const ExecutionMonitor: React.FC = () => {
             <div className="progress-stats">
               <div className="stat-card">
                 <div className="stat-label">Messages Total</div>
-                <div className="stat-value">{currentExec.messages?.total || 0}</div>
+                <div className="stat-value">{(currentExec as any).messages?.total || 0}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Messages Processed</div>
-                <div className="stat-value success">{currentExec.messages?.processed || 0}</div>
+                <div className="stat-value success">{(currentExec as any).messages?.processed || 0}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Products Total</div>
-                <div className="stat-value">{currentExec.products?.total || 0}</div>
+                <div className="stat-value">{(currentExec as any).products?.total || 0}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Products Created</div>
-                <div className="stat-value created">{currentExec.products?.created || 0}</div>
+                <div className="stat-value created">{(currentExec as any).products?.created || 0}</div>
               </div>
               <div className="stat-card">
                 <div className="stat-label">Products Updated</div>
-                <div className="stat-value updated">{currentExec.products?.updated || 0}</div>
+                <div className="stat-value updated">{(currentExec as any).products?.updated || 0}</div>
               </div>
             </div>
           )}
@@ -246,11 +246,11 @@ const ExecutionMonitor: React.FC = () => {
           )}
 
           {/* Telegram Bot Products by Platform */}
-          {executionType === 'telegram_bot' && currentExec.products?.byPlatform && (
+          {executionType === 'telegram_bot' && (currentExec as any).products?.byPlatform && (
             <div className="telegram-platforms">
               <h3>Products by Platform</h3>
               <div className="platform-stats-grid">
-                {Object.entries(currentExec.products.byPlatform).map(([platform, stats]: [string, any]) => (
+                {Object.entries((currentExec as any).products.byPlatform).map(([platform, stats]: [string, any]) => (
                   <div key={platform} className="platform-stat-card">
                     <div className="platform-name">{platform}</div>
                     <div className="platform-stats">

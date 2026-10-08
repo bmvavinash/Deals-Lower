@@ -430,10 +430,10 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0 } = req.query;
+    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0, sortBy, order } = req.query;
     
     // Create cache key
-    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}`;
+    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}_${sortBy || 'default'}_${order || 'desc'}`;
     
     // Check cache first (increased TTL to 10 minutes for deals)
     const cached = cacheService.get(cacheKey);
@@ -446,16 +446,51 @@ router.get('/', async (req, res, next) => {
     const targetDb = dealType === 'hotDeal' ? 'deals' : 'productdeals';
     const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
     
-    let snapshot;
-    if (date) {
-      // Use native Firebase querying to fetch by date
-      snapshot = await ref.orderByChild('date').equalTo(date).once('value');
-    } else {
-      // Use native Firebase querying to fetch a dynamic pool size to account for potential invalid items
-      const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
-      snapshot = await ref.orderByChild('datetime').limitToLast(poolSize).once('value');
+    let deals = {};
+    try {
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 8000));
+      let snapshotPromise;
+      if (date) {
+        // Use native Firebase querying to fetch by date
+        snapshotPromise = ref.orderByChild('date').equalTo(date).once('value');
+      } else {
+        // Use native Firebase querying to fetch a dynamic pool size to account for potential invalid items
+        const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
+        snapshotPromise = ref.orderByChild('datetime').limitToLast(poolSize).once('value');
+      }
+      const snapshot = await Promise.race([snapshotPromise, timeoutPromise]);
+      deals = snapshot.val() || {};
+    } catch (err) {
+      logger.warn('Firebase Admin SDK failed or timed out, falling back to REST API', { error: err.message });
+      const config = require('../../../config/config');
+      const constants = require('../../../config/constants');
+      const dbname = constants.postingTypesConfig[constants.type].DB;
+      let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
+      
+      const baseUrl = DB_Name === 'lowerdealhub' 
+        ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${targetDb}.json`
+        : `https://${DB_Name}-default-rtdb.firebaseio.com/${targetDb}.json`;
+        
+      let apiUrl = '';
+      if (date) {
+         apiUrl = `${baseUrl}?orderBy="date"&equalTo="${date}"`;
+      } else {
+         const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
+         apiUrl = `${baseUrl}?orderBy="datetime"&limitToLast=${poolSize}`;
+      }
+      const controller = new AbortController();
+      const fetchTimeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const response = await fetch(apiUrl, { signal: controller.signal });
+        clearTimeout(fetchTimeout);
+        if (!response.ok) throw new Error(`REST API failed: ${response.statusText}`);
+        deals = await response.json() || {};
+      } catch (fetchErr) {
+        clearTimeout(fetchTimeout);
+        logger.error('REST API fallback failed or timed out', { error: fetchErr.message });
+        deals = {}; // Return empty deals to prevent infinite loading
+      }
     }
-    let deals = snapshot.val() || {};
     
     // Convert to array and filter out completely empty items
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
@@ -490,21 +525,45 @@ router.get('/', async (req, res, next) => {
     }
 
     // Apply sorting
-    if (date) {
-      // If date is specified, Firebase natively sorts identical dates by key ascending.
-      // We must match this behavior so the Admin portal exactly matches the Website.
+    if (sortBy) {
+      const isDesc = order !== 'asc';
+      dealsArray.sort((a, b) => {
+        let valA, valB;
+        if (sortBy === 'price') {
+          valA = parseFloat(a.price) || 0;
+          valB = parseFloat(b.price) || 0;
+        } else if (sortBy === 'discount') {
+          valA = parseFloat(String(a.discount).replace(/[^0-9.]/g, '')) || 0;
+          valB = parseFloat(String(b.discount).replace(/[^0-9.]/g, '')) || 0;
+        } else if (sortBy === 'title') {
+          valA = (a.title || '').toLowerCase();
+          valB = (b.title || '').toLowerCase();
+        } else if (sortBy === 'updateTimestamp') {
+          valA = Number(a.updatedatetime || a.updateTimestamp || a.datetime || 0);
+          valB = Number(b.updatedatetime || b.updateTimestamp || b.datetime || 0);
+        } else {
+          // default to datetime / creationTimestamp
+          valA = Number(a.datetime || 0);
+          valB = Number(b.datetime || 0);
+        }
+
+        if (valA < valB) return isDesc ? 1 : -1;
+        if (valA > valB) return isDesc ? -1 : 1;
+        return 0;
+      });
+    } else if (date) {
+      // If date is specified and no custom sort, Firebase natively sorts identical dates by key ascending.
       dealsArray.sort((a, b) => {
         if (a.productCode < b.productCode) return -1;
         if (a.productCode > b.productCode) return 1;
         return 0;
       });
     } else {
-      // Sort by timestamp in descending order (newest first)
-      // Priority: updatedatetime > datetime > updateTimestamp > 0
+      // Sort by timestamp in descending order (newest first) by default
       dealsArray.sort((a, b) => {
         const aTime = Number(a.updatedatetime || a.datetime || a.updateTimestamp || 0);
         const bTime = Number(b.updatedatetime || b.datetime || b.updateTimestamp || 0);
-        return bTime - aTime; // Descending order (newest first)
+        return bTime - aTime;
       });
     }
 

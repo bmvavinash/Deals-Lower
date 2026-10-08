@@ -57,6 +57,20 @@ module.exports = {
         'https://www.amazon.in',
         'https://www.amazon.in/deals',
         'https://www.amazon.in/gp/goldbox',
+        'https://www.amazon.in/l/1389402031', // Audio
+        'https://www.amazon.in/l/1389401031', // Mobiles
+        'https://www.amazon.in/l/976419031',  // Electronics
+        'https://www.amazon.in/l/976392031',  // Computers
+        'https://www.amazon.in/l/6648217031', // Fashion
+        'https://www.amazon.in/l/976460031',  // Video Games
+        'https://www.amazon.in/l/976442031',  // Home & Kitchen
+        'https://www.amazon.in/l/1571274031', // Baby
+        'https://www.amazon.in/l/2454178031', // Grocery
+        'https://www.amazon.in/l/976389031',  // Books
+        'https://www.amazon.in/l/1984443031', // Sports
+        'https://www.amazon.in/l/1350380031', // Toys
+        'https://www.amazon.in/l/1355016031', // Beauty
+        'https://www.amazon.in/l/1350384031', // Health & Personal Care
         'https://affiliate-program.amazon.in/home'
       ],
       selectors: {

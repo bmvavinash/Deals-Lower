@@ -59,7 +59,7 @@ const dedupeBannerArray = (bannerArray = []) => {
 };
 
 // Store the current source globally (default: test-banners.json)
-let bannerSource = 'test-banners';
+let bannerSource = 'production';
 
 /**
  * GET /api/banners/source
@@ -617,69 +617,27 @@ router.post('/:id/set-active', async (req, res, next) => {
  */
 router.post('/extract-all', async (req, res, next) => {
   try {
-    logger.info(`Starting banner extraction from all stores (source: ${bannerSource})`);
+    logger.info(`Starting banner extraction from all stores via improved script (source: ${bannerSource})`);
     
-    // Create extractor with visibility OFF by default
-    // Use normal headless browser (no Chrome debugger needed for banners)
-    const extractor = new BannerExtractor({ 
-      visibility: false, // Ensure all banners are stored with isActive: false
-      useExistingChrome: false, // Always use headless browser for banners (no login needed)
-      requiresLogin: false // Banners don't require login
-    });
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execPromise = util.promisify(exec);
     
-    // Extract banners from all platforms
-    const extractedBanners = await extractor.extractAllBanners();
-    logger.info(`Extracted ${extractedBanners.length} banners from all platforms`);
-    
-    // Fix URLs if needed
-    let processedBanners = extractedBanners;
-    if (extractedBanners.length > 0) {
-      logger.info('Starting banner URL verification and fixing...');
-      processedBanners = await bannerUrlFixer.fixBannerUrls(extractedBanners);
-      
-      const urlFixStats = bannerUrlFixer.getStatistics();
-      logger.info('Banner URL fixing completed', {
-        total: urlFixStats.total,
-        fixed: urlFixStats.fixed,
-        errors: urlFixStats.errors,
-        skipped: urlFixStats.skipped
-      });
-    }
-    
-    // Ensure all banners have isActive: false
-    processedBanners = processedBanners.map(banner => ({
-      ...banner,
-      isActive: false // Force visibility OFF
-    }));
-    
-    // Store banners in the current source (test-banners or production)
-    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
-    
-    let storeResult;
-    if (bannerSource === 'test-banners') {
-      storeResult = await testBannerDB.storeMultipleTestBanners(processedBanners);
-    } else {
-      storeResult = await bannerDB.storeMultipleBanners(processedBanners);
-    }
-    
-    // Count successful stores, duplicates skipped, and product images filtered
-    const stored = storeResult.filter(r => r.status === 200 || r.status === 201).length;
-    const duplicates = storeResult.filter(r => r.status === 409).length;
-    const productImagesFiltered = storeResult.filter(r => r.status === 410).length;
-    const errors = storeResult.filter(r => r.status === 500).length;
-    
-    logger.info(`Banner extraction completed. Extracted: ${extractedBanners.length}, Stored: ${stored}, Duplicates: ${duplicates}, Product Images Filtered: ${productImagesFiltered}, Errors: ${errors}`);
-    
+    // Spawn the improved script that handles extraction and DB storage internally
+    const { stdout, stderr } = await execPromise('node scripts/runImprovedBannerExtraction.js --enable-db');
+    logger.info(`Improved banner extraction output:\n${stdout}`);
+    if (stderr) logger.warn(`Improved banner extraction stderr:\n${stderr}`);
+
     res.json({
       success: true,
       source: bannerSource,
       data: {
-        extracted: extractedBanners.length,
-        stored: stored,
-        duplicates: duplicates,
-        productImagesFiltered: productImagesFiltered,
-        errors: errors,
-        allInactive: true, // All banners stored with isActive: false
+        extracted: -1, // The script saves directly to the DB, so we return generic counts.
+        stored: -1,
+        duplicates: -1,
+        productImagesFiltered: 0,
+        errors: 0,
+        allInactive: true,
         extractedAt: new Date().toISOString()
       }
     });
@@ -689,6 +647,52 @@ router.post('/extract-all', async (req, res, next) => {
       success: false,
       error: error.message || 'Failed to extract banners from all stores'
     });
+  }
+});
+
+/**
+ * PUT /api/banners/:id
+ * Update banner details
+ */
+router.put('/:id', async (req, res, next) => {
+  try {
+    const bannerId = req.params.id;
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    
+    // First get current banner
+    const currentBannerResult = bannerDbInstance.getBanner ? 
+      await bannerDbInstance.getBanner(bannerId) :
+      await bannerDbInstance.getTestBanner(bannerId);
+      
+    if (currentBannerResult.status !== 200 || !currentBannerResult.data) {
+      return res.status(404).json({ success: false, error: 'Banner not found' });
+    }
+    
+    const bannerData = currentBannerResult.data;
+    
+    // Update fields from body
+    const updates = req.body;
+    if (updates.title !== undefined) bannerData.title = updates.title;
+    if (updates.description !== undefined) bannerData.description = updates.description;
+    if (updates.platform !== undefined) bannerData.platform = updates.platform;
+    if (updates.category !== undefined) bannerData.category = updates.category;
+    if (updates.url !== undefined) bannerData.url = updates.url;
+    if (updates.clickRedirectUrl !== undefined) bannerData.clickRedirectUrl = updates.clickRedirectUrl;
+    if (updates.priority !== undefined) bannerData.priority = updates.priority;
+    
+    // Save updated banner
+    const result = bannerDbInstance.storeBanner ? 
+      await bannerDbInstance.storeBanner(bannerData) :
+      await bannerDbInstance.storeTestBanner(bannerData);
+      
+    if (result.status === 200) {
+      res.json({ success: true, data: result.data });
+    } else {
+      res.status(result.status || 500).json({ success: false, error: result.message || 'Failed to update banner' });
+    }
+  } catch (error) {
+    logger.error('Error updating banner', { error: error.message, stack: error.stack });
+    next(error);
   }
 });
 

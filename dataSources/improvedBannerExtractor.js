@@ -121,30 +121,57 @@ class ImprovedBannerExtractor {
         });
 
         for (const url of bannerUrls) {
-            try {
-                logger.info(`Processing URL: ${url}`);
-                await this.driver.get(url);
-                
-                // Wait for page to load completely
-                await this.driver.wait(until.elementLocated(By.css('body')), 15000);
-                
-                // Additional wait for dynamic content
-                await this.driver.sleep(5000);
-                
-                // Extract banners from this URL
-                const urlBanners = await this.extractBannersFromUrl(platformKey, selectors, validation, url);
-                banners.push(...urlBanners);
-                
-                logger.info(`Extracted ${urlBanners.length} quality banners from ${url}`);
-                
-                // Continue processing all URLs to get all banners
-                logger.debug(`Processed ${url}, total banners so far: ${banners.length}`);
-                
-            } catch (error) {
-                logger.error(`Error extracting banners from ${url}:`, { 
-                    error: error.message, 
-                    platform: platformKey 
-                });
+            let retries = 1;
+            while (retries >= 0) {
+                try {
+                    logger.info(`Processing URL: ${url}`);
+                    await this.driver.get(url);
+                    
+                    // Wait for page to load completely
+                    await this.driver.wait(until.elementLocated(By.css('body')), 15000);
+                    
+                    // Additional wait for dynamic content
+                    await this.driver.sleep(5000);
+                    
+                    // Extract banners from this URL
+                    const urlBanners = await this.extractBannersFromUrl(platformKey, selectors, validation, url);
+                    banners.push(...urlBanners);
+                    
+                    logger.info(`Extracted ${urlBanners.length} quality banners from ${url}`);
+                    
+                    // Continue processing all URLs to get all banners
+                    logger.debug(`Processed ${url}, total banners so far: ${banners.length}`);
+                    break; // Success, exit retry loop
+                } catch (error) {
+                    const isSessionError = error.message.includes('invalid session id') || 
+                                           error.message.includes('disconnected') || 
+                                           error.message.includes('no such session') ||
+                                           error.message.includes('chrome not reachable') ||
+                                           error.message.includes('ECONNREFUSED') ||
+                                           error.message.includes('ECONNRESET');
+                    
+                    if (isSessionError && retries > 0) {
+                        logger.warn(`Driver session crashed/invalidated during get(${url}) on improved extractor. Re-initializing driver and retrying...`, {
+                            error: error.message
+                        });
+                        try {
+                            await this.closeDriver();
+                        } catch (_) {}
+                        try {
+                            await this.initializeDriver();
+                        } catch (initErr) {
+                            logger.error('Failed to re-initialize driver during recovery:', { error: initErr.message });
+                            throw error;
+                        }
+                        retries--;
+                    } else {
+                        logger.error(`Error extracting banners from ${url}:`, { 
+                            error: error.message, 
+                            platform: platformKey 
+                        });
+                        break;
+                    }
+                }
             }
         }
 
