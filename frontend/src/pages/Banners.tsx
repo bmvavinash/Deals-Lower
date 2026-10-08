@@ -103,7 +103,7 @@ const BannersPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [filter, setFilter] = useState<Filter>({ platform: 'all', activeOnly: false });
-  const [bannerSource, setBannerSource] = useState('test-banners');
+  const [bannerSource, setBannerSource] = useState('production');
   const [sourceLoading, setSourceLoading] = useState(true);
   const [bannerVisibility, setBannerVisibility] = useState<Record<string, boolean>>({});
   const [dedupeInfo, setDedupeInfo] = useState<{ removed: number }>({ removed: 0 });
@@ -129,7 +129,7 @@ const BannersPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Error fetching banner source:', err);
-      setBannerSource('test-banners'); // Default to test-banners
+      setBannerSource('production'); // Default to test-banners
       setSourceLoading(false);
     }
   };
@@ -351,7 +351,7 @@ const BannersPage: React.FC = () => {
                 disabled={sourceLoading}
                 className={`source-button ${bannerSource === 'test-banners' ? 'active' : ''}`}
               >
-                test-banners.json
+                Test Banners
               </button>
               <button 
                 onClick={toggleBannerSource}

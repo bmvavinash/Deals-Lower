@@ -1354,7 +1354,7 @@ const BannersPage: React.FC = () => {
                   }}
                   className={`source-button ${bannerSource === 'test-banners' ? 'active' : ''}`}
                 >
-                  test-banners.json
+                  Test Banners
                 </button>
                 <button 
                   onClick={async () => {

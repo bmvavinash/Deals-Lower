@@ -231,7 +231,7 @@ const DealsPage: React.FC = () => {
     timestamp: 'all', // 'all', 'today', 'yesterday', 'recent'
     hideProductImages: true // Hide product images by default
   });
-  const [bannerSource, setBannerSource] = useState('test-banners');
+  const [bannerSource, setBannerSource] = useState('production');
   const [bannerVisibility, setBannerVisibility] = useState<Record<string, boolean>>({});
   const [bannerDedupeInfo, setBannerDedupeInfo] = useState<{ removed: number }>({ removed: 0 });
   const [deletingBannerId, setDeletingBannerId] = useState<string | null>(null);
@@ -602,7 +602,7 @@ const DealsPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Error fetching banner source:', err);
-      setBannerSource('test-banners');
+      setBannerSource('production');
     }
   };
 
