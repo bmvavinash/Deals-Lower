@@ -113,7 +113,7 @@ const affiliatesRoutes = require('./routes/affiliates');
 const ipoRoutes = require('./routes/ipo');
 
 const app = express();
-const PORT = constants.frontend?.apiPort || 3003;
+const PORT = process.env.PORT || constants.frontend?.apiPort || 3003;
 
 // Middleware
 app.use(cors());

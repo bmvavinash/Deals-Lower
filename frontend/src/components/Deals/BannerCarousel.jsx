@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './BannerCarousel.css';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
 
 const BannerCarousel = ({ banner }) => {
   const [deals, setDeals] = useState([]);
