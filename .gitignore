@@ -39,3 +39,6 @@ frontend/dist
 # scratch
 scratch/
 
+# vercel
+.vercel
+
