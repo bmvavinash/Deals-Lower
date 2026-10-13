@@ -36,16 +36,24 @@ class BannerUrlFixer {
         currentUrl.includes('myntr.in')
       );
       
+      const hasInrDeals = currentUrl && currentUrl.includes('inrdeals.com') && currentUrl.includes('avinashbmv');
       const hasValidAmazon = platform === 'amazon' && currentUrl.includes('dealshubglo0c-21');
-      const hasInrDeals = currentUrl && currentUrl.includes('avinashbmv');
-      
-      if (platform !== 'amazon' && (hasValidExtrape || hasInrDeals)) {
+      const isHomePageOnly = (url) => {
+        if (!url) return true;
+        const u = url.toLowerCase().replace(/https?:\/\//, '').replace(/^inrdeals\.com\/[^\/]+\//, '').replace(/\/+$/, '');
+        return u === 'www.flipkart.com' || u === 'flipkart.com' ||
+               u === 'www.amazon.in' || u === 'amazon.in' ||
+               u === 'www.myntra.com' || u === 'myntra.com' ||
+               u === 'www.ajio.com' || u === 'ajio.com';
+      };
+
+      if (platform !== 'amazon' && (hasValidExtrape || hasInrDeals) && !isHomePageOnly(currentUrl)) {
         this.skippedCount++;
-        return banner; // Already fixed or already affiliated with INRDeals
+        return banner; // Already fixed with specific destination URL
       }
-      if (platform === 'amazon' && hasValidAmazon) {
+      if (platform === 'amazon' && hasValidAmazon && !isHomePageOnly(currentUrl)) {
         this.skippedCount++;
-        return banner; // Already fixed
+        return banner; // Already fixed with specific destination URL
       }
       
       const expectedUrl = await this.generateCorrectUrl(banner, platform, currentUrl);

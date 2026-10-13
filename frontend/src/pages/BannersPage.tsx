@@ -100,6 +100,46 @@ interface BannerStats {
   source?: string;
 }
 
+function getCanonicalImageKey(url?: string): string {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  const fkHash = trimmed.match(/\/image\/([a-f0-9]{16})(?:\.|\?|$)/i);
+  if (fkHash) return 'flipkart-hash:' + fkHash[1].toLowerCase();
+
+  const fkAsset = trimmed.match(/\/image\/\d+x\d+-([a-z0-9_-]+?)(?:-\d{10,14})?\.(?:png|jpg|jpeg|webp)/i);
+  if (fkAsset) return 'flipkart-asset:' + fkAsset[1].toLowerCase();
+
+  const amzI = trimmed.match(/\/images\/I\/([A-Za-z0-9%+-]+?)(?:\._|\.jpg|\.png|\.gif|\.jpeg)/i);
+  if (amzI) return 'amazon-i:' + amzI[1].toLowerCase();
+
+  const amzG = trimmed.match(/\/images\/G\/\d+\/(.+?)(?:\._|\.jpg|\.png|\.gif|\.jpeg)/i);
+  if (amzG) {
+    const baseName = amzG[1].split('._')[0];
+    return 'amazon-g:' + baseName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  }
+
+  const myntra = trimmed.match(/(?:assets\/images|assets)\/(.+?)(?:\.jpg|\.png|\.webp)/i);
+  if (myntra) return 'myntra:' + myntra[1].toLowerCase().replace(/[^a-z0-9_-]/g, '');
+
+  const ajioCms = trimmed.match(/\/AJIO\/WEB\/([a-zA-Z0-9._-]+?)\.(?:jpg|jpeg|png|webp)/i);
+  if (ajioCms) return 'ajio-cms:' + ajioCms[1].toLowerCase();
+
+  const ajioV2 = trimmed.match(/\/original\/([a-zA-Z0-9._-]+?)(?:-\d{10,14})?\.(?:jpeg|jpg|png|webp)/i);
+  if (ajioV2) return 'ajio-v2:' + ajioV2[1].toLowerCase();
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname;
+    const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+    const nameWithoutExt = filename.split('.')[0].replace(/\._[A-Za-z0-9,._-]+/g, '');
+    return 'generic:' + parsed.hostname + ':' + nameWithoutExt.toLowerCase();
+  } catch (e) {
+    return 'raw:' + trimmed.split('?')[0].toLowerCase();
+  }
+}
+
 const BannersPage: React.FC = () => {
   const [viewMode, setViewMode] = useState<ViewMode>('banners');
   const [showBannersInDeals, setShowBannersInDeals] = useState(false);
@@ -122,8 +162,8 @@ const BannersPage: React.FC = () => {
   const { addNotification } = useNotification();
   const [categoryMap, setCategoryMap] = useState<Record<string, { label: string; subcategories: string[] }>>(CATEGORY_MAP);
 
-  const CATEGORIES = [
-    { id: '', label: 'All Categories' },
+  const CATEGORIES: { id: string; label: string; subcategories: string[] }[] = [
+    { id: '', label: 'All Categories', subcategories: [] },
     ...Object.entries(categoryMap).map(([id, info]) => ({
       id,
       label: info.label,
@@ -267,6 +307,9 @@ const BannersPage: React.FC = () => {
   const [bannerError, setBannerError] = useState<string | null>(null);
   const [bannerFilter, setBannerFilter] = useState({ 
     platform: 'all', 
+    category: 'all',
+    subcategory: 'all',
+    status: 'all', // 'all', 'active', 'inactive'
     activeOnly: false,
     timestamp: 'all', // 'all', 'today', 'yesterday', 'recent'
     hideProductImages: true, // Hide product images by default
@@ -468,7 +511,23 @@ const BannersPage: React.FC = () => {
         return false;
       }
       
-      // Active/Inactive filter
+      // Category filter
+      if (filters.category !== 'all' && banner.category?.toLowerCase() !== filters.category.toLowerCase()) {
+        return false;
+      }
+
+      // Subcategory filter
+      if (filters.subcategory !== 'all' && banner.subcategory?.toLowerCase() !== filters.subcategory.toLowerCase()) {
+        return false;
+      }
+
+      // Active/Inactive / Status filter
+      if (filters.status === 'active' && !banner.isActive) {
+        return false;
+      }
+      if (filters.status === 'inactive' && banner.isActive) {
+        return false;
+      }
       if (filters.activeOnly && !banner.isActive) {
         return false;
       }
@@ -504,11 +563,17 @@ const BannersPage: React.FC = () => {
 
     const isDesc = filters.order !== 'asc';
     filteredList.sort((a, b) => {
-      let valA, valB;
+      let valA: any, valB: any;
       if (filters.sortBy === 'priority') {
         const getPriority = (p?: number) => (p === undefined || p === null || p <= 0) ? 9999 : p;
         valA = getPriority(a.priority);
         valB = getPriority(b.priority);
+      } else if (filters.sortBy === 'category') {
+        valA = (a.category || '').toLowerCase();
+        valB = (b.category || '').toLowerCase();
+      } else if (filters.sortBy === 'subcategory') {
+        valA = (a.subcategory || '').toLowerCase();
+        valB = (b.subcategory || '').toLowerCase();
       } else if (filters.sortBy === 'updateTimestamp') {
         valA = a.updateTimestamp ? new Date(a.updateTimestamp).getTime() : 0;
         valB = b.updateTimestamp ? new Date(b.updateTimestamp).getTime() : 0;
@@ -571,26 +636,7 @@ const BannersPage: React.FC = () => {
           isActive: banner.isActive === true // Explicitly set to false if undefined/null
         }));
         
-        // Apply cached status to banners (but preserve isProductImage from DB)
-        bannersArray = bannersArray.map((banner: Banner) => {
-          const cacheKey = `banner_${banner.id}_status`;
-          const cachedData = localStorage.getItem(cacheKey);
-          
-          if (cachedData) {
-            try {
-              const cached = JSON.parse(cachedData);
-              return { 
-                ...banner, 
-                isActive: cached.isActive !== undefined ? cached.isActive : banner.isActive,
-                // Preserve isProductImage from DB, don't override with cache
-                isProductImage: banner.isProductImage
-              };
-            } catch (e) {
-              return banner;
-            }
-          }
-          return banner;
-        });
+        
 
         const { unique, removed } = dedupeBanners(bannersArray);
         setBannerDedupeInfo({ removed });
@@ -638,40 +684,67 @@ const BannersPage: React.FC = () => {
   // Handle filter changes - use cached data
   const handleBannerFilterChange = (newFilters: Partial<typeof bannerFilter>) => {
     const updatedFilters = { ...bannerFilter, ...newFilters };
+    if (newFilters.status) {
+      updatedFilters.activeOnly = newFilters.status === 'active';
+    } else if (newFilters.activeOnly !== undefined) {
+      updatedFilters.status = newFilters.activeOnly ? 'active' : 'all';
+    }
     setBannerFilter(updatedFilters);
     
     // Use cached data for filtering (client-side filtering)
+    let filteredList: Banner[] = [];
     const cached = loadBannerCache();
     if (cached) {
-      const filtered = filterBanners(cached.data, updatedFilters);
-      setBanners(filtered);
+      filteredList = filterBanners(cached.data, updatedFilters);
+      setBanners(filteredList);
     } else if (bannerCache && bannerCache.data.length > 0) {
       // Use in-memory cache
-      const filtered = filterBanners(bannerCache.data, updatedFilters);
-      setBanners(filtered);
+      filteredList = filterBanners(bannerCache.data, updatedFilters);
+      setBanners(filteredList);
     } else {
       // If no data at all, fetch from API
       fetchBannersFromAPI(false);
+      return;
+    }
+
+    // If currently viewing banner details, keep viewing a matching banner
+    if (editingBannerId) {
+      const visible = filteredList.filter(b => bannerVisibility[b.id] !== false);
+      const isCurrentInFiltered = visible.some(b => b.id === editingBannerId);
+      if (!isCurrentInFiltered && visible.length > 0) {
+        startEditingBanner(visible[0]);
+      }
     }
   };
 
   const dedupeBanners = (banners: Banner[]) => {
-    const seen = new Set<string>();
+    const groups = new Map<string, Banner[]>();
     const unique: Banner[] = [];
     let removed = 0;
 
     banners.forEach((banner) => {
-      const platform = (banner.platform || '').trim().toLowerCase();
-      const url = (banner.url || '').trim().toLowerCase();
-      const clickUrl = (banner.clickRedirectUrl || '').trim().toLowerCase();
-      const key = [platform, url, clickUrl].join('|') || banner.id;
-      
-      if (seen.has(key)) {
-        removed += 1;
-        return;
+      const key = getCanonicalImageKey(banner.url) || banner.id;
+      if (!groups.has(key)) {
+        groups.set(key, []);
       }
-      seen.add(key);
-      unique.push(banner);
+      groups.get(key)!.push(banner);
+    });
+
+    groups.forEach((groupBanners) => {
+      if (groupBanners.length === 1) {
+        unique.push(groupBanners[0]);
+      } else {
+        removed += groupBanners.length - 1;
+        // Priority to active banners, then newest timestamp
+        groupBanners.sort((a, b) => {
+          if (a.isActive && !b.isActive) return -1;
+          if (!a.isActive && b.isActive) return 1;
+          const timeA = a.updateTimestamp || a.creationTimestamp || '';
+          const timeB = b.updateTimestamp || b.creationTimestamp || '';
+          return timeB.localeCompare(timeA);
+        });
+        unique.push(groupBanners[0]);
+      }
     });
 
     return { unique, removed };
@@ -1407,7 +1480,9 @@ const BannersPage: React.FC = () => {
           </div>
         )}
 
-        <div className="banners-filters" style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+        {!editingBannerId && (
+          <>
+            <div className="banners-filters" style={{ backgroundColor: '#f8fafc', padding: '12px 16px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
           <strong style={{ marginRight: '8px', color: '#334155' }}>Sort & Filter:</strong>
           <select 
             value={bannerFilter.platform} 
@@ -1421,6 +1496,34 @@ const BannersPage: React.FC = () => {
             <option value="ajio">Ajio</option>
           </select>
           
+          <select 
+            value={bannerFilter.category} 
+            onChange={(e) => handleBannerFilterChange({ category: e.target.value, subcategory: 'all' })}
+            className="filter-select"
+          >
+            <option value="all">All Categories</option>
+            {Object.entries(categoryMap).map(([catKey, catVal]) => (
+              <option key={catKey} value={catKey}>{catVal.label}</option>
+            ))}
+          </select>
+
+          <select 
+            value={bannerFilter.subcategory} 
+            onChange={(e) => handleBannerFilterChange({ subcategory: e.target.value })}
+            className="filter-select"
+          >
+            <option value="all">All Subcategories</option>
+            {bannerFilter.category !== 'all' && categoryMap[bannerFilter.category] ? (
+              categoryMap[bannerFilter.category].subcategories.map(sub => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))
+            ) : (
+              Array.from(new Set(Object.values(categoryMap).flatMap(c => c.subcategories))).sort().map(sub => (
+                <option key={sub} value={sub}>{sub}</option>
+              ))
+            )}
+          </select>
+
           <select 
             value={bannerFilter.timestamp} 
             onChange={(e) => handleBannerFilterChange({ timestamp: e.target.value })}
@@ -1440,8 +1543,20 @@ const BannersPage: React.FC = () => {
             <option value="default">Sort: Date Added</option>
             <option value="updateTimestamp">Sort: Last Updated</option>
             <option value="priority">Sort: Priority</option>
+            <option value="category">Sort: Category</option>
+            <option value="subcategory">Sort: Subcategory</option>
             <option value="title">Sort: Title</option>
             <option value="active">Sort: Status</option>
+          </select>
+
+          <select 
+            value={bannerFilter.status} 
+            onChange={(e) => handleBannerFilterChange({ status: e.target.value })}
+            className="filter-select"
+          >
+            <option value="all">All Status</option>
+            <option value="active">Active Only</option>
+            <option value="inactive">Inactive Only</option>
           </select>
 
           <select 
@@ -1579,22 +1694,252 @@ const BannersPage: React.FC = () => {
             </div>
           </div>
         )}
+      </>
+    )}
 
-        {editingBannerId ? (
+    {editingBannerId ? (
           (() => {
             const visibleBanners = banners.filter(b => bannerVisibility[b.id] !== false);
-            const currentIndex = visibleBanners.findIndex(b => b.id === editingBannerId);
+            let currentIndex = visibleBanners.findIndex(b => b.id === editingBannerId);
+            if (currentIndex === -1 && visibleBanners.length > 0) {
+              currentIndex = 0;
+            }
             const banner = visibleBanners[currentIndex];
-            if (!banner) return null;
+
+            // Render details filter bar component
+            const renderDetailsFilterBar = () => (
+              <div className="banner-details-filter-bar" style={{
+                backgroundColor: '#ffffff',
+                padding: '16px 20px',
+                borderRadius: '12px',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+                marginBottom: '20px',
+                border: '1px solid #e2e8f0'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '18px' }}>🔍</span>
+                    <strong style={{ fontSize: '15px', color: '#1e293b' }}>Filters in Details View:</strong>
+                    <span style={{ fontSize: '13px', color: '#64748b', background: '#f1f5f9', padding: '3px 10px', borderRadius: '12px', fontWeight: 600 }}>
+                      {visibleBanners.length} banners matching
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => setEditingBannerId(null)} 
+                    className="btn-cancel close-btn" 
+                    style={{ padding: '6px 14px', background: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '13px' }}
+                  >
+                    ✕ Back to Grid View
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                  {/* Platform */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Platform</label>
+                    <select 
+                      value={bannerFilter.platform} 
+                      onChange={(e) => handleBannerFilterChange({ platform: e.target.value })}
+                      className="filter-select"
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    >
+                      <option value="all">All Platforms</option>
+                      <option value="amazon">Amazon</option>
+                      <option value="flipkart">Flipkart</option>
+                      <option value="myntra">Myntra</option>
+                      <option value="ajio">Ajio</option>
+                    </select>
+                  </div>
+
+                  {/* Category */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Category</label>
+                    <select 
+                      value={bannerFilter.category} 
+                      onChange={(e) => handleBannerFilterChange({ category: e.target.value, subcategory: 'all' })}
+                      className="filter-select"
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    >
+                      <option value="all">All Categories</option>
+                      {Object.entries(categoryMap).map(([catKey, catVal]) => (
+                        <option key={catKey} value={catKey}>{catVal.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Subcategory */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Subcategory</label>
+                    <select 
+                      value={bannerFilter.subcategory} 
+                      onChange={(e) => handleBannerFilterChange({ subcategory: e.target.value })}
+                      className="filter-select"
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    >
+                      <option value="all">All Subcategories</option>
+                      {bannerFilter.category !== 'all' && categoryMap[bannerFilter.category] ? (
+                        categoryMap[bannerFilter.category].subcategories.map(sub => (
+                          <option key={sub} value={sub}>{sub}</option>
+                        ))
+                      ) : (
+                        Array.from(new Set(Object.values(categoryMap).flatMap(c => c.subcategories))).sort().map(sub => (
+                          <option key={sub} value={sub}>{sub}</option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  {/* Status */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Status</label>
+                    <select 
+                      value={bannerFilter.status} 
+                      onChange={(e) => handleBannerFilterChange({ status: e.target.value })}
+                      className="filter-select"
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    >
+                      <option value="all">All Status</option>
+                      <option value="active">Active Only</option>
+                      <option value="inactive">Inactive Only</option>
+                    </select>
+                  </div>
+
+                  {/* Time */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Time</label>
+                    <select 
+                      value={bannerFilter.timestamp} 
+                      onChange={(e) => handleBannerFilterChange({ timestamp: e.target.value })}
+                      className="filter-select"
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    >
+                      <option value="all">All Time</option>
+                      <option value="today">Today</option>
+                      <option value="yesterday">Yesterday</option>
+                      <option value="recent">Recent (7 Days)</option>
+                    </select>
+                  </div>
+
+                  {/* Sort By */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Sort By</label>
+                    <select 
+                      value={bannerFilter.sortBy} 
+                      onChange={(e) => handleBannerFilterChange({ sortBy: e.target.value })}
+                      className="filter-select"
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    >
+                      <option value="default">Date Added</option>
+                      <option value="updateTimestamp">Last Updated</option>
+                      <option value="priority">Priority</option>
+                      <option value="category">Category</option>
+                      <option value="subcategory">Subcategory</option>
+                      <option value="title">Title</option>
+                      <option value="active">Status</option>
+                    </select>
+                  </div>
+
+                  {/* Order */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase' }}>Order</label>
+                    <select 
+                      value={bannerFilter.order} 
+                      onChange={(e) => handleBannerFilterChange({ order: e.target.value })}
+                      className="filter-select"
+                      style={{ padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff' }}
+                    >
+                      <option value="desc">Desc</option>
+                      <option value="asc">Asc</option>
+                    </select>
+                  </div>
+
+                  {/* Hide Product Images */}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#475569', cursor: 'pointer', marginTop: '16px' }}>
+                    <input
+                      type="checkbox"
+                      checked={bannerFilter.hideProductImages}
+                      onChange={(e) => handleBannerFilterChange({ hideProductImages: e.target.checked })}
+                    />
+                    Hide Product Images
+                  </label>
+
+                  {/* Reset Filters */}
+                  <button
+                    onClick={() => handleBannerFilterChange({ platform: 'all', category: 'all', subcategory: 'all', status: 'all', timestamp: 'all', activeOnly: false, hideProductImages: false })}
+                    style={{ padding: '6px 12px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '12px', cursor: 'pointer', color: '#475569', marginTop: '16px' }}
+                    title="Reset all filters"
+                  >
+                    Reset Filters
+                  </button>
+                </div>
+              </div>
+            );
+
+            if (!banner) {
+              return (
+                <div className="single-banner-view" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+                  {renderDetailsFilterBar()}
+                  <div style={{ textAlign: 'center', padding: '60px 20px', background: 'white', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', marginTop: '20px' }}>
+                    <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔍</div>
+                    <h2 style={{ color: '#2c3e50', marginBottom: '8px' }}>No Banners Found Matching Filters</h2>
+                    <p style={{ color: '#64748b', marginBottom: '24px', fontSize: '1.1em' }}>
+                      No banners match the selected filter criteria. Try adjusting the filters above.
+                    </p>
+                    <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                      <button 
+                        onClick={() => handleBannerFilterChange({ platform: 'all', category: 'all', subcategory: 'all', status: 'all', timestamp: 'all', activeOnly: false, hideProductImages: false })}
+                        className="trigger-button"
+                        style={{ padding: '10px 20px' }}
+                      >
+                        Reset All Filters
+                      </button>
+                      <button 
+                        onClick={() => setEditingBannerId(null)}
+                        className="btn-cancel"
+                        style={{ padding: '10px 20px', background: '#94a3b8', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                      >
+                        Back to Grid View
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
 
             return (
-              <div className="single-banner-view">
-                <div className="single-banner-navigation" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#f8f9fa', padding: '10px 20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                  <button onClick={handlePrevBanner} className="nav-arrow" style={{ padding: '8px 16px', background: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>&larr; Previous</button>
-                  <span className="nav-count" style={{ fontWeight: 'bold', fontSize: '1.1em', color: '#2c3e50' }}>Banner {currentIndex + 1} of {visibleBanners.length}</span>
-                    <button onClick={() => toggleBannerStatus(banner.id, banner.isActive || false)} className={`trigger-button ${banner.isActive ? 'btn-active' : 'btn-inactive'}`} style={{ padding: '8px 16px', backgroundColor: banner.isActive ? '#e74c3c' : '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '15px' }}>{banner.isActive ? 'Make Inactive' : 'Make Active'}</button>
-                  <button onClick={() => setEditingBannerId(null)} className="btn-cancel close-btn" style={{ padding: '8px 16px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Back to Grid</button>
-                  <button onClick={handleNextBanner} className="nav-arrow" style={{ padding: '8px 16px', background: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Next &rarr;</button>
+              <div className="single-banner-view" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+                {renderDetailsFilterBar()}
+
+                <div className="single-banner-navigation" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', backgroundColor: '#f8f9fa', padding: '12px 20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', flexWrap: 'wrap', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button onClick={handlePrevBanner} className="nav-arrow" style={{ padding: '8px 16px', background: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>&larr; Previous</button>
+                    <span className="nav-count" style={{ fontWeight: 'bold', fontSize: '1.1em', color: '#2c3e50' }}>Banner {currentIndex + 1} of {visibleBanners.length}</span>
+                    <button onClick={handleNextBanner} className="nav-arrow" style={{ padding: '8px 16px', background: '#3498db', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Next &rarr;</button>
+                  </div>
+
+                  {/* Jump selector */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b', fontWeight: 600 }}>Jump to:</span>
+                    <select
+                      value={banner.id}
+                      onChange={(e) => {
+                        const targetBanner = visibleBanners.find(b => b.id === e.target.value);
+                        if (targetBanner) startEditingBanner(targetBanner);
+                      }}
+                      style={{ maxWidth: '280px', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '13px', background: '#fff', textOverflow: 'ellipsis' }}
+                    >
+                      {visibleBanners.map((b, idx) => (
+                        <option key={b.id} value={b.id}>
+                          {idx + 1}. [{b.platform || 'unknown'}] {(b.title || b.id).substring(0, 32)} {b.isActive ? '✓' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <button onClick={() => toggleBannerStatus(banner.id, banner.isActive || false)} className={`trigger-button ${banner.isActive ? 'btn-active' : 'btn-inactive'}`} style={{ padding: '8px 16px', backgroundColor: banner.isActive ? '#e74c3c' : '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>{banner.isActive ? 'Make Inactive' : 'Make Active'}</button>
+                    <button onClick={() => setEditingBannerId(null)} className="btn-cancel close-btn" style={{ padding: '8px 16px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Back to Grid</button>
+                  </div>
                 </div>
                 
                 <div className="single-banner-content" style={{ display: 'flex', flexDirection: 'column', gap: '20px', background: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>

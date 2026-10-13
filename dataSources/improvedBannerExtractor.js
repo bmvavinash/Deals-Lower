@@ -2,6 +2,7 @@ const { Builder, By, until } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const bannerConfig = require('../config/bannerConfig');
 const { ImprovedBannerValidator } = require('../utils/improvedBannerValidator');
+const { classifyBanner } = require('../utils/bannerCategorizer');
 const { getModuleLogger } = require('../logger/logger');
 const { bannerDB } = require('../database/firebaseDB/bannerDB');
 
@@ -27,41 +28,59 @@ class ImprovedBannerExtractor {
     }
 
     /**
+    /**
+     * Check if a TCP port is open
+     * @param {number} port
+     * @returns {Promise<boolean>}
+     */
+    checkPortOpen(port) {
+        return new Promise((resolve) => {
+            const net = require('net');
+            const socket = new net.Socket();
+            socket.setTimeout(800);
+            socket.once('connect', () => {
+                socket.destroy();
+                resolve(true);
+            });
+            socket.once('timeout', () => {
+                socket.destroy();
+                resolve(false);
+            });
+            socket.once('error', () => {
+                socket.destroy();
+                resolve(false);
+            });
+            socket.connect(port, '127.0.0.1');
+        });
+    }
+
+    /**
      * Initialize driver with Chrome browser on port 9222
      */
     async initializeDriver() {
         try {
-            logger.info('Initializing improved banner extractor with Chrome port 9222');
+            logger.info(`Checking if Chrome browser is running on port ${this.chromePort}...`);
+            const isPortOpen = await this.checkPortOpen(this.chromePort);
             
+            if (!isPortOpen) {
+                logger.info(`Port ${this.chromePort} not open, immediately initializing new headless Chrome instance`);
+                await this.initializeNewDriver();
+                return;
+            }
+
+            logger.info(`Connecting to Chrome browser on port ${this.chromePort}`);
             const options = new chrome.Options();
-            
-            // Connect to existing Chrome browser on port 9222
-            options.addArguments(`--remote-debugging-port=${this.chromePort}`);
-            options.addArguments('--no-sandbox');
-            options.addArguments('--disable-dev-shm-usage');
-            options.addArguments('--disable-gpu');
-            options.addArguments('--window-size=1920,1080');
-            options.addArguments('--disable-web-security');
-            options.addArguments('--disable-features=VizDisplayCompositor');
-            
-            // Connect to existing Chrome instance
-            options.debuggerAddress(`localhost:${this.chromePort}`);
+            options.debuggerAddress(`127.0.0.1:${this.chromePort}`);
 
             this.driver = await new Builder()
                 .forBrowser('chrome')
                 .setChromeOptions(options)
                 .build();
 
+            this.isRemoteChrome = true;
             logger.info('Successfully connected to Chrome browser on port 9222');
-            
-            // Test the connection
-            await this.driver.get('https://www.google.com');
-            logger.info('Chrome browser connection test successful');
-            
         } catch (error) {
             logger.error('Failed to connect to Chrome browser on port 9222:', { error: error.message });
-            
-            // Fallback to new Chrome instance
             logger.info('Falling back to new Chrome instance');
             await this.initializeNewDriver();
         }
@@ -84,6 +103,7 @@ class ImprovedBannerExtractor {
                 .setChromeOptions(options)
                 .build();
 
+            this.isRemoteChrome = false;
             logger.info('New Chrome driver initialized successfully');
         } catch (error) {
             logger.error('Failed to initialize new driver:', { error: error.message });
@@ -97,7 +117,12 @@ class ImprovedBannerExtractor {
     async closeDriver() {
         if (this.driver) {
             try {
-                await this.driver.quit();
+                if (!this.isRemoteChrome) {
+                    await this.driver.quit();
+                } else {
+                    logger.info('Remote Chrome browser on port 9222 kept alive (not terminating user browser)');
+                }
+                this.driver = null;
                 logger.info('Improved banner extractor driver closed successfully');
             } catch (error) {
                 logger.error('Error closing driver:', { error: error.message });
@@ -125,6 +150,7 @@ class ImprovedBannerExtractor {
             while (retries >= 0) {
                 try {
                     logger.info(`Processing URL: ${url}`);
+                    this.currentUrl = url;
                     await this.driver.get(url);
                     
                     // Wait for page to load completely
@@ -139,7 +165,12 @@ class ImprovedBannerExtractor {
                     
                     logger.info(`Extracted ${urlBanners.length} quality banners from ${url}`);
                     
-                    // Continue processing all URLs to get all banners
+                    // Stop if we reached target banners
+                    if (banners.length >= this.maxBannersPerPlatform) {
+                        logger.info(`Reached maximum banners limit (${this.maxBannersPerPlatform}) for ${platformKey}, skipping remaining URLs`);
+                        break;
+                    }
+                    
                     logger.debug(`Processed ${url}, total banners so far: ${banners.length}`);
                     break; // Success, exit retry loop
                 } catch (error) {
@@ -173,11 +204,15 @@ class ImprovedBannerExtractor {
                     }
                 }
             }
+            if (banners.length >= this.maxBannersPerPlatform) {
+                break;
+            }
         }
 
-        // Sort by priority but don't limit - return all banners
+        // Sort by priority and limit to maxBannersPerPlatform
         const sortedBanners = banners
-            .sort((a, b) => (a.priority || 4) - (b.priority || 4));
+            .sort((a, b) => (a.priority || 4) - (b.priority || 4))
+            .slice(0, this.maxBannersPerPlatform || 15);
 
         logger.info(`Final banner count for ${platformKey}: ${sortedBanners.length}`, {
             totalFound: banners.length,
@@ -269,8 +304,34 @@ class ImprovedBannerExtractor {
                     if (bannerLinks.length === 0 && selectors.affiliateBannerLink) {
                         bannerLinks = await carouselElement.findElements(By.css(selectors.affiliateBannerLink));
                     }
+
+                    if (bannerLinks.length === 0) {
+                        bannerLinks = await carouselElement.findElements(By.css('a[href]'));
+                    }
                     
                     logger.debug(`Found ${bannerLinks.length} banner links in carousel`);
+
+                    // If still no links found in carousel, process images inside carousel directly
+                    if (bannerLinks.length === 0) {
+                        const carouselImages = await carouselElement.findElements(By.css('img'));
+                        logger.debug(`Processing ${carouselImages.length} images directly from carousel`);
+                        for (const imgEl of carouselImages) {
+                            try {
+                                const banner = await this.extractBannerFromImageElement(
+                                    imgEl,
+                                    platformKey,
+                                    selectors,
+                                    validation
+                                );
+                                if (banner && banner.isValid) {
+                                    banners.push(banner);
+                                    logger.debug(`Successfully extracted carousel image banner: ${banner.id}`);
+                                }
+                            } catch (e) {
+                                logger.debug(`Error extracting carousel image:`, { error: e.message });
+                            }
+                        }
+                    }
                     
                     for (const linkElement of bannerLinks) {
                         try {
@@ -408,6 +469,168 @@ class ImprovedBannerExtractor {
     }
 
     /**
+     * Check if a URL is just a generic homepage or invalid redirect
+     * @param {string} url - URL to check
+     * @param {string} platformKey - Platform identifier
+     * @returns {boolean} True if URL is homepage or invalid
+     */
+    isHomePageUrl(url, platformKey) {
+        if (!url || typeof url !== 'string') return true;
+        const trimmed = url.trim();
+        if (!trimmed || trimmed === '#' || trimmed.startsWith('javascript:') || trimmed.startsWith('about:')) return true;
+        try {
+            const parsed = new URL(trimmed);
+            const path = parsed.pathname.replace(/\/+$/, '');
+            if (path === '' || path === '/') {
+                if (!parsed.search || parsed.search === '?ref_=nav_logo' || parsed.search === '?ref_=nav_header') {
+                    return true;
+                }
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * Extract the actual target webpage redirect URL from an element (image or link or container)
+     * On click of banner it redirects to this webpage
+     * @param {Object} element - WebElement (img, a, div, etc.)
+     * @param {string} platformKey - Platform identifier
+     * @returns {Promise<string>} The destination webpage URL when banner is clicked
+     */
+    async extractRedirectUrl(element, platformKey) {
+        try {
+            const baseUrl = bannerConfig.platforms[platformKey]?.baseUrl || `https://www.${platformKey}.com`;
+            
+            // Execute in-browser script to inspect the DOM hierarchy around the element
+            const rawUrl = await this.driver.executeScript(`
+                var el = arguments[0];
+                if (!el) return null;
+
+                function isValid(u) {
+                    if (!u || typeof u !== 'string') return false;
+                    u = u.trim();
+                    if (!u || u === '#' || u.startsWith('javascript:') || u === 'about:blank' || u.startsWith('mailto:')) return false;
+                    return true;
+                }
+
+                function isHome(u) {
+                    if (!isValid(u)) return false;
+                    try {
+                        var parsed = new URL(u, window.location.origin);
+                        var path = parsed.pathname.replace(/\\/+$/, '');
+                        if (path === '' || path === '/') {
+                            if (!parsed.search || parsed.search === '?ref_=nav_logo' || parsed.search === '?ref_=nav_header') {
+                                return true;
+                            }
+                        }
+                        return false;
+                    } catch(e) {
+                        return false;
+                    }
+                }
+
+                function clean(u) {
+                    if (!isValid(u)) return null;
+                    try {
+                        return new URL(u, window.location.origin).href;
+                    } catch(e) {
+                        return u;
+                    }
+                }
+
+                // 1. If el is itself an <a> tag
+                if (el.tagName && el.tagName.toLowerCase() === 'a') {
+                    var href = el.getAttribute('href') || el.href;
+                    var full = clean(href);
+                    if (full && !isHome(full)) return full;
+                }
+
+                // 2. Check closest enclosing <a> tag (parent, grandparent, etc.)
+                var closestA = el.closest ? el.closest('a') : null;
+                if (closestA) {
+                    var href2 = closestA.getAttribute('href') || closestA.href;
+                    var full2 = clean(href2);
+                    if (full2 && !isHome(full2)) return full2;
+                }
+
+                // 3. Check data attributes on el and its ancestors (up to 6 levels)
+                var curr = el;
+                for (var i = 0; i < 6; i++) {
+                    if (!curr || curr === document.body) break;
+                    var d = curr.getAttribute('data-href') || 
+                            curr.getAttribute('data-url') || 
+                            curr.getAttribute('data-link') || 
+                            curr.getAttribute('data-target') || 
+                            curr.getAttribute('data-target-url') ||
+                            curr.getAttribute('data-landing-url') ||
+                            curr.getAttribute('data-destination') ||
+                            curr.getAttribute('data-action-url');
+                    if (d) {
+                        var fullD = clean(d);
+                        if (fullD && !isHome(fullD)) return fullD;
+                    }
+
+                    // Check onclick attribute
+                    var oc = curr.getAttribute('onclick') || '';
+                    if (oc) {
+                        var match = oc.match(/(?:href|open|location|navigate)\\s*(?:=|\\()\\s*['"]([^'"]+)['"]/);
+                        if (match && match[1]) {
+                            var fullOc = clean(match[1]);
+                            if (fullOc && !isHome(fullOc)) return fullOc;
+                        }
+                    }
+
+                    curr = curr.parentElement;
+                }
+
+                // 4. Look inside enclosing slide/card/banner/carousel container for anchor tags
+                var container = el.closest ? el.closest('[class*="slide"], [class*="card"], [class*="banner"], [class*="carousel"], [class*="item"], [class*="promo"], [class*="hero"], [class*="widget"], li, section') : null;
+                if (container) {
+                    var links = container.querySelectorAll('a[href]');
+                    for (var j = 0; j < links.length; j++) {
+                        var lHref = links[j].getAttribute('href') || links[j].href;
+                        var fullL = clean(lHref);
+                        if (fullL && !isHome(fullL)) return fullL;
+                    }
+                }
+
+                // 5. Look in parent element for any anchor tags
+                if (el.parentElement) {
+                    var pLinks = el.parentElement.querySelectorAll('a[href]');
+                    for (var k = 0; k < pLinks.length; k++) {
+                        var plHref = pLinks[k].getAttribute('href') || pLinks[k].href;
+                        var fullPL = clean(plHref);
+                        if (fullPL && !isHome(fullPL)) return fullPL;
+                    }
+                }
+
+                // 6. Closest anchor if not homepage
+                if (closestA) {
+                    var lastHref = closestA.getAttribute('href') || closestA.href;
+                    var lastFull = clean(lastHref);
+                    if (lastFull && !isHome(lastFull)) return lastFull;
+                }
+
+                return null;
+            `, element);
+
+            if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim()) {
+                const resolved = new URL(rawUrl.trim(), baseUrl).href;
+                if (!this.isHomePageUrl(resolved, platformKey)) {
+                    logger.debug(`Extracted target redirect URL: ${resolved} for platform: ${platformKey}`);
+                    return resolved;
+                }
+            }
+        } catch (error) {
+            logger.debug(`Error extracting redirect URL from element:`, { error: error.message });
+        }
+        
+        return null;
+    }
+
+    /**
      * Extract banner from link element
      * @param {Object} element - Link element
      * @param {string} platformKey - Platform identifier
@@ -417,9 +640,9 @@ class ImprovedBannerExtractor {
      */
     async extractBannerFromElement(element, platformKey, selectors, validation) {
         try {
-            // Extract link URL
-            const clickRedirectUrl = await element.getAttribute('href');
-            logger.debug(`Found link: ${clickRedirectUrl}`);
+            // Extract destination redirect URL on click
+            let clickRedirectUrl = await this.extractRedirectUrl(element, platformKey);
+            logger.debug(`Found destination redirect URL: ${clickRedirectUrl}`);
             
             // Find image element within the link
             let imageElement;
@@ -430,11 +653,19 @@ class ImprovedBannerExtractor {
                     try {
                         imageElement = await element.findElement(By.css(selectors.alternativeBannerImage));
                     } catch (altError) {
-                        logger.debug(`No image found in link element`);
-                        return null;
+                        try {
+                            imageElement = await element.findElement(By.css('img'));
+                        } catch (imgErr) {
+                            logger.debug(`No image found in link element`);
+                            return null;
+                        }
                     }
                 } else {
-                    return null;
+                    try {
+                        imageElement = await element.findElement(By.css('img'));
+                    } catch (imgErr) {
+                        return null;
+                    }
                 }
             }
             
@@ -446,6 +677,20 @@ class ImprovedBannerExtractor {
             // Check for duplicate URLs
             if (this.extractedUrls.has(imageUrl)) {
                 logger.debug(`Duplicate URL detected: ${imageUrl?.substring(0, 100)}`);
+                return null;
+            }
+
+            // If destination link from element is generic homepage, try inspecting around imageElement
+            if (!clickRedirectUrl || this.isHomePageUrl(clickRedirectUrl, platformKey)) {
+                const imgRedirect = await this.extractRedirectUrl(imageElement, platformKey);
+                if (imgRedirect && !this.isHomePageUrl(imgRedirect, platformKey)) {
+                    clickRedirectUrl = imgRedirect;
+                    logger.debug(`Upgraded generic link to image redirect URL: ${clickRedirectUrl}`);
+                }
+            }
+
+            if (!clickRedirectUrl || this.isHomePageUrl(clickRedirectUrl, platformKey)) {
+                logger.debug(`Skipping banner link element because no non-homepage destination redirect URL found`);
                 return null;
             }
 
@@ -471,17 +716,37 @@ class ImprovedBannerExtractor {
             // Add URL to extracted set
             this.extractedUrls.add(imageUrl);
             
-            // Get category and priority
-            const category = this.validator.getBannerCategory(bannerData);
-            
+            // Get layout type and priority
+            const layoutType = this.validator.getBannerCategory(bannerData);
+            const isAffiliatePortal = this.currentUrl && this.currentUrl.includes('affiliate-program.amazon.in');
+            const assignedBannerType = isAffiliatePortal ? 'hero' : layoutType.category;
+            const assignedPriority = isAffiliatePortal ? 1 : layoutType.priority;
+
+            let finalRedirectUrl = clickRedirectUrl;
+            if (platformKey === 'amazon' && finalRedirectUrl && !finalRedirectUrl.includes('tag=dealshubglo0c-21')) {
+                try {
+                    const parsedUrl = new URL(finalRedirectUrl);
+                    parsedUrl.searchParams.set('tag', 'dealshubglo0c-21');
+                    finalRedirectUrl = parsedUrl.href;
+                } catch (_) {}
+            }
+
+            // Auto-classify into canonical ecommerce category & subcategory
+            const classification = classifyBanner({
+                title: altText,
+                description: altText,
+                clickRedirectUrl: finalRedirectUrl,
+                url: imageUrl
+            });
+
             // Generate banner data in the required format
-            const bannerId = this.generateBannerId(platformKey, category.category);
+            const bannerId = this.generateBannerId(platformKey, classification.category);
             const timestamp = this.generateBannerTimestamp();
             
             const banner = {
                 id: bannerId,
                 url: imageUrl,
-                clickRedirectUrl: clickRedirectUrl || "",
+                clickRedirectUrl: finalRedirectUrl,
                 isActive: true,
                 order: 0,
                 creationTimestamp: timestamp,
@@ -489,9 +754,11 @@ class ImprovedBannerExtractor {
                 expirationTimestamp: "", // Leave empty - don't generate random expiration
                 targetDealId: "",
                 platform: platformKey,
-                category: category.category,
-                priority: category.priority,
-                title: altText || 'Banner',
+                category: classification.category,
+                subcategory: classification.subcategory,
+                bannerType: assignedBannerType,
+                priority: assignedPriority,
+                title: classification.title || altText || 'Banner',
                 description: altText,
                 confidence: validation.confidence,
                 validationReasons: validation.reasons
@@ -529,12 +796,21 @@ class ImprovedBannerExtractor {
                 return null;
             }
 
+            // Extract the actual target destination webpage URL on click!
+            const clickRedirectUrl = await this.extractRedirectUrl(imageElement, platformKey);
+            logger.debug(`Found clickRedirectUrl for image: ${clickRedirectUrl}`);
+
+            if (!clickRedirectUrl || this.isHomePageUrl(clickRedirectUrl, platformKey)) {
+                logger.debug(`Skipping direct image banner because no non-homepage destination redirect URL found`);
+                return null;
+            }
+
             // Validate banner using improved validator
             const bannerData = {
                 imageUrl,
                 altText,
                 title: null,
-                clickUrl: null,
+                clickUrl: clickRedirectUrl,
                 element: imageElement
             };
             
@@ -553,15 +829,27 @@ class ImprovedBannerExtractor {
             
             // Get category and priority
             const category = this.validator.getBannerCategory(bannerData);
+            const isAffiliatePortal = this.currentUrl && this.currentUrl.includes('affiliate-program.amazon.in');
+            const assignedCategory = isAffiliatePortal ? 'hero' : category.category;
+            const assignedPriority = isAffiliatePortal ? 1 : category.priority;
             
             // Generate banner data in the required format
-            const bannerId = this.generateBannerId(platformKey, category.category);
+            const bannerId = this.generateBannerId(platformKey, assignedCategory);
             const timestamp = this.generateBannerTimestamp();
+
+            let finalRedirectUrl = clickRedirectUrl;
+            if (platformKey === 'amazon' && finalRedirectUrl && !finalRedirectUrl.includes('tag=dealshubglo0c-21')) {
+                try {
+                    const parsedUrl = new URL(finalRedirectUrl);
+                    parsedUrl.searchParams.set('tag', 'dealshubglo0c-21');
+                    finalRedirectUrl = parsedUrl.href;
+                } catch (_) {}
+            }
             
             const banner = {
                 id: bannerId,
                 url: imageUrl,
-                clickRedirectUrl: `https://www.${platformKey}.com`, // Default redirect
+                clickRedirectUrl: finalRedirectUrl,
                 isActive: true,
                 order: 0,
                 creationTimestamp: timestamp,
@@ -569,8 +857,8 @@ class ImprovedBannerExtractor {
                 expirationTimestamp: "", // Leave empty - don't generate random expiration
                 targetDealId: "",
                 platform: platformKey,
-                category: category.category,
-                priority: category.priority,
+                category: assignedCategory,
+                priority: assignedPriority,
                 title: altText || 'Banner',
                 description: altText,
                 confidence: validation.confidence,
@@ -700,7 +988,7 @@ class ImprovedBannerExtractor {
             
             // Deactivate old banners
             const activeBannerIds = storedBanners.map(banner => banner.id);
-            await this.deactivateOldBanners(activeBannerIds);
+            // await this.deactivateOldBanners(activeBannerIds);
             
             return {
                 success: true,

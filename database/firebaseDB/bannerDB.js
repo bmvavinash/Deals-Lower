@@ -127,8 +127,26 @@ class BannerDB {
         for (const banner of banners) {
             const bannerKey = buildBannerKey(banner);
             
-            // Skip if it's a duplicate
+            // Skip or upgrade duplicate
             if (bannerKey && existingKeys.has(bannerKey)) {
+                const existingBannerEntry = Object.entries(existingBanners || {}).find(([id, data]) => buildBannerKey(data) === bannerKey);
+                if (existingBannerEntry && banner.clickRedirectUrl) {
+                    const [existingId, existingData] = existingBannerEntry;
+                    const oldUrl = existingData.clickRedirectUrl || '';
+                    const isOldHomePage = !oldUrl || oldUrl.includes('/www.flipkart.com') || oldUrl.includes('/www.amazon.in') || oldUrl.endsWith('flipkart.com') || oldUrl.endsWith('amazon.in') || oldUrl.endsWith('myntra.com') || oldUrl.endsWith('ajio.com');
+                    const isNewRealWebpage = !banner.clickRedirectUrl.endsWith('flipkart.com') && !banner.clickRedirectUrl.endsWith('amazon.in');
+                    
+                    if (isOldHomePage && isNewRealWebpage) {
+                        logger.info(`Upgrading destination URL on existing banner ${existingId}: ${oldUrl} -> ${banner.clickRedirectUrl}`);
+                        updates[existingId] = {
+                            ...existingData,
+                            clickRedirectUrl: banner.clickRedirectUrl,
+                            updateTimestamp: new Date().toISOString()
+                        };
+                        results.push({ id: existingId, status: 200, message: 'Existing banner redirect URL updated' });
+                        continue;
+                    }
+                }
                 logger.info(`Skipping duplicate banner (production): ${banner.id || banner.url || 'unknown'}`);
                 results.push({ id: banner.id, status: 409, message: 'Duplicate banner skipped' });
                 continue;
@@ -500,8 +518,26 @@ class TestBannerDB {
         for (const banner of banners) {
             const bannerKey = buildBannerKey(banner);
             
-            // Skip if it's a duplicate
+            // Skip or upgrade duplicate
             if (bannerKey && existingKeys.has(bannerKey)) {
+                const existingBannerEntry = Object.entries(existingBanners || {}).find(([id, data]) => buildBannerKey(data) === bannerKey);
+                if (existingBannerEntry && banner.clickRedirectUrl) {
+                    const [existingId, existingData] = existingBannerEntry;
+                    const oldUrl = existingData.clickRedirectUrl || '';
+                    const isOldHomePage = !oldUrl || oldUrl.includes('/www.flipkart.com') || oldUrl.includes('/www.amazon.in') || oldUrl.endsWith('flipkart.com') || oldUrl.endsWith('amazon.in') || oldUrl.endsWith('myntra.com') || oldUrl.endsWith('ajio.com');
+                    const isNewRealWebpage = !banner.clickRedirectUrl.endsWith('flipkart.com') && !banner.clickRedirectUrl.endsWith('amazon.in');
+                    
+                    if (isOldHomePage && isNewRealWebpage) {
+                        logger.info(`Upgrading destination URL on existing test banner ${existingId}: ${oldUrl} -> ${banner.clickRedirectUrl}`);
+                        updates[existingId] = {
+                            ...existingData,
+                            clickRedirectUrl: banner.clickRedirectUrl,
+                            updateTimestamp: new Date().toISOString()
+                        };
+                        results.push({ id: existingId, status: 200, message: 'Existing test banner redirect URL updated' });
+                        continue;
+                    }
+                }
                 logger.info(`Skipping duplicate test banner: ${banner.id || banner.url || 'unknown'}`);
                 results.push({ id: banner.id, status: 409, message: 'Duplicate test banner skipped' });
                 continue;

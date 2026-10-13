@@ -54,10 +54,10 @@ class ImprovedBannerValidator {
         this.bannerDimensions = {
             minWidth: 300,
             minHeight: 100,
-            maxWidth: 2000,
-            maxHeight: 800,
-            minAspectRatio: 1.4, // width/height
-            maxAspectRatio: 5.0
+            maxWidth: 3500,
+            maxHeight: 1200,
+            minAspectRatio: 1.2, // width/height
+            maxAspectRatio: 5.5
         };
 
         // URL patterns that indicate banner images
@@ -76,7 +76,16 @@ class ImprovedBannerValidator {
             /event/i,
             /festival/i,
             /goldbox/i,
-            /central/i
+            /central/i,
+            /flap/i,
+            /fk-p-flap/i,
+            /g\/31/i,
+            /media-amazon/i,
+            /images-amazon/i,
+            /bxcGrid/i,
+            /carousel/i,
+            /slider/i,
+            /billboard/i
         ];
 
         // URL patterns that indicate product images (should be excluded)
@@ -122,6 +131,31 @@ class ImprovedBannerValidator {
 
     /**
      * Comprehensive banner validation
+    /**
+     * Check if a URL is just a generic homepage or invalid redirect
+     * @param {string} url - URL to check
+     * @returns {boolean} True if URL is homepage or invalid
+     */
+    isHomePageOnly(url) {
+        if (!url || typeof url !== 'string') return true;
+        const trimmed = url.trim();
+        if (!trimmed || trimmed === '#' || trimmed.startsWith('javascript:') || trimmed.startsWith('about:')) return true;
+        try {
+            const parsed = new URL(trimmed);
+            const path = parsed.pathname.replace(/\/+$/, '');
+            if (path === '' || path === '/') {
+                if (!parsed.search || parsed.search === '?ref_=nav_logo' || parsed.search === '?ref_=nav_header') {
+                    return true;
+                }
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
+     * Comprehensive banner validation
      * @param {Object} bannerData - Banner data to validate
      * @returns {Object} Validation result
      */
@@ -130,7 +164,8 @@ class ImprovedBannerValidator {
         
         logger.debug('Validating banner candidate', { 
             imageUrl: imageUrl?.substring(0, 100), 
-            altText: altText?.substring(0, 50) 
+            altText: altText?.substring(0, 50),
+            clickUrl: clickUrl?.substring(0, 100)
         });
 
         const validation = {
@@ -148,7 +183,14 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 2. Check if it's a product image (should be excluded)
+        // 2. Validate destination webpage URL (MUST have a specific landing webpage, not homepage)
+        if (this.isHomePageOnly(clickUrl)) {
+            validation.isValid = false;
+            validation.reasons.push('Candidate does not redirect to a specific webpage (missing or homepage URL)');
+            return validation;
+        }
+
+        // 3. Check if it's a product image (should be excluded)
         const productCheck = this.isProductImage(imageUrl, altText, title);
         if (productCheck.isProduct) {
             validation.isValid = false;
@@ -156,7 +198,7 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 3. Check for affiliate/commission content (should be excluded)
+        // 4. Check for affiliate/commission content (should be excluded)
         const affiliateCheck = this.containsAffiliateContent(altText, title, clickUrl);
         if (affiliateCheck.containsAffiliate) {
             validation.isValid = false;
@@ -172,15 +214,15 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 4. Check if it's actually a banner
-        const bannerCheck = this.isPromotionalBanner(imageUrl, altText, title);
+        // 5. Check if it's actually a banner
+        const bannerCheck = this.isPromotionalBanner(imageUrl, altText, title, clickUrl);
         if (!bannerCheck.isBanner) {
             validation.isValid = false;
             validation.reasons.push(`Not a promotional banner: ${bannerCheck.reason}`);
             return validation;
         }
 
-        // 5. Validate banner dimensions (if available)
+        // 6. Validate banner dimensions (if available)
         const dimensionCheck = this.validateBannerDimensions(bannerData);
         if (!dimensionCheck.isValid) {
             validation.isValid = false;
@@ -188,7 +230,7 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 6. Calculate confidence score
+        // 7. Calculate confidence score
         validation.confidence = this.calculateConfidence(bannerData);
         validation.category = bannerCheck.category;
 
@@ -358,11 +400,27 @@ class ImprovedBannerValidator {
      * @param {string} imageUrl - Image URL
      * @param {string} altText - Alt text
      * @param {string} title - Title
+     * @param {string} clickUrl - Click redirect destination URL
      * @returns {Object} Check result
      */
-    isPromotionalBanner(imageUrl, altText, title) {
+    isPromotionalBanner(imageUrl, altText, title, clickUrl) {
         const text = `${altText || ''} ${title || ''}`.toLowerCase();
         const url = (imageUrl || '').toLowerCase();
+
+        // Check destination click URL patterns for banner promotions / landing pages
+        if (clickUrl) {
+            const lowerClick = clickUrl.toLowerCase();
+            const clickPatterns = [
+                /deal/i, /event/i, /offer/i, /sale/i, /b\?/i, /b\//i, /l\/\d+/i,
+                /pr\?/i, /\/p\//i, /\/dp\//i, /collection/i, /store/i, /promotion/i,
+                /festival/i, /exclusive/i, /discount/i, /coupon/i
+            ];
+            for (const pattern of clickPatterns) {
+                if (pattern.test(lowerClick)) {
+                    return { isBanner: true, category: 'promotional', reason: `Banner destination URL pattern: ${pattern}` };
+                }
+            }
+        }
 
         // Check URL patterns for banners
         for (const pattern of this.bannerUrlPatterns) {
@@ -435,8 +493,8 @@ class ImprovedBannerValidator {
             return { isValid: true };
         }
 
-        // 2. Otherwise fall back to extracting dimensions from the URL
-        const dimensionMatch = imageUrl.match(/(\d+)x(\d+)/);
+        // 2. Otherwise fall back to extracting dimensions from the URL (supports both 1600x780 and 1600/780)
+        const dimensionMatch = imageUrl.match(/(\d+)[x/](\d+)/);
         if (dimensionMatch) {
             const urlWidth = parseInt(dimensionMatch[1]);
             const urlHeight = parseInt(dimensionMatch[2]);

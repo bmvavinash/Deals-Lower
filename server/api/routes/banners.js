@@ -8,36 +8,90 @@ const { bannerUrlFixer } = require('../../../services/bannerUrlFixer');
 const logger = getModuleLogger('banners-api');
 
 // Helpers to normalize and deduplicate banners
-// Use URL-based uniqueness: image URL or clickRedirectUrl (whichever is available)
+// Normalizes image URLs across CDNs, crops, resolutions, and subdomains to prevent duplicates
+function getCanonicalImageKey(url) {
+  if (!url || typeof url !== 'string') return '';
+  const trimmed = url.trim();
+  if (!trimmed) return '';
+
+  // 1. Flipkart standard 16-hex hash: /image/([a-f0-9]{16})
+  const fkHash = trimmed.match(/\/image\/([a-f0-9]{16})(?:\.|\?|$)/i);
+  if (fkHash) {
+    return 'flipkart-hash:' + fkHash[1].toLowerCase();
+  }
+
+  // 2. Flipkart asset filename with timestamp or UUID:
+  const fkAsset = trimmed.match(/\/image\/\d+x\d+-([a-z0-9_-]+?)(?:-\d{10,14})?\.(?:png|jpg|jpeg|webp)/i);
+  if (fkAsset) {
+    return 'flipkart-asset:' + fkAsset[1].toLowerCase();
+  }
+
+  // 3. Amazon Media ID in /images/I/
+  const amzI = trimmed.match(/\/images\/I\/([A-Za-z0-9%+-]+?)(?:\._|\.jpg|\.png|\.gif|\.jpeg)/i);
+  if (amzI) {
+    return 'amazon-i:' + amzI[1].toLowerCase();
+  }
+
+  // 4. Amazon Media ID in /images/G/
+  const amzG = trimmed.match(/\/images\/G\/\d+\/(.+?)(?:\._|\.jpg|\.png|\.gif|\.jpeg)/i);
+  if (amzG) {
+    const baseName = amzG[1].split('._')[0];
+    return 'amazon-g:' + baseName.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  }
+
+  // 5. Myntra assets
+  const myntra = trimmed.match(/(?:assets\/images|assets)\/(.+?)(?:\.jpg|\.png|\.webp)/i);
+  if (myntra) {
+    return 'myntra:' + myntra[1].toLowerCase().replace(/[^a-z0-9_-]/g, '');
+  }
+
+  // 6. Ajio assets
+  const ajioCms = trimmed.match(/\/AJIO\/WEB\/([a-zA-Z0-9._-]+?)\.(?:jpg|jpeg|png|webp)/i);
+  if (ajioCms) {
+    return 'ajio-cms:' + ajioCms[1].toLowerCase();
+  }
+  const ajioV2 = trimmed.match(/\/original\/([a-zA-Z0-9._-]+?)(?:-\d{10,14})?\.(?:jpeg|jpg|png|webp)/i);
+  if (ajioV2) {
+    return 'ajio-v2:' + ajioV2[1].toLowerCase();
+  }
+
+  // 7. General URL fallback: strip query parameters and sizing tokens
+  try {
+    const parsed = new URL(trimmed);
+    const pathname = parsed.pathname;
+    const filename = pathname.substring(pathname.lastIndexOf('/') + 1);
+    const nameWithoutExt = filename.split('.')[0].replace(/\._[A-Za-z0-9,._-]+/g, '');
+    return 'generic:' + parsed.hostname + ':' + nameWithoutExt.toLowerCase();
+  } catch (e) {
+    return 'raw:' + trimmed.split('?')[0].toLowerCase();
+  }
+}
+
 const normalizeValue = (value) => (value || '').toString().trim().toLowerCase();
 const normalizeUrl = (url) => {
   if (!url) return '';
-  // Remove query parameters and fragments for better matching
   try {
     const urlObj = new URL(url);
     return urlObj.origin + urlObj.pathname;
   } catch (e) {
-    // If URL parsing fails, return normalized string
     return normalizeValue(url);
   }
 };
 
 const buildBannerKey = (banner = {}) => {
-  // Primary: Use image URL (banner.url)
-  const imageUrl = normalizeUrl(banner.url);
-  // Secondary: Use clickRedirectUrl if image URL is not available
-  const clickUrl = normalizeUrl(banner.clickRedirectUrl);
-  
-  // Use image URL as primary key, fallback to clickRedirectUrl
-  const primaryUrl = imageUrl || clickUrl;
-  
-  if (!primaryUrl) {
-    // If no URL available, fallback to ID
-    return banner.id ? `id:${banner.id}` : null;
+  // Primary: Use canonical image key if image URL is present
+  if (banner.url) {
+    const imgKey = getCanonicalImageKey(banner.url);
+    if (imgKey) return imgKey;
+  }
+  // Secondary: Use normalized clickRedirectUrl
+  if (banner.clickRedirectUrl) {
+    const clickUrl = normalizeUrl(banner.clickRedirectUrl);
+    if (clickUrl) return clickUrl;
   }
   
-  // Return normalized URL as the key
-  return primaryUrl;
+  // Fallback to ID
+  return banner.id ? `id:${banner.id}` : null;
 };
 
 const dedupeBannerArray = (bannerArray = []) => {
@@ -676,6 +730,7 @@ router.put('/:id', async (req, res, next) => {
     if (updates.description !== undefined) bannerData.description = updates.description;
     if (updates.platform !== undefined) bannerData.platform = updates.platform;
     if (updates.category !== undefined) bannerData.category = updates.category;
+      if (updates.subcategory !== undefined) bannerData.subcategory = updates.subcategory;
     if (updates.url !== undefined) bannerData.url = updates.url;
     if (updates.clickRedirectUrl !== undefined) bannerData.clickRedirectUrl = updates.clickRedirectUrl;
     if (updates.priority !== undefined) bannerData.priority = updates.priority;
@@ -911,11 +966,13 @@ router.post('/delete-duplicates', async (req, res, next) => {
     const duplicatesToDelete = [];
     urlMap.forEach((bannersWithSameUrl, urlKey) => {
       if (bannersWithSameUrl.length > 1) {
-        // Sort by creationTimestamp (oldest first) - keep the first one
+        // Priority: Active banners first! Then newest timestamp
         bannersWithSameUrl.sort((a, b) => {
-          const timeA = a.creationTimestamp || a.updateTimestamp || '';
-          const timeB = b.creationTimestamp || b.updateTimestamp || '';
-          return timeA.localeCompare(timeB);
+          if (a.isActive && !b.isActive) return -1;
+          if (!a.isActive && b.isActive) return 1;
+          const timeA = a.updateTimestamp || a.creationTimestamp || '';
+          const timeB = b.updateTimestamp || b.creationTimestamp || '';
+          return timeB.localeCompare(timeA);
         });
         
         // Mark all except the first one for deletion
@@ -1169,6 +1226,19 @@ router.post('/delete-by-year', async (req, res, next) => {
     logger.error('Error deleting banners by year', { error: error.message, stack: error.stack });
     next(error);
   }
+});
+
+/**
+ * GET /api/banners/config
+ * Get live banner caching config
+ */
+router.get('/config', (req, res) => {
+  res.json({
+    success: true,
+    data: {
+      useCache: false
+    }
+  });
 });
 
 /**
