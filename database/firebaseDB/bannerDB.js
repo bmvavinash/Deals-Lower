@@ -61,7 +61,9 @@ if (!defaultApp) {
       throw e;
     }
   }
-  const databaseURL = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`;
+  const databaseURL = DB_Name === 'lowerdealhub'
+    ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+    : `https://${DB_Name}-default-rtdb.firebaseio.com`;
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL
@@ -130,12 +132,12 @@ class BannerDB {
         const results = [];
         let existingKeys = new Set();
         let productImageKeys = new Set();
-        let existingBannersData = null;
+        let existingBanners = {};
 
         try {
             const existing = await this.getAllBanners();
             if (existing.status === 200 && existing.data) {
-                existingBannersData = existing.data;
+                existingBanners = existing.data;
                 existingKeys = new Set(
                     Object.values(existing.data)
                         .map(buildBannerKey)
@@ -157,27 +159,49 @@ class BannerDB {
             logger.warn('Could not pre-load existing banners for dedupe', { error: error.message });
         }
 
+        const updates = {};
         for (const banner of banners) {
             const bannerKey = buildBannerKey(banner);
             
-            // If duplicate banner is encountered, check if we can extend the expiration time
+            // Skip or upgrade duplicate
             if (bannerKey && existingKeys.has(bannerKey)) {
-                const existingBanner = Object.values(existingBannersData || {}).find(b => buildBannerKey(b) === bannerKey);
-                if (existingBanner) {
-                    const newExpiry = Number(banner.expirationTimestamp);
-                    const oldExpiry = Number(existingBanner.expirationTimestamp);
-                    
-                    if (newExpiry && (!oldExpiry || newExpiry > oldExpiry)) {
-                        logger.info(`Extending expiration time for existing banner ${existingBanner.id} from ${oldExpiry} to ${newExpiry}`);
-                        await this.bannersRef.child(existingBanner.id).update({
-                            expirationTimestamp: newExpiry,
-                            updateTimestamp: new Date().toISOString()
-                        });
-                        results.push({ id: existingBanner.id, status: 200, message: 'Banner expiration extended' });
-                    } else {
-                        logger.info(`Existing banner ${existingBanner.id} has same or newer expiration time (${oldExpiry} >= ${newExpiry}), skipping duplicate`);
-                        results.push({ id: existingBanner.id, status: 409, message: 'Duplicate banner skipped' });
+                const existingBannerEntry = Object.entries(existingBanners || {}).find(([id, data]) => buildBannerKey(data) === bannerKey);
+                if (existingBannerEntry) {
+                    const [existingId, existingData] = existingBannerEntry;
+                    let shouldUpdate = false;
+                    const patch = {};
+
+                    if (banner.clickRedirectUrl) {
+                        const oldUrl = existingData.clickRedirectUrl || '';
+                        const isOldHomePage = !oldUrl || oldUrl.includes('/www.flipkart.com') || oldUrl.includes('/www.amazon.in') || oldUrl.endsWith('flipkart.com') || oldUrl.endsWith('amazon.in') || oldUrl.endsWith('myntra.com') || oldUrl.endsWith('ajio.com');
+                        const isNewRealWebpage = !banner.clickRedirectUrl.endsWith('flipkart.com') && !banner.clickRedirectUrl.endsWith('amazon.in');
+                        if (isOldHomePage && isNewRealWebpage) {
+                            logger.info(`Upgrading destination URL on existing banner ${existingId}: ${oldUrl} -> ${banner.clickRedirectUrl}`);
+                            patch.clickRedirectUrl = banner.clickRedirectUrl;
+                            shouldUpdate = true;
+                        }
                     }
+
+                    const newExpiry = Number(banner.expirationTimestamp);
+                    const oldExpiry = Number(existingData.expirationTimestamp);
+                    if (newExpiry && (!oldExpiry || newExpiry > oldExpiry)) {
+                        logger.info(`Extending expiration time for existing banner ${existingId} from ${oldExpiry} to ${newExpiry}`);
+                        patch.expirationTimestamp = newExpiry;
+                        shouldUpdate = true;
+                    }
+
+                    if (shouldUpdate) {
+                        patch.updateTimestamp = new Date().toISOString();
+                        updates[existingId] = {
+                            ...existingData,
+                            ...patch
+                        };
+                        results.push({ id: existingId, status: 200, message: 'Existing banner updated (url/expiry)' });
+                        continue;
+                    }
+
+                    logger.info(`Existing banner ${existingId} already up to date, skipping duplicate`);
+                    results.push({ id: existingId, status: 409, message: 'Duplicate banner skipped' });
                 } else {
                     logger.info(`Skipping duplicate banner (production): ${banner.id || banner.url || 'unknown'}`);
                     results.push({ id: banner.id, status: 409, message: 'Duplicate banner skipped' });
@@ -192,11 +216,37 @@ class BannerDB {
                 continue;
             }
 
-            const result = await this.storeBanner(banner);
-            results.push({ id: banner.id, ...result });
+            const exists = existingBanners && existingBanners[banner.id];
+            if (exists) {
+                const existingData = existingBanners[banner.id];
+                const updatedData = {
+                    ...existingData,
+                    ...banner,
+                    updateTimestamp: new Date().toISOString()
+                };
+                updates[banner.id] = updatedData;
+                results.push({ id: banner.id, status: 200, message: 'Banner updated successfully' });
+            } else {
+                updates[banner.id] = banner;
+                results.push({ id: banner.id, status: 201, message: 'Banner created successfully' });
+            }
 
             if (bannerKey) {
                 existingKeys.add(bannerKey);
+            }
+        }
+
+        if (Object.keys(updates).length > 0) {
+            try {
+                await this.bannersRef.update(updates);
+                logger.info(`Bulk stored/updated ${Object.keys(updates).length} banners in Firebase`);
+            } catch (error) {
+                logger.error('Failed to bulk update banners in Firebase, falling back to sequential:', { error: error.message });
+                for (const banner of banners) {
+                    if (updates[banner.id]) {
+                        await this.storeBanner(banner);
+                    }
+                }
             }
         }
         
@@ -306,13 +356,19 @@ class BannerDB {
             
             const allBanners = allBannersResult.data;
             let deactivatedCount = 0;
+            const updates = {};
             
             // Deactivate banners that are not in the active list
             for (const [bannerId, bannerData] of Object.entries(allBanners)) {
                 if (bannerData.isActive && !activeBannerIds.includes(bannerId)) {
-                    await this.deactivateBanner(bannerId);
+                    updates[`${bannerId}/isActive`] = false;
+                    updates[`${bannerId}/updateTimestamp`] = new Date().toISOString();
                     deactivatedCount++;
                 }
+            }
+            
+            if (deactivatedCount > 0) {
+                await this.bannersRef.update(updates);
             }
             
             logger.info(`Deactivated ${deactivatedCount} old banners`);
@@ -488,10 +544,12 @@ class TestBannerDB {
         const results = [];
         let existingKeys = new Set();
         let productImageKeys = new Set();
+        let existingBanners = {};
 
         try {
             const existing = await this.getAllTestBanners();
             if (existing.status === 200 && existing.data) {
+                existingBanners = existing.data;
                 existingKeys = new Set(
                     Object.values(existing.data)
                         .map(buildBannerKey)
@@ -513,11 +571,30 @@ class TestBannerDB {
             logger.warn('Could not pre-load test banners for dedupe', { error: error.message });
         }
 
+        const updates = {};
         for (const banner of banners) {
             const bannerKey = buildBannerKey(banner);
             
-            // Skip if it's a duplicate
+            // Skip or upgrade duplicate
             if (bannerKey && existingKeys.has(bannerKey)) {
+                const existingBannerEntry = Object.entries(existingBanners || {}).find(([id, data]) => buildBannerKey(data) === bannerKey);
+                if (existingBannerEntry && banner.clickRedirectUrl) {
+                    const [existingId, existingData] = existingBannerEntry;
+                    const oldUrl = existingData.clickRedirectUrl || '';
+                    const isOldHomePage = !oldUrl || oldUrl.includes('/www.flipkart.com') || oldUrl.includes('/www.amazon.in') || oldUrl.endsWith('flipkart.com') || oldUrl.endsWith('amazon.in') || oldUrl.endsWith('myntra.com') || oldUrl.endsWith('ajio.com');
+                    const isNewRealWebpage = !banner.clickRedirectUrl.endsWith('flipkart.com') && !banner.clickRedirectUrl.endsWith('amazon.in');
+                    
+                    if (isOldHomePage && isNewRealWebpage) {
+                        logger.info(`Upgrading destination URL on existing test banner ${existingId}: ${oldUrl} -> ${banner.clickRedirectUrl}`);
+                        updates[existingId] = {
+                            ...existingData,
+                            clickRedirectUrl: banner.clickRedirectUrl,
+                            updateTimestamp: new Date().toISOString()
+                        };
+                        results.push({ id: existingId, status: 200, message: 'Existing test banner redirect URL updated' });
+                        continue;
+                    }
+                }
                 logger.info(`Skipping duplicate test banner: ${banner.id || banner.url || 'unknown'}`);
                 results.push({ id: banner.id, status: 409, message: 'Duplicate test banner skipped' });
                 continue;
@@ -530,11 +607,37 @@ class TestBannerDB {
                 continue;
             }
 
-            const result = await this.storeTestBanner(banner);
-            results.push({ id: banner.id, ...result });
+            const exists = existingBanners && existingBanners[banner.id];
+            if (exists) {
+                const existingData = existingBanners[banner.id];
+                const updatedData = {
+                    ...existingData,
+                    ...banner,
+                    updateTimestamp: new Date().toISOString()
+                };
+                updates[banner.id] = updatedData;
+                results.push({ id: banner.id, status: 200, message: 'Test banner updated successfully' });
+            } else {
+                updates[banner.id] = banner;
+                results.push({ id: banner.id, status: 201, message: 'Test banner created successfully' });
+            }
 
             if (bannerKey) {
                 existingKeys.add(bannerKey);
+            }
+        }
+
+        if (Object.keys(updates).length > 0) {
+            try {
+                await this.testBannersRef.update(updates);
+                logger.info(`Bulk stored/updated ${Object.keys(updates).length} test banners in Firebase`);
+            } catch (error) {
+                logger.error('Failed to bulk update test banners in Firebase, falling back to sequential:', { error: error.message });
+                for (const banner of banners) {
+                    if (updates[banner.id]) {
+                        await this.storeTestBanner(banner);
+                    }
+                }
             }
         }
         
@@ -619,13 +722,19 @@ class TestBannerDB {
             
             const allBanners = allBannersResult.data;
             let deactivatedCount = 0;
+            const updates = {};
             
             // Deactivate banners that are not in the active list
             for (const [bannerId, bannerData] of Object.entries(allBanners)) {
                 if (bannerData.isActive && !activeBannerIds.includes(bannerId)) {
-                    await this.deactivateTestBanner(bannerId);
+                    updates[`${bannerId}/isActive`] = false;
+                    updates[`${bannerId}/updateTimestamp`] = new Date().toISOString();
                     deactivatedCount++;
                 }
+            }
+            
+            if (deactivatedCount > 0) {
+                await this.testBannersRef.update(updates);
             }
             
             logger.info(`Deactivated ${deactivatedCount} old test banners`);

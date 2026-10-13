@@ -850,11 +850,11 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  */
 router.get('/', async (req, res, next) => {
   try {
-    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0, nocache } = req.query;
+    const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0, sortBy, order, nocache } = req.query;
     const isNoCache = nocache === 'true';
     
     // Create cache key
-    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}`;
+    const cacheKey = `deals_${dealType || 'all'}_${platform || 'all'}_${date || 'all'}_${categoryGroup || 'all'}_${staticSubcategory || 'all'}_${limit}_${offset}_${sortBy || 'default'}_${order || 'desc'}`;
     
     // Check cache first (increased TTL to 10 minutes for deals)
     if (!isNoCache) {
@@ -879,14 +879,19 @@ router.get('/', async (req, res, next) => {
       
       if (!queryDate) {
         logger.info('No date specified, finding most recent date with deals...');
-        const latestSnapshot = await ref.orderByChild('datetime').limitToLast(1).once('value');
-        const latestVal = latestSnapshot.val() || {};
-        const latestKey = Object.keys(latestVal)[0];
-        
-        if (latestKey && latestVal[latestKey]) {
-          queryDate = latestVal[latestKey].date;
-          logger.info(`Found latest date: ${queryDate}.`);
-          cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000); // cache for 2 minutes
+        try {
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 6000));
+          const latestSnapshot = await Promise.race([ref.orderByChild('datetime').limitToLast(1).once('value'), timeoutPromise]);
+          const latestVal = latestSnapshot.val() || {};
+          const latestKey = Object.keys(latestVal)[0];
+          
+          if (latestKey && latestVal[latestKey]) {
+            queryDate = latestVal[latestKey].date;
+            logger.info(`Found latest date: ${queryDate}.`);
+            cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000); // cache for 2 minutes
+          }
+        } catch (findErr) {
+          logger.warn('Finding latest date timed out, continuing without date', { error: findErr.message });
         }
       } else {
         logger.info(`Using cached latest date: ${queryDate}`);
@@ -900,9 +905,36 @@ router.get('/', async (req, res, next) => {
       
       if (!deals) {
         logger.info(`Fetching raw deals from Firebase for date ${queryDate}...`);
-        const snapshot = await ref.orderByChild('date').equalTo(queryDate).once('value');
-        deals = snapshot.val() || {};
-        cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000); // Cache raw data for 10 minutes
+        try {
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 8000));
+          const snapshotPromise = ref.orderByChild('date').equalTo(queryDate).once('value');
+          const snapshot = await Promise.race([snapshotPromise, timeoutPromise]);
+          deals = snapshot.val() || {};
+          cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000); // Cache raw data for 10 minutes
+        } catch (fetchErr) {
+          logger.warn('Firebase query failed or timed out, trying REST API fallback', { error: fetchErr.message });
+          const config = require('../../../config/config');
+          const constants = require('../../../config/constants');
+          const dbname = constants.postingTypesConfig[constants.type].DB;
+          let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
+          const baseUrl = DB_Name === 'lowerdealhub' 
+            ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${targetDb}.json`
+            : `https://${DB_Name}-default-rtdb.firebaseio.com/${targetDb}.json`;
+          const apiUrl = `${baseUrl}?orderBy="date"&equalTo="${queryDate}"`;
+          const controller = new AbortController();
+          const fetchTimeout = setTimeout(() => controller.abort(), 8000);
+          try {
+            const response = await fetch(apiUrl, { signal: controller.signal });
+            clearTimeout(fetchTimeout);
+            if (!response.ok) throw new Error(`REST API failed: ${response.statusText}`);
+            deals = await response.json() || {};
+            cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
+          } catch (restErr) {
+            clearTimeout(fetchTimeout);
+            logger.error('REST API fallback failed', { error: restErr.message });
+            deals = {};
+          }
+        }
       } else {
         logger.info(`Using cached raw deals for date ${queryDate}`);
       }
@@ -910,8 +942,14 @@ router.get('/', async (req, res, next) => {
       // Fallback if no deals at all in the DB (query last 300 items)
       logger.info('No deals found to determine latest date, querying default pool.');
       const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
-      const snapshot = await ref.orderByChild('datetime').limitToLast(poolSize).once('value');
-      deals = snapshot.val() || {};
+      try {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 8000));
+        const snapshot = await Promise.race([ref.orderByChild('datetime').limitToLast(poolSize).once('value'), timeoutPromise]);
+        deals = snapshot.val() || {};
+      } catch (poolErr) {
+        deals = {};
+      }
+    }
     }
     
     // Convert to array and filter out completely empty items
@@ -979,38 +1017,45 @@ router.get('/', async (req, res, next) => {
       return score;
     };
 
-    // Determine sort parameter (defaults to relevance)
-    const { sortBy = 'relevance', order = 'desc' } = req.query;
-    const isDesc = order.toLowerCase() !== 'asc';
+    const isDesc = order ? order.toLowerCase() !== 'asc' : true;
 
-    dealsArray.sort((a, b) => {
-      if (sortBy === 'price') {
-        const aVal = parseFloat(String(a.price || '0').replace(/[^\d.-]/g, '')) || 0;
-        const bVal = parseFloat(String(b.price || '0').replace(/[^\d.-]/g, '')) || 0;
-        return isDesc ? bVal - aVal : aVal - bVal;
-      }
-      if (sortBy === 'discount') {
-        const aVal = parseInt(String(a.discount || '0').match(/(\d+)/)?.[1] || '0') || 0;
-        const bVal = parseInt(String(b.discount || '0').match(/(\d+)/)?.[1] || '0') || 0;
-        return isDesc ? bVal - aVal : aVal - bVal;
-      }
-      if (sortBy === 'date') {
+    if (sortBy && sortBy !== 'default' && sortBy !== 'relevance') {
+      dealsArray.sort((a, b) => {
+        let valA, valB;
+        if (sortBy === 'price') {
+          valA = parseFloat(String(a.price || '0').replace(/[^\d.-]/g, '')) || 0;
+          valB = parseFloat(String(b.price || '0').replace(/[^\d.-]/g, '')) || 0;
+        } else if (sortBy === 'discount') {
+          valA = parseFloat(String(a.discount || '0').replace(/[^0-9.]/g, '')) || 0;
+          valB = parseFloat(String(b.discount || '0').replace(/[^0-9.]/g, '')) || 0;
+        } else if (sortBy === 'title') {
+          valA = (a.title || '').toLowerCase();
+          valB = (b.title || '').toLowerCase();
+        } else if (sortBy === 'updateTimestamp' || sortBy === 'date') {
+          valA = Number(a.updatedatetime || a.updateTimestamp || a.datetime || 0);
+          valB = Number(b.updatedatetime || b.updateTimestamp || b.datetime || 0);
+        } else {
+          valA = Number(a.datetime || 0);
+          valB = Number(b.datetime || 0);
+        }
+
+        if (valA < valB) return isDesc ? 1 : -1;
+        if (valA > valB) return isDesc ? -1 : 1;
+        return 0;
+      });
+    } else {
+      // Default: Relevance sort + recency fallback
+      dealsArray.sort((a, b) => {
+        const aScore = getRelevanceScore(a);
+        const bScore = getRelevanceScore(b);
+        if (aScore !== bScore) {
+          return bScore - aScore; // Highest relevance score first
+        }
         const aTime = Number(a.updatedatetime || a.datetime || 0);
         const bTime = Number(b.updatedatetime || b.datetime || 0);
-        return isDesc ? bTime - aTime : aTime - bTime;
-      }
-      
-      // Default: Relevance sort
-      const aScore = getRelevanceScore(a);
-      const bScore = getRelevanceScore(b);
-      if (aScore !== bScore) {
-        return bScore - aScore; // Highest relevance score first
-      }
-      // Fallback: newest update date first
-      const aTime = Number(a.updatedatetime || a.datetime || 0);
-      const bTime = Number(b.updatedatetime || b.datetime || 0);
-      return bTime - aTime;
-    });
+        return bTime - aTime;
+      });
+    }
 
     // Apply pagination
     const total = dealsArray.length;

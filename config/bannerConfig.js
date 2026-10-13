@@ -54,31 +54,45 @@ module.exports = {
       baseUrl: 'https://www.amazon.in',
       affiliateUrl: 'https://affiliate-program.amazon.in/home',
       bannerUrls: [
+        'https://affiliate-program.amazon.in/home',
         'https://www.amazon.in',
         'https://www.amazon.in/deals',
         'https://www.amazon.in/gp/goldbox',
-        'https://affiliate-program.amazon.in/home'
+        'https://www.amazon.in/l/1389402031', // Audio
+        'https://www.amazon.in/l/1389401031', // Mobiles
+        'https://www.amazon.in/l/976419031',  // Electronics
+        'https://www.amazon.in/l/976392031',  // Computers
+        'https://www.amazon.in/l/6648217031', // Fashion
+        'https://www.amazon.in/l/976460031',  // Video Games
+        'https://www.amazon.in/l/976442031',  // Home & Kitchen
+        'https://www.amazon.in/l/1571274031', // Baby
+        'https://www.amazon.in/l/2454178031', // Grocery
+        'https://www.amazon.in/l/976389031',  // Books
+        'https://www.amazon.in/l/1984443031', // Sports
+        'https://www.amazon.in/l/1350380031', // Toys
+        'https://www.amazon.in/l/1355016031', // Beauty
+        'https://www.amazon.in/l/1350384031'  // Health & Personal Care
       ],
       selectors: {
-        // Main promotional banner selectors (from your HTML examples)
-        carousel: 'div._Y29ud_acsUxWidgetDesktop_veWWI, div[data-card-metrics-id*="deals-events"], div[class*="bxcGridImage"], div.ac-carousel, ol.a-carousel',
-        bannerLink: 'a[href*="/events/"], a[href*="/gp/goldbox"], a[href*="/deals"], a[target="_blank"]',
-        bannerImage: 'img[src*="media-amazon.com"], img[src*="images-eu.ssl-images-amazon.com"], img[alt*="central header"], img[border="0"], img[align="center"]',
+        // Main promotional banner selectors
+        carousel: '#ac-carousel-home-banners, div.ac-carousel, ol.a-carousel, div._Y29ud_acsUxWidgetDesktop_veWWI, div[data-card-metrics-id*="deals-events"], div[class*="bxcGridImage"], div#desktop-banner, div[id*="desktop-banner"], div.a-carousel-container',
+        bannerLink: 'a[href*="/events/"], a[href*="/gp/goldbox"], a[href*="/deals"], a[href*="/b/"], a[href*="/b?"], a[href*="/b/?"], a[href*="/dp/"], a[href*="/l/"], a[href*="/s?"], a.a-link-normal, a[target="_blank"], a[href]',
+        bannerImage: 'img[src*="media-amazon.com"], img[src*="images-eu.ssl-images-amazon.com"], img[alt*="central header"], img[border="0"], img[align="center"], img[src*="amazon.com"], img',
         bannerAlt: 'img[alt]',
         // Alternative selectors for different page structures
-        alternativeCarousel: 'div[class*="bxcGridImage"], div[class*="bxcGridContent"], div[class*="celWidget"]',
-        alternativeBannerLink: 'a[href*="amazon.in"], a[href*="amazon.com"]',
-        alternativeBannerImage: 'img[src*="amazon.com"], img[src*="media-amazon.com"]',
+        alternativeCarousel: 'div[class*="bxcGridImage"], div[class*="bxcGridContent"], div[class*="celWidget"], section[class*="carousel"], div[class*="carousel"]',
+        alternativeBannerLink: 'a[href*="amazon.in"], a[href*="amazon.com"], a[href]',
+        alternativeBannerImage: 'img[src*="amazon.com"], img[src*="media-amazon.com"], img',
         // Specific selectors for affiliate page (from your HTML)
-        affiliateCarousel: 'li.a-carousel-card, ol.a-carousel li[aria-roledescription="slide"], div.ac-carousel li[aria-roledescription="slide"]',
-        affiliateBannerLink: 'a[target="_blank"], a[href*="amazon.in"], a[href*="amazon.com"]',
-        affiliateBannerImage: 'img[border="0"], img[src*="media-amazon.com"], img[align="center"]',
+        affiliateCarousel: '#ac-carousel-home-banners, li.a-carousel-card, ol.a-carousel li[aria-roledescription="slide"], div.ac-carousel li[aria-roledescription="slide"]',
+        affiliateBannerLink: 'a[target="_blank"], a[href*="amazon.in"], a[href*="amazon.com"], a[href]',
+        affiliateBannerImage: 'img[border="0"], img[src*="media-amazon.com"], img[align="center"], img',
         // Promotional element selectors
         promoElements: 'div[class*="promo"], div[class*="hero"], div[class*="featured"], section[class*="banner"], div[class*="bxcGridImage"]'
       },
       validation: {
-        minImageWidth: 600,
-        minImageHeight: 300,
+        minImageWidth: 500,
+        minImageHeight: 200,
         allowedDomains: ['media-amazon.com', 'amazon.com', 'images-eu.ssl-images-amazon.com'],
         excludedKeywords: [
           'associate', 'commission', 'affiliate', 'whatsapp', 'telegram',
@@ -109,14 +123,14 @@ module.exports = {
       ],
       selectors: {
         // Main banner selectors from your HTML
-        carousel: 'div._8S67Ib, div[class*="_8S67Ib"], div[class*="_3bzdSa"]',
-        bannerLink: 'a[href*="/"], a[href*="flipkart.com"]',
-        bannerImage: 'img[src*="rukminim2.flixcart.com"], img[src*="fk-p-flap"]',
+        carousel: 'div._8S67Ib, div[class*="_8S67Ib"], div[class*="_3bzdSa"], div[class*="carousel"], div[class*="slider"], div[class*="banner"], section[class*="carousel"], div[class*="react-swipeable-view-container"]',
+        bannerLink: 'a[href*="/pr?"], a[href*="/p/"], a[href*="/"], a[href*="flipkart.com"], a[href]',
+        bannerImage: 'img[src*="fk-p-flap"], img[src*="promos/"]',
         bannerAlt: 'img[alt]',
         // Alternative selectors for Flipkart
-        alternativeCarousel: 'div[class*="_1AtVbE"], div[class*="banner"], div[class*="carousel"]',
-        alternativeBannerLink: 'a[href*="flipkart.com"]',
-        alternativeBannerImage: 'img[src*="static-assets-web.flixcart.com"], img[src*="rukminim"]',
+        alternativeCarousel: 'div[class*="_1AtVbE"], div[class*="banner"], div[class*="carousel"], section',
+        alternativeBannerLink: 'a[href*="flipkart.com"], a[href]',
+        alternativeBannerImage: 'img[src*="fk-p-flap"], img[src*="static-assets-web.flixcart.com/www/promos"]',
         // Promotional element selectors
         promoElements: 'div[class*="promo"], div[class*="banner"], div[class*="offer"], div[class*="_8S67Ib"]'
       },
@@ -152,14 +166,14 @@ module.exports = {
       ],
       selectors: {
         // Main banner selectors for Myntra
-        carousel: 'div.carousel-slide, div[class*="carousel"], div[class*="banner"], div[class*="hero"]',
-        bannerLink: 'a[href*="/"], a[href*="myntra.com"]',
-        bannerImage: 'img[src*="assets.myntassets.com"], img[src*="myntra.com"], img[class*="banner"], img[class*="hero"]',
+        carousel: 'div.carousel-slide, div[class*="carousel"], div[class*="banner"], div[class*="hero"], div[class*="slider"]',
+        bannerLink: 'a[href*="/"], a[href*="myntra.com"], a[href]',
+        bannerImage: 'img[src*="assets.myntassets.com"], img[src*="myntra.com"], img[class*="banner"], img[class*="hero"], img',
         bannerAlt: 'img[alt]',
         // Alternative selectors for different page structures
-        alternativeCarousel: 'div[class*="banner"], div[class*="hero"], div[class*="promo"]',
-        alternativeBannerLink: 'a[href*="myntra.com"]',
-        alternativeBannerImage: 'img[src*="myntra.com"], img[src*="assets.myntassets.com"]',
+        alternativeCarousel: 'div[class*="banner"], div[class*="hero"], div[class*="promo"], section',
+        alternativeBannerLink: 'a[href*="myntra.com"], a[href]',
+        alternativeBannerImage: 'img[src*="myntra.com"], img[src*="assets.myntassets.com"], img',
         // Promotional element selectors
         promoElements: 'div[class*="promo"], div[class*="banner"], div[class*="offer"], div[class*="sale"]'
       },
@@ -195,14 +209,14 @@ module.exports = {
       ],
       selectors: {
         // Main banner selectors for Ajio
-        carousel: 'div.carousel-item, div[class*="carousel"], div[class*="banner"], div[class*="hero"]',
-        bannerLink: 'a[href*="/"], a[href*="ajio.com"]',
-        bannerImage: 'img[src*="ajio.com"], img[src*="assets.ajio.com"], img[class*="banner"], img[class*="hero"]',
+        carousel: 'div.carousel-item, div[class*="carousel"], div[class*="banner"], div[class*="hero"], div[class*="slider"]',
+        bannerLink: 'a[href*="/"], a[href*="ajio.com"], a[href]',
+        bannerImage: 'img[src*="ajio.com"], img[src*="assets.ajio.com"], img[class*="banner"], img[class*="hero"], img',
         bannerAlt: 'img[alt]',
         // Alternative selectors for different page structures
-        alternativeCarousel: 'div[class*="banner"], div[class*="hero"], div[class*="promo"]',
-        alternativeBannerLink: 'a[href*="ajio.com"]',
-        alternativeBannerImage: 'img[src*="ajio.com"], img[src*="assets.ajio.com"]',
+        alternativeCarousel: 'div[class*="banner"], div[class*="hero"], div[class*="promo"], section',
+        alternativeBannerLink: 'a[href*="ajio.com"], a[href]',
+        alternativeBannerImage: 'img[src*="ajio.com"], img[src*="assets.ajio.com"], img',
         // Promotional element selectors
         promoElements: 'div[class*="promo"], div[class*="banner"], div[class*="offer"], div[class*="sale"]'
       },

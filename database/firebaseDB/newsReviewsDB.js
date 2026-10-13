@@ -73,8 +73,9 @@ function initializeNewsDB() {
         
         // Initialize with fallback
         if (!admin.apps.find(app => app.name === 'news-reviews')) {
-          // Try default region first, fallback to asia-southeast1 if needed
-          const fallbackUrl = `https://${fallbackDbName}-default-rtdb.firebaseio.com`;
+          const fallbackUrl = fallbackDbName === 'lowerdealhub' || fallbackDbName === 'deals-backend-paapi'
+            ? `https://${fallbackDbName}-default-rtdb.asia-southeast1.firebasedatabase.app`
+            : `https://${fallbackDbName}-default-rtdb.firebaseio.com`;
           admin.initializeApp({
             credential: admin.credential.cert(serviceAccount),
             databaseURL: fallbackUrl
@@ -96,8 +97,9 @@ function initializeNewsDB() {
 
     // Initialize with provided service account
     if (!admin.apps.find(app => app.name === 'news-reviews')) {
-      // Use default region URL format (Firebase will redirect if needed)
-      const dbUrl = `https://${NEWS_DB_NAME}-default-rtdb.firebaseio.com`;
+      const dbUrl = NEWS_DB_NAME === 'lowerdealhub' || NEWS_DB_NAME === 'deals-backend-paapi'
+        ? `https://${NEWS_DB_NAME}-default-rtdb.asia-southeast1.firebasedatabase.app`
+        : `https://${NEWS_DB_NAME}-default-rtdb.firebaseio.com`;
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         databaseURL: dbUrl

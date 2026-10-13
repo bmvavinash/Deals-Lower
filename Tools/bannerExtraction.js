@@ -238,6 +238,42 @@ class BannerExtractor {
                     // Categorize the banner
                     const categorization = categorizeBanner(altText, null, imageUrl, platformKey);
                     
+                    // Extract destination redirect URL on click
+                    let clickRedirectUrl = null;
+                    try {
+                        const rawHref = await this.driver.executeScript(`
+                            var el = arguments[0];
+                            if (!el) return null;
+                            var a = el.closest ? el.closest('a') : null;
+                            if (a && a.href && !a.href.startsWith('javascript:')) return a.href;
+                            var p = el.parentElement;
+                            if (p) {
+                                var pa = p.querySelector('a');
+                                if (pa && pa.href && !pa.href.startsWith('javascript:')) return pa.href;
+                            }
+                            return null;
+                        `, imageElement);
+                        if (rawHref && typeof rawHref === 'string' && rawHref.trim()) {
+                            clickRedirectUrl = rawHref.trim();
+                        }
+                    } catch (hrefErr) {}
+
+                    // Must have a specific non-homepage destination URL
+                    if (!clickRedirectUrl) {
+                        logger.debug(`Skipping direct image banner because no destination redirect URL found`);
+                        continue;
+                    }
+                    try {
+                        const parsed = new URL(clickRedirectUrl, `https://www.${platformKey}.com`);
+                        const path = parsed.pathname.replace(/\/+$/, '');
+                        if (path === '' || path === '/') {
+                            continue;
+                        }
+                        clickRedirectUrl = parsed.href;
+                    } catch (_) {
+                        continue;
+                    }
+
                     // Generate banner data
                     const bannerId = generateBannerId(platformKey, categorization.category);
                     const timestamp = generateBannerTimestamp();
@@ -245,7 +281,7 @@ class BannerExtractor {
                     const banner = {
                         id: bannerId,
                         url: imageUrl,
-                        clickRedirectUrl: `https://www.${platformKey}.com`, // Default redirect
+                        clickRedirectUrl: clickRedirectUrl,
                         isActive: true,
                         order: 0,
                         creationTimestamp: timestamp,
@@ -279,8 +315,17 @@ class BannerExtractor {
     async extractBannerFromElement(element, platformKey, selectors, validation) {
         try {
             // Extract link URL
-            const clickRedirectUrl = await element.getAttribute('href');
+            let clickRedirectUrl = await element.getAttribute('href');
             logger.debug(`Found link: ${clickRedirectUrl}`);
+            if (!clickRedirectUrl) return null;
+            try {
+                const parsed = new URL(clickRedirectUrl, `https://www.${platformKey}.com`);
+                const path = parsed.pathname.replace(/\/+$/, '');
+                if (path === '' || path === '/') return null;
+                clickRedirectUrl = parsed.href;
+            } catch (_) {
+                return null;
+            }
             
             // Find image element within the link
             let imageElement;

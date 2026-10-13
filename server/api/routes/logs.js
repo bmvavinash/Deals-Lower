@@ -12,15 +12,8 @@ const logger = getModuleLogger('logs-api');
 
 // Get Firebase reference for structured logs
 function getFirebaseLogsRef() {
-  try {
-    const dbname = constants.postingTypesConfig[constants.type].DB;
-    let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
-    const db = admin.database();
-    return db.ref('logs');
-  } catch (error) {
-    logger.warn('Firebase logs ref not available', { error: error.message });
-    return null;
-  }
+  // Always return null to use local file logs as primary and avoid timeouts
+  return null;
 }
 
 /**
