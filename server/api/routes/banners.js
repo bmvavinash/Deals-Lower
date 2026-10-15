@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const fs = require('fs');
 const path = require('path');
+const admin = require('firebase-admin');
 const { bannerDB, testBannerDB } = require('../../../database/firebaseDB/bannerDB');
 const { getModuleLogger } = require('../../../logger/logger');
 const { BannerExtractor } = require('../../../dataSources/bannerExtractor');
@@ -135,14 +136,28 @@ router.get('/config', async (req, res, next) => {
 
 /**
  * GET /api/banners/promo-cards
- * Returns latest scraped Amazon promotional cards
+ * Returns latest scraped Amazon promotional cards (reads from Firebase RTDB or local JSON fallback)
  */
 router.get('/promo-cards', async (req, res) => {
   try {
+    // 1. Try Firebase RTDB first if available
+    if (admin.apps.length > 0) {
+      try {
+        const snapshot = await admin.database().ref('amazon_promo_cards').once('value');
+        const fbCards = snapshot.val();
+        if (fbCards && Array.isArray(fbCards) && fbCards.length > 0) {
+          return res.json({ success: true, count: fbCards.length, data: fbCards, source: 'firebase' });
+        }
+      } catch (fbErr) {
+        logger.warn('Could not read promo cards from Firebase RTDB:', { error: fbErr.message });
+      }
+    }
+
+    // 2. Fallback to local JSON file
     const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
     if (fs.existsSync(jsonPath)) {
       const cards = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      return res.json({ success: true, count: cards.length, data: cards });
+      return res.json({ success: true, count: cards.length, data: cards, source: 'local_file' });
     }
     res.json({ success: true, count: 0, data: [] });
   } catch (error) {

@@ -19,21 +19,32 @@ const OUTPUT_JSON_FILE = path.join(__dirname, '../database/amazon_promo_cards.js
 async function scrapeAmazonPromoCards() {
   console.log('🚀 Starting Amazon Promotional Cards Scraper...');
   
-  [DEALS_BANNERS_DIR, AFFILIATE_BANNERS_DIR, path.dirname(OUTPUT_JSON_FILE)].forEach(dir => {
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  });
+  if (!fs.existsSync(DEALS_BANNERS_DIR)) {
+    try { fs.mkdirSync(DEALS_BANNERS_DIR, { recursive: true }); } catch {}
+  }
+  if (!fs.existsSync(path.dirname(OUTPUT_JSON_FILE))) {
+    try { fs.mkdirSync(path.dirname(OUTPUT_JSON_FILE), { recursive: true }); } catch {}
+  }
+  if (fs.existsSync(path.dirname(AFFILIATE_BANNERS_DIR))) {
+    try { fs.mkdirSync(AFFILIATE_BANNERS_DIR, { recursive: true }); } catch {}
+  }
 
   const options = new chrome.Options();
   options.addArguments(
-    '--headless=new',
     '--no-sandbox',
     '--disable-dev-shm-usage',
+    '--disable-gpu',
     '--window-size=1920,1080',
     '--device-scale-factor=2',
     '--disable-blink-features=AutomationControlled',
     '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
   );
   options.excludeSwitches(['enable-automation']);
+
+  // Set headless unless explicitly disabled
+  if (process.env.HEADLESS !== 'false' && process.env.HEADFUL !== 'true') {
+    options.addArguments('--headless=new');
+  }
 
   let driver;
   try {
@@ -44,11 +55,19 @@ async function scrapeAmazonPromoCards() {
     await driver.get('https://www.amazon.in');
     await driver.sleep(4000);
 
-    const gwmWindow = await driver.findElement(By.id('gwm-window'));
-    await driver.executeScript('arguments[0].scrollIntoView({block: "center"});', gwmWindow);
-    await driver.sleep(1500);
+    let gwmWindow = null;
+    try {
+      gwmWindow = await driver.findElement(By.id('gwm-window'));
+      await driver.executeScript('arguments[0].scrollIntoView({block: "center"});', gwmWindow);
+      await driver.sleep(1500);
+    } catch (e) {
+      console.warn('⚠️ #gwm-window carousel element not found directly on homepage:', e.message);
+    }
 
-    let tiles = await driver.findElements(By.css('#gwm-window .gwm-window-tile'));
+    let tiles = [];
+    if (gwmWindow) {
+      tiles = await driver.findElements(By.css('#gwm-window .gwm-window-tile'));
+    }
     console.log(`🔍 Detected ${tiles.length} cards in #gwm-window carousel`);
 
     const scrapedCards = [];
@@ -72,13 +91,14 @@ async function scrapeAmazonPromoCards() {
 
       const filename = `card_scraped_${i + 1}.png`;
       const dealsPath = path.join(DEALS_BANNERS_DIR, filename);
-      const affiliatePath = path.join(AFFILIATE_BANNERS_DIR, filename);
 
       try {
         const b64 = await tile.takeScreenshot();
         const buf = Buffer.from(b64, 'base64');
-        fs.writeFileSync(dealsPath, buf);
-        try { fs.writeFileSync(affiliatePath, buf); } catch {}
+        try { fs.writeFileSync(dealsPath, buf); } catch {}
+        if (fs.existsSync(AFFILIATE_BANNERS_DIR)) {
+          try { fs.writeFileSync(path.join(AFFILIATE_BANNERS_DIR, filename), buf); } catch {}
+        }
 
         let title = text.replace(/(\*T&C apply|Free Delivery|Easy Returns|Wide Selection|Pause)/gi, '').trim();
         const lines = title.split(/\s{2,}|\n/).map(s => s.trim()).filter(Boolean);
@@ -100,16 +120,29 @@ async function scrapeAmazonPromoCards() {
       }
     }
 
-    fs.writeFileSync(OUTPUT_JSON_FILE, JSON.stringify(scrapedCards, null, 2));
-    console.log(`\n🎉 Successfully scraped ${scrapedCards.length} promotional cards!`);
-    console.log(`📁 Saved metadata to ${OUTPUT_JSON_FILE}`);
-
-    return scrapedCards;
+    if (scrapedCards.length > 0) {
+      fs.writeFileSync(OUTPUT_JSON_FILE, JSON.stringify(scrapedCards, null, 2));
+      console.log(`\n🎉 Successfully scraped ${scrapedCards.length} promotional cards!`);
+      console.log(`📁 Saved metadata to ${OUTPUT_JSON_FILE}`);
+      return scrapedCards;
+    } else {
+      console.warn('⚠️ No cards scraped; preserving existing card dataset.');
+      if (fs.existsSync(OUTPUT_JSON_FILE)) {
+        return JSON.parse(fs.readFileSync(OUTPUT_JSON_FILE, 'utf8'));
+      }
+      return [];
+    }
   } catch (error) {
     console.error('❌ Error during Amazon card scraping:', error.message);
+    if (fs.existsSync(OUTPUT_JSON_FILE)) {
+      console.log('Returning existing cached cards from file.');
+      return JSON.parse(fs.readFileSync(OUTPUT_JSON_FILE, 'utf8'));
+    }
     throw error;
   } finally {
-    if (driver) await driver.quit();
+    if (driver) {
+      try { await driver.quit(); } catch {}
+    }
   }
 }
 
