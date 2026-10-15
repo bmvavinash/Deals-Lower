@@ -1,5 +1,8 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
+const admin = require('firebase-admin');
 const { bannerDB, testBannerDB } = require('../../../database/firebaseDB/bannerDB');
 const { getModuleLogger } = require('../../../logger/logger');
 const { BannerExtractor } = require('../../../dataSources/bannerExtractor');
@@ -127,6 +130,56 @@ router.get('/config', async (req, res, next) => {
     }
   } catch (error) {
     logger.error('Error getting banner config', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/banners/promo-cards
+ * Returns latest scraped Amazon promotional cards (reads from Firebase RTDB or local JSON fallback)
+ */
+router.get('/promo-cards', async (req, res) => {
+  try {
+    // 1. Try Firebase RTDB first if available
+    if (admin.apps.length > 0) {
+      try {
+        const snapshot = await admin.database().ref('amazon_promo_cards').once('value');
+        const fbCards = snapshot.val();
+        if (fbCards && Array.isArray(fbCards) && fbCards.length > 0) {
+          return res.json({ success: true, count: fbCards.length, data: fbCards, source: 'firebase' });
+        }
+      } catch (fbErr) {
+        logger.warn('Could not read promo cards from Firebase RTDB:', { error: fbErr.message });
+      }
+    }
+
+    // 2. Fallback to local JSON file
+    const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
+    if (fs.existsSync(jsonPath)) {
+      const cards = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      return res.json({ success: true, count: cards.length, data: cards, source: 'local_file' });
+    }
+    res.json({ success: true, count: 0, data: [] });
+  } catch (error) {
+    logger.error('Error getting promo cards', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/banners/promo-cards/scrape
+ * Triggers automated scraping of Amazon promotional cards in background
+ */
+router.post('/promo-cards/scrape', async (req, res) => {
+  try {
+    const { scrapeAmazonPromoCards } = require('../../../scripts/scrapeAmazonPromoCards');
+    scrapeAmazonPromoCards()
+      .then(cards => logger.info(`Scraped ${cards.length} promo cards in background`))
+      .catch(err => logger.error('Background promo card scrape error', { error: err.message }));
+
+    res.json({ success: true, message: 'Amazon promotional card scraping started in background' });
+  } catch (error) {
+    logger.error('Error starting promo card scrape', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });
@@ -361,6 +414,67 @@ router.get('/stats', async (req, res, next) => {
  * Get all banners with optional filters
  * Query params: platform, activeOnly, source
  */
+
+router.get('/with-deals', async (req, res, next) => {
+  try {
+    const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
+    
+    // Get active banners
+    const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
+    const result = bannerDbInstance.getActiveBanners ? 
+      await bannerDbInstance.getActiveBanners() : 
+      await bannerDbInstance.getActiveTestBanners();
+
+    if (result.status !== 200) {
+      return res.status(result.status).json(result);
+    }
+
+    // Get all deals
+    const dealsResult = await productDealsDB.getAllProductDeals();
+    const allDeals = dealsResult.status === 200 && dealsResult.data ? dealsResult.data : {};
+    
+    // Process banners and attach deals
+    const enrichedBanners = Object.entries(result.data || {}).map(([id, banner]) => {
+      let carouselDeals = [];
+      const config = banner.carouselConfig;
+      
+      if (config && config.type && config.type !== 'none' && config.value) {
+        const valLower = config.value.toLowerCase();
+        carouselDeals = Object.entries(allDeals)
+          .map(([dealId, deal]) => ({ ...deal, id: dealId }))
+          .filter(deal => {
+            if (config.type === 'category' && deal.category) {
+              return deal.category.toLowerCase().includes(valLower);
+            }
+            if (config.type === 'platform' && deal.storeType) {
+              return deal.storeType.toLowerCase() === valLower;
+            }
+            if (config.type === 'search' && deal.title) {
+              return deal.title.toLowerCase().includes(valLower);
+            }
+            return false;
+          })
+          .slice(0, 10); // Limit to 10 deals for the carousel
+      }
+      
+      return {
+        ...banner,
+        id,
+        carouselDeals
+      };
+    });
+
+    return res.json({
+      success: true,
+      data: enrichedBanners
+    });
+  } catch (error) {
+    logger.error('Error fetching banners with deals', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+
 router.get('/', async (req, res, next) => {
   try {
     const { platform, activeOnly, source } = req.query;
@@ -393,7 +507,7 @@ router.get('/', async (req, res, next) => {
       // Server-side filtering to optimize RAM consumption (0.12 MB constraint)
       let processedBanners = [...unique];
       if (activeOnly === 'true' || activeOnly === true) {
-        processedBanners = processedBanners.filter(b => b && b.isActive === true);
+        processedBanners = processedBanners.filter(b => b && b.isActive === true && (!b.expirationTimestamp || Number(b.expirationTimestamp) > Date.now()));
       }
       if (platform && platform !== 'all') {
         processedBanners = processedBanners.filter(b => b && b.platform?.toLowerCase() === platform.toLowerCase());
@@ -1380,7 +1494,7 @@ router.post('/generate-affiliate', async (req, res) => {
 // POST /api/banners/add - Create a custom live deal/banner
 router.post('/add', async (req, res, next) => {
   try {
-    const { url, clickRedirectUrl, originalUrl, platform, category = 'general', title, description, isActive = true, order = 0 } = req.body;
+    const { url, clickRedirectUrl, originalUrl, platform, category = 'general', title, description, isActive = true, order = 0, carouselConfig } = req.body;
     if (!url || !clickRedirectUrl) {
       return res.status(400).json({ success: false, error: 'Image URL and Target Link are required.' });
     }
@@ -1426,7 +1540,7 @@ router.post('/add', async (req, res, next) => {
 router.put('/:id', async (req, res, next) => {
   try {
     const bannerId = req.params.id;
-    const { url, clickRedirectUrl, originalUrl, platform, category, title, description, isActive, order } = req.body;
+    const { url, clickRedirectUrl, originalUrl, platform, category, title, description, isActive, order, carouselConfig } = req.body;
 
     const bannerDbInstance = bannerSource === 'test-banners' ? testBannerDB : bannerDB;
     
@@ -1454,6 +1568,7 @@ router.put('/:id', async (req, res, next) => {
       description: description !== undefined ? description : existing.description,
       isActive: isActive !== undefined ? isActive === true : existing.isActive,
       order: order !== undefined ? Number(order) : existing.order,
+        carouselConfig: carouselConfig !== undefined ? carouselConfig : existing.carouselConfig,
       updateTimestamp: new Date().toISOString()
     };
 
@@ -1578,6 +1693,24 @@ router.post('/scrape-sale', async (req, res, next) => {
 
     // Trigger background process immediately
     runScrapingTask(saleName, platform, category, urls);
+
+    // Broadcast global notification so users see the clickable link
+    try {
+      const fetchModule = await import('node-fetch');
+      const fetch = fetchModule.default || fetchModule;
+      await fetch('http://localhost:3003/api/favorites/global-notifications', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: '🔥 New Sale Alert!',
+          message: `The "${saleName}" sale is now active on ${platform}. Tap to view deals!`,
+          channel: 'Global Broadcast',
+          link: `/sale/${encodeURIComponent(saleName)}`
+        })
+      });
+    } catch (notifyErr) {
+      logger.warn('Failed to broadcast global sale notification', { error: notifyErr.message });
+    }
 
     res.json({
       success: true,
