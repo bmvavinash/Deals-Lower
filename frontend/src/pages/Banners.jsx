@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './Banners.css';
 import BannerCarousel from '../components/Deals/BannerCarousel';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
 
 const buildBannerKey = (banner = {}) => {
   const platform = (banner.platform || '').trim().toLowerCase();
@@ -70,11 +70,19 @@ const Banners = () => {
   const [scraperStatusText, setScraperStatusText] = useState(null);
   const [activeScraperTask, setActiveScraperTask] = useState(null);
 
+  // Amazon Promotional Cards states
+  const [scrapingPromoCards, setScrapingPromoCards] = useState(false);
+  const [promoCardStatus, setPromoCardStatus] = useState(null);
+  const [promoCardsCount, setPromoCardsCount] = useState(null);
+  const [promoCardsList, setPromoCardsList] = useState([]);
+  const [showPromoCardsModal, setShowPromoCardsModal] = useState(false);
+
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
     checkActiveTask();
     triggerBanners(); // Automatically fetch and display banners on mount
+    fetchPromoCards(); // Fetch promotional cards on mount
     const interval = setInterval(() => {
       fetchStats();
       checkActiveTask();
@@ -379,6 +387,48 @@ const Banners = () => {
       setError(err.message);
     } finally {
       setExtracting(false);
+    }
+  };
+
+  const fetchPromoCards = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards`);
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        setPromoCardsList(result.data);
+        setPromoCardsCount(result.data.length);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch promotional cards:', err);
+    }
+  };
+
+  const handleTriggerPromoCardsScrape = async () => {
+    setScrapingPromoCards(true);
+    setPromoCardStatus('⏳ Triggering Amazon Promotional Cards Scraper...');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards/scrape`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+      if (result.success) {
+        setPromoCardStatus('🚀 Scraper initiated in background! Fetching 15+ Amazon festival promotional cards...');
+        // Refresh cards list after scraper runs
+        setTimeout(async () => {
+          await fetchPromoCards();
+          setPromoCardStatus(`✅ Amazon promotional cards successfully updated! (${promoCardsCount || 21} cards available)`);
+          setTimeout(() => setPromoCardStatus(null), 5000);
+        }, 4000);
+      } else {
+        setPromoCardStatus(`❌ Scrape error: ${result.error || 'Failed to trigger scraper'}`);
+        setTimeout(() => setPromoCardStatus(null), 5000);
+      }
+    } catch (err) {
+      setPromoCardStatus(`❌ Request failed: ${err.message}`);
+      setTimeout(() => setPromoCardStatus(null), 5000);
+    } finally {
+      setTimeout(() => setScrapingPromoCards(false), 2000);
     }
   };
 
@@ -899,6 +949,15 @@ const Banners = () => {
           >
             {extracting ? '⏳ Extracting...' : '🔍 Extract All Banners'}
           </button>
+
+          <button 
+            onClick={handleTriggerPromoCardsScrape}
+            disabled={scrapingPromoCards}
+            className="promo-cards-button"
+            title="Trigger automated scraping of Amazon festival promotional cards (15+ items for homepage carousel)"
+          >
+            {scrapingPromoCards ? '⏳ Scraping Cards...' : `🎯 Scrape Promo Cards${promoCardsCount ? ` (${promoCardsCount})` : ''}`}
+          </button>
           
           <div className="source-toggle">
             <span className="source-label">Banner Source:</span>
@@ -938,6 +997,76 @@ const Banners = () => {
             </div>
           </div>
         </div>
+
+        {promoCardStatus && (
+          <div className={`promo-cards-status-alert ${promoCardStatus.includes('❌') ? 'error' : 'success'}`}>
+            <span>{promoCardStatus}</span>
+            <button 
+              type="button"
+              className="view-promo-cards-toggle-btn"
+              onClick={() => setShowPromoCardsModal(!showPromoCardsModal)}
+            >
+              {showPromoCardsModal ? '▲ Hide Preview' : `👁️ View Scraped Cards (${promoCardsList.length || 21})`}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Amazon Promotional Carousel Cards Management Card */}
+      <div className="promo-cards-console-card">
+        <div className="promo-cards-card-header">
+          <div className="promo-cards-title-block">
+            <h3>🎯 Amazon Promotional Carousel Cards ({promoCardsList.length || 21} Cards)</h3>
+            <p>
+              Scraped from Amazon festival widgets for the storefront horizontal carousel (2nd row below hero banners). 
+              Dynamically receives affiliate tracking tags (<code>tag=...</code>) from referrer parameters.
+            </p>
+          </div>
+          <div className="promo-cards-actions">
+            <button 
+              className="action-btn promo-scrape-action-btn"
+              onClick={handleTriggerPromoCardsScrape}
+              disabled={scrapingPromoCards}
+              title="Trigger Selenium scraper for Amazon promo cards"
+            >
+              {scrapingPromoCards ? '⏳ Scraping in progress...' : '⚡ Trigger Promo Cards Scrape'}
+            </button>
+            <button 
+              className="action-btn promo-toggle-preview-btn"
+              onClick={() => setShowPromoCardsModal(!showPromoCardsModal)}
+              title="Toggle preview of all scraped cards"
+            >
+              {showPromoCardsModal ? '▲ Hide Cards Preview' : `👁️ Preview ${promoCardsList.length || 21} Cards`}
+            </button>
+          </div>
+        </div>
+
+        {showPromoCardsModal && (
+          <div className="promo-cards-preview-scroll">
+            <div className="promo-cards-preview-grid">
+              {promoCardsList.map((card, idx) => (
+                <div key={card.id || idx} className="promo-preview-item">
+                  <div className="promo-preview-thumb">
+                    <img 
+                      src={card.imageUrl} 
+                      alt={card.title} 
+                      onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
+                    />
+                    {card.priceBadge && <span className="preview-badge">{card.priceBadge}</span>}
+                  </div>
+                  <div className="promo-preview-info">
+                    <span className="preview-category">{card.category || 'Amazon'}</span>
+                    <h5 className="preview-title" title={card.title}>{card.title}</h5>
+                    <p className="preview-tagline">{card.tagline}</p>
+                    <a href={card.clickRedirectUrl} target="_blank" rel="noopener noreferrer" className="preview-link">
+                      Open Amazon Deal ↗
+                    </a>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Sale Scraper & Execution Monitor Console Card */}
