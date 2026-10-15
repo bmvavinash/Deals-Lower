@@ -1,0 +1,212 @@
+[
+  {
+    "id": "amazon_iphone16",
+    "title": "iPhone 16 - So vibrant. So brilliant.",
+    "tagline": "Exciting offers on iPhone 16",
+    "priceBadge": "Live Now",
+    "category": "Electronics",
+    "imageUrl": "/banners/card_iphone16.png",
+    "clickRedirectUrl": "https://www.amazon.in/gp/product/B0DGHZWBYB?aaxitk=&aref=&pd_rd_plhdr=t&pf_rd_r=67WABMDD70HEH39A451J&th=1",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_kitchen_deals",
+    "title": "Kitchen deals under ₹499",
+    "tagline": "Cookware, kettles & appliances",
+    "priceBadge": "Under ₹499",
+    "category": "Home & Kitchen",
+    "imageUrl": "/banners/card_scraped_kitchen.png",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=220674670031",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_haircare",
+    "title": "Under ₹499 Haircare",
+    "tagline": "Top brands | Latest trends",
+    "priceBadge": "Under ₹499",
+    "category": "Beauty",
+    "imageUrl": "/banners/card_haircare.png",
+    "clickRedirectUrl": "https://www.amazon.in/s?i=beauty&rh=n%3A27076118031%2Cp_85%3A10440599031%2Cp_36%3A-49900&s=exact-aware-popularity-rank&dc=&_encoding=UTF8&qid=1776248968&rnid=1741387031&linkCode=ll2&linkId=0e7cbff3a97e8bbfb3f741108fe02fc5&ref_=as_li_ss_tl",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_bags_backpacks",
+    "title": "Under ₹499 Bags & backpacks",
+    "tagline": "Free Delivery | Easy Returns",
+    "priceBadge": "Under ₹499",
+    "category": "Fashion",
+    "imageUrl": "/banners/card_scraped_2.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=fashion&bbn=100898627031&rh=n%3A100898627031%2Cp_36%3A-51000&dc=&qid=1791225773",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_jeans",
+    "title": "Under ₹399 Jeans",
+    "tagline": "Free Delivery | Easy Returns",
+    "priceBadge": "Under ₹399",
+    "category": "Fashion",
+    "imageUrl": "/banners/card_scraped_10.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=apparel&rh=n%3A1968076031%2Cp_28%3ADenims%257CJeans%257Cdenim%257Cdenims%257Cjeans%2Cp_36%3A-40000&s=exact-aware-popularity-rank&hidden-keywords=-B0CR1V62RM-women-kids-accessories-innerwear-girl&qid=1791496503",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_rc_cars",
+    "title": "Starting ₹199 Remote control cars",
+    "tagline": "Free Delivery | Easy Returns",
+    "priceBadge": "Starting ₹199",
+    "category": "Toys",
+    "imageUrl": "/banners/card_rc_cars.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&_encoding=UTF8&k=rc%20cars&i=toys&rh=p_36%3A-91000&s=exact-aware-popularity-rank&crid=15TYZDQVZJMO6&qid=1791705369",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_dishwash",
+    "title": "Under ₹299 Deals on dishwash",
+    "tagline": "Free Delivery | Wide Selection",
+    "priceBadge": "Under ₹299",
+    "category": "Grocery",
+    "imageUrl": "/banners/card_dishwash.png",
+    "clickRedirectUrl": "https://www.amazon.in/s?i=hpc&rh=n%3A1374539031%2Cp_36%3A10000-30000",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_home_decor",
+    "title": "Under ₹499 Home decor",
+    "tagline": "Festive Diyas & Ambient Glow",
+    "priceBadge": "Under ₹499",
+    "category": "Home & Kitchen",
+    "imageUrl": "/banners/card_home_decor.png",
+    "clickRedirectUrl": "https://www.amazon.in/s?k=home+decor&i=kitchen&rh=p_36%3A-49900",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_new_launches",
+    "title": "Starting ₹199 New launches",
+    "tagline": "Top Selling Books & Memoirs",
+    "priceBadge": "Starting ₹199",
+    "category": "Books",
+    "imageUrl": "/banners/card_scraped_1.png",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=4143742031",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_perfumes",
+    "title": "Under ₹599 Perfumes",
+    "tagline": "Luxury scents & daily wear",
+    "priceBadge": "Under ₹599",
+    "category": "Beauty",
+    "imageUrl": "/banners/card_scraped_3.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=beauty&rh=n%3A1374298031%2Cp_85%3A10440599031%2Cp_36%3A-59900&s=exact-aware-popularity-rank",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_bedsheets",
+    "title": "Under ₹499 Bedsheets",
+    "tagline": "Pure cotton & festive prints",
+    "priceBadge": "Under ₹499",
+    "category": "Home & Kitchen",
+    "imageUrl": "/banners/card_scraped_12.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=kitchen&bbn=222850916031&rh=n%3A1380447031%2Cp_36%3A-50000&s=exact-aware-popularity-rank",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_earbuds",
+    "title": "Min. 70% off Budget friendly earbuds",
+    "tagline": "Top audio brands on discount",
+    "priceBadge": "Min. 70% off",
+    "category": "Electronics",
+    "imageUrl": "/banners/card_scraped_11.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&bbn=222556431031&rh=n%3A222556431031%2Cp_n_pct-off-with-tax%3A27060457031",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_fashion_home_99",
+    "title": "Under ₹99 Fashion, home & more",
+    "tagline": "Mega value steals",
+    "priceBadge": "Under ₹99",
+    "category": "Fashion",
+    "imageUrl": "/banners/card_scraped_6.png",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=222836655031",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_cashews",
+    "title": "Under ₹599 Crush on cashews",
+    "tagline": "Fresh dry fruits & nuts",
+    "priceBadge": "Under ₹599",
+    "category": "Grocery",
+    "imageUrl": "/banners/card_scraped_7.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=grocery&rh=n%3A4860232031&low-price=150&high-price=600",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_extension_boards",
+    "title": "Starting ₹99 Extension board, wipes & more",
+    "tagline": "Daily essentials at discount",
+    "priceBadge": "Starting ₹99",
+    "category": "Home Improvement",
+    "imageUrl": "/banners/card_scraped_4.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=home-improvement&srs=221890292031&rh=n%3A221890292031&s=popularity-rank",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_car_fresheners",
+    "title": "Starting ₹99 Car fresheners",
+    "tagline": "Long-lasting fragrances",
+    "priceBadge": "Starting ₹99",
+    "category": "Automotive",
+    "imageUrl": "/banners/card_scraped_5.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=automotive&bbn=214874784031&rh=n%3A214874784031%2Cp_36%3A-100000",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_fiction_books",
+    "title": "Starting ₹99 Trending in fiction",
+    "tagline": "Bestselling paperbacks & novels",
+    "priceBadge": "Starting ₹99",
+    "category": "Books",
+    "imageUrl": "/banners/card_scraped_8.png",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=86946559031",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_casseroles",
+    "title": "Under ₹999 Casseroles",
+    "tagline": "Insulated hot pots & serveware",
+    "priceBadge": "Under ₹999",
+    "category": "Home & Kitchen",
+    "imageUrl": "/banners/card_scraped_9.png",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=223281251031",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_camera_accessories",
+    "title": "Starting ₹349 Deals on camera accessories",
+    "tagline": "Tripods, ring lights & mounts",
+    "priceBadge": "Starting ₹349",
+    "category": "Electronics",
+    "imageUrl": "/banners/card_scraped_13.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&srs=16374629031&i=electronics",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_booktok",
+    "title": "Under ₹499 Booktok favourites",
+    "tagline": "Viral trending titles",
+    "priceBadge": "Under ₹499",
+    "category": "Books",
+    "imageUrl": "/banners/card_scraped_14.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&srs=223301648031&bbn=223301648031&rh=n%3A223301648031%2Cn%3A976389031%2Cp_72%3A1318476031%2Cp_36%3A-49900",
+    "platform": "amazon"
+  },
+  {
+    "id": "amazon_charging_accessories",
+    "title": "Under ₹999 Charging accessories",
+    "tagline": "Fast chargers & braided cables",
+    "priceBadge": "Under ₹999",
+    "category": "Electronics",
+    "imageUrl": "/banners/card_scraped_15.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=electronics&srs=16374629031&rh=n%3A16374629031&s=popularity-rank",
+    "platform": "amazon"
+  }
+]

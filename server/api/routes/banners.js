@@ -1,5 +1,7 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
+const path = require('path');
 const { bannerDB, testBannerDB } = require('../../../database/firebaseDB/bannerDB');
 const { getModuleLogger } = require('../../../logger/logger');
 const { BannerExtractor } = require('../../../dataSources/bannerExtractor');
@@ -127,6 +129,42 @@ router.get('/config', async (req, res, next) => {
     }
   } catch (error) {
     logger.error('Error getting banner config', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * GET /api/banners/promo-cards
+ * Returns latest scraped Amazon promotional cards
+ */
+router.get('/promo-cards', async (req, res) => {
+  try {
+    const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
+    if (fs.existsSync(jsonPath)) {
+      const cards = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      return res.json({ success: true, count: cards.length, data: cards });
+    }
+    res.json({ success: true, count: 0, data: [] });
+  } catch (error) {
+    logger.error('Error getting promo cards', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/banners/promo-cards/scrape
+ * Triggers automated scraping of Amazon promotional cards in background
+ */
+router.post('/promo-cards/scrape', async (req, res) => {
+  try {
+    const { scrapeAmazonPromoCards } = require('../../../scripts/scrapeAmazonPromoCards');
+    scrapeAmazonPromoCards()
+      .then(cards => logger.info(`Scraped ${cards.length} promo cards in background`))
+      .catch(err => logger.error('Background promo card scrape error', { error: err.message }));
+
+    res.json({ success: true, message: 'Amazon promotional card scraping started in background' });
+  } catch (error) {
+    logger.error('Error starting promo card scrape', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });
