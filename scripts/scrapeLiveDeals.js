@@ -63,7 +63,7 @@ async function scrapeLiveDeals() {
             
             const links = await driver.findElements(By.css('a'));
             let flipkartDealUrl = null;
-            let flipkartDealName = 'Big Saving Days';
+            let flipkartDealName = 'Big Billion Days';
             
             for (const link of links) {
                 try {
@@ -75,9 +75,9 @@ async function scrapeLiveDeals() {
                         href.includes('/tyy/')
                     )) {
                         flipkartDealUrl = href;
-                        if (href.includes('saving-days') || href.includes('saving')) flipkartDealName = 'Big Saving Days';
-                        else if (href.includes('big-billion')) flipkartDealName = 'Big Billion Days';
-                        else flipkartDealName = 'Flipkart Super Deals';
+                        if (href.includes('big-billion') || href.includes('bbd')) flipkartDealName = 'Big Billion Days';
+                        else if (href.includes('saving-days') || href.includes('saving')) flipkartDealName = 'Big Saving Days';
+                        else flipkartDealName = 'Big Billion Days';
                         break;
                     }
                 } catch (_) {}
@@ -88,7 +88,7 @@ async function scrapeLiveDeals() {
                 dealUrls.push({ url: flipkartDealUrl, platform: 'flipkart', dealName: flipkartDealName });
             } else {
                 logger.info('No custom promo banner URL matched on Flipkart home, using fallback offers page.');
-                dealUrls.push({ url: 'https://www.flipkart.com/offers', platform: 'flipkart', dealName: 'Flipkart Super Deals' });
+                dealUrls.push({ url: 'https://www.flipkart.com/offers', platform: 'flipkart', dealName: 'Big Billion Days' });
             }
         } catch (e) {
             logger.error('Failed to get Flipkart deals banner link:', e.message);
