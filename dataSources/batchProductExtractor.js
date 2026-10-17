@@ -37,11 +37,25 @@ function deriveSectionName(url, usedPageType) {
 	}
 }
 
-function deriveDealName(raw) {
-	if (raw.deal && typeof raw.deal === 'string' && raw.deal.trim() !== '') return raw.deal;
-	if (raw.limitedTimeDeal && typeof raw.limitedTimeDeal === 'string' && raw.limitedTimeDeal.trim() !== '') return raw.limitedTimeDeal;
-	if (raw.isDeal && typeof raw.isDeal === 'string' && raw.isDeal.trim() !== '') return raw.isDeal;
-	return '';
+function deriveDealName(raw, storeType = '') {
+	let val = '';
+	if (raw.deal && typeof raw.deal === 'string' && raw.deal.trim() !== '') val = raw.deal.trim();
+	else if (raw.limitedTimeDeal && typeof raw.limitedTimeDeal === 'string' && raw.limitedTimeDeal.trim() !== '') val = raw.limitedTimeDeal.trim();
+	else if (raw.isDeal && typeof raw.isDeal === 'string' && raw.isDeal.trim() !== '') val = raw.isDeal.trim();
+
+	const store = String(storeType || raw.storeType || '').toLowerCase();
+	if (store.includes('flipkart')) {
+		if (/great\s*indian\s*festival/i.test(val)) return 'Big Billion Days';
+		if (/big\s*billion\s*days?|\bbbd\b/i.test(val)) return 'Big Billion Days';
+	} else if (store.includes('amazon')) {
+		if (/big\s*billion/i.test(val)) return 'Great Indian Festival';
+		if (/great\s*indian\s*festival/i.test(val)) return 'Great Indian Festival';
+	} else if (store.includes('myntra')) {
+		if (/great\s*indian\s*festival|big\s*billion/i.test(val)) return 'Big Fashion Festival';
+	} else if (store.includes('ajio')) {
+		if (/great\s*indian\s*festival|big\s*billion/i.test(val)) return 'All Stars Sale';
+	}
+	return val;
 }
 
 function parseTimerText(text) {
@@ -1096,7 +1110,7 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		limitedTimeDeal: raw.limitedTimeDeal || '',
 		dealProgress: raw.dealProgress || '',
 		timer: raw.timer || '',
-		dealName: deriveDealName(raw),
+		dealName: deriveDealName(raw, raw.storeType || (/amazon\./i.test(hostname) ? 'Amazon' : /flipkart\./i.test(hostname) ? 'Flipkart' : /myntra\./i.test(hostname) ? 'Myntra' : /ajio\./i.test(hostname) ? 'Ajio' : '')),
 		sectionName: deriveSectionName(productUrl || url, usedPageType || '')
 	};
 
@@ -1146,10 +1160,21 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		if (global.discoveredDealsMap.has(cleanUrl)) {
 			const match = global.discoveredDealsMap.get(cleanUrl);
 			normalized.isDeal = true;
-			normalized.dealName = match.dealName;
-			normalized.dealLabel = match.dealName;
+			let safeDeal = match.dealName || '';
+			const store = String(normalized.storeType || '').toLowerCase();
+			if (store.includes('flipkart') && /great\s*indian\s*festival/i.test(safeDeal)) {
+				safeDeal = 'Big Billion Days';
+			} else if (store.includes('amazon') && /big\s*billion/i.test(safeDeal)) {
+				safeDeal = 'Great Indian Festival';
+			} else if (store.includes('myntra') && (/great\s*indian\s*festival/i.test(safeDeal) || /big\s*billion/i.test(safeDeal))) {
+				safeDeal = 'Big Fashion Festival';
+			} else if (store.includes('ajio') && (/great\s*indian\s*festival/i.test(safeDeal) || /big\s*billion/i.test(safeDeal))) {
+				safeDeal = 'All Stars Sale';
+			}
+			normalized.dealName = safeDeal;
+			normalized.dealLabel = safeDeal;
 			normalized.dealExpiresAt = match.dealExpiresAt;
-			logger.info(`🔥 [DEAL ENRICHMENT] Set product deal attributes for ${normalized.productCode || 'unknown'}: dealName="${match.dealName}"`);
+			logger.info(`🔥 [DEAL ENRICHMENT] Set product deal attributes for ${normalized.productCode || 'unknown'}: dealName="${safeDeal}"`);
 		}
 	}
 
