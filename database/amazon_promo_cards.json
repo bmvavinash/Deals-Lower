@@ -1,5 +1,16 @@
 [
   {
+    "id": "amazon_handpicked_promo",
+    "title": "Handpicked Deals - 3 PM Picks",
+    "tagline": "Save extra with Prime only offers",
+    "priceBadge": "Up to 80% off",
+    "category": "Festive Deals",
+    "imageUrl": "/banners/amazon_promo_handpicked.gif",
+    "videoUrl": "/banners/amazon_promo_handpicked.mp4",
+    "clickRedirectUrl": "https://www.amazon.in/events/greatindianfestival/4/?_encoding=UTF8&ref_=wp3pmdeals&discounts-widget=%22%7B%22state%22%3A%7B%22refinementFilters%22%3A%7B%22reviewRating%22%3A%5B%224%22%5D%7D%2C%22rangeRefinementFilters%22%3A%7B%22percentOff%22%3A%7B%22min%22%3A80%2C%22max%22%3A100%7D%7D%7D%2C%22version%22%3A1%7D%22",
+    "platform": "amazon"
+  },
+  {
     "id": "amazon_promo_scraped_1",
     "title": "Great deals Great offers Just for you",
     "priceBadge": "Live Now",
