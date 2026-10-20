@@ -939,7 +939,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
           className={`view-tab-btn ${activeTab === 'tiles' ? 'active' : ''}`}
           onClick={() => setActiveTab('tiles')}
         >
-          🎯 Amazon Promo Tiles (${promoCardsList.length || 0})
+          🎯 Amazon Promo Tiles ({promoCardsList.length || 0})
         </button>
       </div>
 

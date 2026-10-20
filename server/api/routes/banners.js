@@ -143,7 +143,11 @@ router.get('/promo-cards', async (req, res) => {
     // 1. Try Firebase RTDB first if available
     if (admin.apps.length > 0) {
       try {
-        const snapshot = await admin.database().ref('amazon_promo_cards').once('value');
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase RTDB timeout')), 2000));
+        const snapshot = await Promise.race([
+          admin.database().ref('amazon_promo_cards').once('value'),
+          timeoutPromise
+        ]);
         const fbCards = snapshot.val();
         if (fbCards && Array.isArray(fbCards) && fbCards.length > 0) {
           return res.json({ success: true, count: fbCards.length, data: fbCards, source: 'firebase' });

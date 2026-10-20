@@ -105,23 +105,40 @@ async function scrapeAmazonPromoCards() {
         let cleanTitle = lines.slice(0, 2).join(' ') || `Amazon Festival Deal ${i + 1}`;
         let priceBadge = cleanTitle.match(/(?:Under|Starting|From|Up to|Min\.?)\s*₹?\s*[\d,]+%?/i)?.[0] || 'Live Now';
 
-        // Check if this is an animated/video promo tile (e.g. Handpicked deals)
-        const videos = await tile.findElements(By.css('video, source'));
+        // Check if this is an animated/video promo tile (e.g. 8PM deals or Handpicked deals)
+        // Strictly inspect video elements (do NOT match picture > source)
+        const videos = await tile.findElements(By.css('video'));
         let videoSrc = '';
         if (videos.length > 0) {
-          try { videoSrc = await videos[0].getAttribute('src'); } catch {}
+          try {
+            videoSrc = await videos[0].getAttribute('src');
+            if (!videoSrc) {
+              const srcEl = await videos[0].findElements(By.css('source'));
+              if (srcEl.length > 0) videoSrc = await srcEl[0].getAttribute('src');
+            }
+          } catch {}
         }
-        const isVideoCard = videos.length > 0 || text.toLowerCase().includes('handpicked');
-        let cardImageUrl = `/banners/${filename}`;
 
-        if (isVideoCard) {
+        const is8PM = text.includes('8PM') || text.includes('8 PM') || (href && href.includes('ref_=wd8PM')) || (videoSrc && videoSrc.includes('B1nvkccQ3cL'));
+        const isHandpicked = text.toLowerCase().includes('handpicked') || text.includes('3 PM') || text.includes('3PM');
+        const isVideoCard = Boolean(videoSrc) || is8PM || isHandpicked;
+        let cardImageUrl = `/banners/${filename}`;
+        let cardId = `amazon_promo_scraped_${i + 1}`;
+
+        if (is8PM) {
+          cleanTitle = '8PM Deals Live Now';
+          priceBadge = 'Live Now';
+          cardImageUrl = '/banners/amazon_8pm_deals.gif';
+          cardId = 'amazon_8pm_promo';
+        } else if (isHandpicked) {
           cleanTitle = 'Handpicked Deals - 3 PM Picks';
           priceBadge = 'Up to 80% off';
           cardImageUrl = '/banners/amazon_promo_handpicked.gif';
+          cardId = 'amazon_handpicked_promo';
         }
 
         const cardObj = {
-          id: isVideoCard ? 'amazon_handpicked_promo' : `amazon_promo_scraped_${i + 1}`,
+          id: cardId,
           title: cleanTitle,
           priceBadge,
           imageUrl: cardImageUrl,
@@ -141,6 +158,21 @@ async function scrapeAmazonPromoCards() {
       }
     }
 
+    // Ensure the 8PM promo card is always included as the primary featured event card
+    const has8PM = scrapedCards.some(c => c.id === 'amazon_8pm_promo' || c.title.toLowerCase().includes('8pm'));
+    if (!has8PM) {
+      scrapedCards.unshift({
+        id: 'amazon_8pm_promo',
+        title: '8PM Deals Live Now',
+        priceBadge: 'Live Now',
+        imageUrl: '/banners/amazon_8pm_deals.gif',
+        clickRedirectUrl: 'https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM',
+        platform: 'amazon',
+        videoUrl: 'https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4'
+      });
+      console.log('✨ Added 8PM Deals Live Now promo card as lead event tile');
+    }
+
     if (scrapedCards.length > 0) {
       fs.writeFileSync(OUTPUT_JSON_FILE, JSON.stringify(scrapedCards, null, 2));
       console.log(`\n🎉 Successfully scraped ${scrapedCards.length} promotional cards!`);
@@ -150,6 +182,9 @@ async function scrapeAmazonPromoCards() {
       try {
         let admin;
         try { admin = require('firebase-admin'); } catch {}
+        if (admin && (!admin.apps || admin.apps.length === 0)) {
+          try { require('../database/firebaseDB/productDealsDB'); } catch {}
+        }
         if (admin && admin.apps && admin.apps.length > 0) {
           await admin.database().ref('amazon_promo_cards').set(scrapedCards);
           await admin.database().ref('amazon_promo_cards_meta').set({
