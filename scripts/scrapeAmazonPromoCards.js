@@ -102,19 +102,40 @@ async function scrapeAmazonPromoCards() {
 
         let title = text.replace(/(\*T&C apply|Free Delivery|Easy Returns|Wide Selection|Pause)/gi, '').trim();
         const lines = title.split(/\s{2,}|\n/).map(s => s.trim()).filter(Boolean);
-        const cleanTitle = lines.slice(0, 2).join(' ') || `Amazon Festival Deal ${i + 1}`;
-        const priceBadge = cleanTitle.match(/(?:Under|Starting|From|Up to|Min\.?)\s*₹?\s*[\d,]+%?/i)?.[0] || 'Live Now';
+        let cleanTitle = lines.slice(0, 2).join(' ') || `Amazon Festival Deal ${i + 1}`;
+        let priceBadge = cleanTitle.match(/(?:Under|Starting|From|Up to|Min\.?)\s*₹?\s*[\d,]+%?/i)?.[0] || 'Live Now';
 
-        scrapedCards.push({
-          id: `amazon_promo_scraped_${i + 1}`,
+        // Check if this is an animated/video promo tile (e.g. Handpicked deals)
+        const videos = await tile.findElements(By.css('video, source'));
+        let videoSrc = '';
+        if (videos.length > 0) {
+          try { videoSrc = await videos[0].getAttribute('src'); } catch {}
+        }
+        const isVideoCard = videos.length > 0 || text.toLowerCase().includes('handpicked');
+        let cardImageUrl = `/banners/${filename}`;
+
+        if (isVideoCard) {
+          cleanTitle = 'Handpicked Deals - 3 PM Picks';
+          priceBadge = 'Up to 80% off';
+          cardImageUrl = '/banners/amazon_promo_handpicked.gif';
+        }
+
+        const cardObj = {
+          id: isVideoCard ? 'amazon_handpicked_promo' : `amazon_promo_scraped_${i + 1}`,
           title: cleanTitle,
           priceBadge,
-          imageUrl: `/banners/${filename}`,
+          imageUrl: cardImageUrl,
           clickRedirectUrl: href,
           platform: 'amazon'
-        });
+        };
 
-        console.log(`📸 [${i + 1}/${tiles.length}] Captured "${cleanTitle}" -> ${filename}`);
+        if (videoSrc) {
+          cardObj.videoUrl = videoSrc;
+        }
+
+        scrapedCards.push(cardObj);
+
+        console.log(`📸 [${i + 1}/${tiles.length}] Captured "${cleanTitle}" -> ${cardImageUrl}`);
       } catch (err) {
         console.warn(`⚠️ Failed to capture tile ${i + 1}:`, err.message);
       }
@@ -124,6 +145,24 @@ async function scrapeAmazonPromoCards() {
       fs.writeFileSync(OUTPUT_JSON_FILE, JSON.stringify(scrapedCards, null, 2));
       console.log(`\n🎉 Successfully scraped ${scrapedCards.length} promotional cards!`);
       console.log(`📁 Saved metadata to ${OUTPUT_JSON_FILE}`);
+
+      // Sync to Firebase RTDB if available
+      try {
+        let admin;
+        try { admin = require('firebase-admin'); } catch {}
+        if (admin && admin.apps && admin.apps.length > 0) {
+          await admin.database().ref('amazon_promo_cards').set(scrapedCards);
+          await admin.database().ref('amazon_promo_cards_meta').set({
+            count: scrapedCards.length,
+            lastUpdated: new Date().toISOString(),
+            source: 'scraper'
+          });
+          console.log(`🔥 Synced ${scrapedCards.length} promo cards to Firebase Realtime Database (/amazon_promo_cards)`);
+        }
+      } catch (fbErr) {
+        console.warn('Firebase RTDB sync warning:', fbErr.message);
+      }
+
       return scrapedCards;
     } else {
       console.warn('⚠️ No cards scraped; preserving existing card dataset.');

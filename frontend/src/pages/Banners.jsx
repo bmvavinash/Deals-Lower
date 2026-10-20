@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import './Banners.css';
 import BannerCarousel from '../components/Deals/BannerCarousel';
 
@@ -30,7 +31,12 @@ const dedupeBanners = (banners = []) => {
   return { unique, removed };
 };
 
-const Banners = () => {
+const Banners = ({ defaultTab = 'banners' }) => {
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(
+    location.pathname === '/promo-tiles' ? 'tiles' : defaultTab
+  );
+  const [promoCardsSource, setPromoCardsSource] = useState('Firebase RTDB');
   const [banners, setBanners] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -919,6 +925,133 @@ const Banners = () => {
 
   return (
     <div className="banners">
+      {/* Top View Navigation: Separate Campaign Banners vs Amazon Promo Tiles */}
+      <div className="banners-view-tab-bar">
+        <button 
+          type="button" 
+          className={`view-tab-btn ${activeTab === 'banners' ? 'active' : ''}`}
+          onClick={() => setActiveTab('banners')}
+        >
+          🖼️ Campaign Banners
+        </button>
+        <button 
+          type="button" 
+          className={`view-tab-btn ${activeTab === 'tiles' ? 'active' : ''}`}
+          onClick={() => setActiveTab('tiles')}
+        >
+          🎯 Amazon Promo Tiles (${promoCardsList.length || 0})
+        </button>
+      </div>
+
+      {activeTab === 'tiles' ? (
+        <div className="promo-tiles-full-view">
+          <div className="promo-tiles-page-header">
+            <div className="promo-tiles-title-area">
+              <h2>🎯 Amazon Promotional Carousel Tiles</h2>
+              <p>
+                Scrapes live promotional banner cards from the Amazon India festival carousel (<code>#gwm-window</code>).
+                Stored in <strong>{promoCardsSource || 'Firebase RTDB'}</strong> and rendered in the Storefront (2nd row below hero banners) with dynamic affiliate tagging.
+              </p>
+            </div>
+            <div className="promo-tiles-header-actions">
+              <button 
+                type="button"
+                className="action-btn promo-scrape-action-btn primary-scrape-btn"
+                onClick={handleTriggerPromoCardsScrape}
+                disabled={scrapingPromoCards}
+                title="Go to Amazon and scrape all promotional cards"
+              >
+                {scrapingPromoCards ? '⏳ Scraping in progress...' : '🚀 Scrape Amazon Promo Tiles'}
+              </button>
+              <button 
+                type="button"
+                className="action-btn promo-refresh-btn"
+                onClick={fetchPromoCards}
+                title="Refresh cards from database"
+              >
+                🔄 Refresh from DB
+              </button>
+              <a 
+                href="http://localhost:3000/?ref=ramtechtelugu" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="action-btn promo-view-storefront-btn"
+                title="Open storefront on port 3000 to see live cards"
+              >
+                👁️ View Storefront Carousel (Port 3000) ↗
+              </a>
+            </div>
+          </div>
+
+          {/* Stats Bar */}
+          <div className="promo-tiles-stats-bar">
+            <div className="promo-stat-pill">
+              <span className="stat-label">Total Tiles:</span>
+              <strong className="stat-value">{promoCardsList.length}</strong>
+            </div>
+            <div className="promo-stat-pill">
+              <span className="stat-label">DB Source:</span>
+              <strong className="stat-value source-highlight">{promoCardsSource || 'Firebase RTDB'}</strong>
+            </div>
+            <div className="promo-stat-pill">
+              <span className="stat-label">Target Page:</span>
+              <strong className="stat-value">amazon.in (#gwm-window)</strong>
+            </div>
+            <div className="promo-stat-pill">
+              <span className="stat-label">Affiliate Support:</span>
+              <strong className="stat-value success-highlight">Dynamic (?ref=...)</strong>
+            </div>
+          </div>
+
+          {/* Status Alert */}
+          {promoCardStatus && (
+            <div className={`promo-cards-status-alert ${promoCardStatus.includes('❌') ? 'error' : 'success'}`}>
+              <span>{promoCardStatus}</span>
+            </div>
+          )}
+
+          {/* Tiles Grid Gallery */}
+          <div className="promo-tiles-gallery-container">
+            <h3>Scraped Carousel Tiles ({promoCardsList.length} Available)</h3>
+            <div className="promo-tiles-gallery-grid">
+              {promoCardsList.map((card, idx) => (
+                <div key={card.id || idx} className="promo-tile-full-card">
+                  <div className="promo-tile-thumb-wrap">
+                    <img 
+                      src={card.imageUrl} 
+                      alt={card.title} 
+                      onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
+                    />
+                    {card.priceBadge && <span className="promo-tile-badge">{card.priceBadge}</span>}
+                    {card.imageUrl?.endsWith('.gif') && <span className="promo-tile-gif-badge">ANIMATED GIF</span>}
+                  </div>
+                  <div className="promo-tile-body">
+                    <div className="promo-tile-meta">
+                      <span className="promo-tile-category">{card.category || 'Festive Deals'}</span>
+                      <span className="promo-tile-id">#{card.id}</span>
+                    </div>
+                    <h4 className="promo-tile-title" title={card.title}>{card.title}</h4>
+                    {card.tagline && <p className="promo-tile-tagline">{card.tagline}</p>}
+                    <div className="promo-tile-footer">
+                      <a 
+                        href={card.clickRedirectUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="promo-tile-open-btn"
+                        title={card.clickRedirectUrl}
+                      >
+                        🔗 Open on Amazon ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="banners-view-content">
+
       <div className="banners-header">
         <h1>🖼️ Banner Management</h1>
         {stats && (
@@ -1008,63 +1141,6 @@ const Banners = () => {
             >
               {showPromoCardsModal ? '▲ Hide Preview' : `👁️ View Scraped Cards (${promoCardsList.length || 21})`}
             </button>
-          </div>
-        )}
-      </div>
-
-      {/* Amazon Promotional Carousel Cards Management Card */}
-      <div className="promo-cards-console-card">
-        <div className="promo-cards-card-header">
-          <div className="promo-cards-title-block">
-            <h3>🎯 Amazon Promotional Carousel Cards ({promoCardsList.length || 21} Cards)</h3>
-            <p>
-              Scraped from Amazon festival widgets for the storefront horizontal carousel (2nd row below hero banners). 
-              Dynamically receives affiliate tracking tags (<code>tag=...</code>) from referrer parameters.
-            </p>
-          </div>
-          <div className="promo-cards-actions">
-            <button 
-              className="action-btn promo-scrape-action-btn"
-              onClick={handleTriggerPromoCardsScrape}
-              disabled={scrapingPromoCards}
-              title="Trigger Selenium scraper for Amazon promo cards"
-            >
-              {scrapingPromoCards ? '⏳ Scraping in progress...' : '⚡ Trigger Promo Cards Scrape'}
-            </button>
-            <button 
-              className="action-btn promo-toggle-preview-btn"
-              onClick={() => setShowPromoCardsModal(!showPromoCardsModal)}
-              title="Toggle preview of all scraped cards"
-            >
-              {showPromoCardsModal ? '▲ Hide Cards Preview' : `👁️ Preview ${promoCardsList.length || 21} Cards`}
-            </button>
-          </div>
-        </div>
-
-        {showPromoCardsModal && (
-          <div className="promo-cards-preview-scroll">
-            <div className="promo-cards-preview-grid">
-              {promoCardsList.map((card, idx) => (
-                <div key={card.id || idx} className="promo-preview-item">
-                  <div className="promo-preview-thumb">
-                    <img 
-                      src={card.imageUrl} 
-                      alt={card.title} 
-                      onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
-                    />
-                    {card.priceBadge && <span className="preview-badge">{card.priceBadge}</span>}
-                  </div>
-                  <div className="promo-preview-info">
-                    <span className="preview-category">{card.category || 'Amazon'}</span>
-                    <h5 className="preview-title" title={card.title}>{card.title}</h5>
-                    <p className="preview-tagline">{card.tagline}</p>
-                    <a href={card.clickRedirectUrl} target="_blank" rel="noopener noreferrer" className="preview-link">
-                      Open Amazon Deal ↗
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
       </div>
@@ -1506,6 +1582,8 @@ const Banners = () => {
           ))
         )}
       </div>
+    </div>
+  )}
     </div>
   );
 };

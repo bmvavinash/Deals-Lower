@@ -2,8 +2,8 @@ name: '🎯 Amazon Promotional Cards Fetch'
 
 on:
   schedule:
-    - cron: '15 */4 * * *'   # Every 4 hours at :15 past the hour
-  workflow_dispatch:          # Allow manual trigger anytime
+    - cron: '15 * * * *'   # Every 1 hour at :15 past the hour
+  workflow_dispatch:        # Allow manual trigger anytime
 
 env:
   HEADFUL: 'true'
@@ -53,7 +53,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action [Amazon Promo Cards]"
-          git add database/amazon_promo_cards.json frontend/public/banners/card_scraped_*.png
+          git add database/amazon_promo_cards.json frontend/public/banners/card_scraped_*.png frontend/public/banners/amazon_promo_handpicked.*
           if ! git diff-index --quiet HEAD --; then
             git commit -m "chore(promo-cards): auto-update Amazon promotional cards [skip ci]"
             git push
