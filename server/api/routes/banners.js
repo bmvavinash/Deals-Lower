@@ -1719,6 +1719,19 @@ router.post('/scrape-sale', async (req, res, next) => {
       logger.warn('Failed to broadcast global sale notification', { error: notifyErr.message });
     }
 
+    // Broadcast Web Push notification to subscribers
+    try {
+      const { broadcastWebPush } = require('../../../services/webPushService');
+      broadcastWebPush({
+        title: `🔥 ${saleName} is LIVE! | LowerDeal`,
+        body: `The "${saleName}" sale is now active on ${platform}. Tap to explore deals on lowerdeal.com!`,
+        link: 'https://lowerdeal.com',
+        extraData: { saleName, platform }
+      }).catch(err => logger.warn('Background Web Push send warning:', err.message));
+    } catch (pushErr) {
+      logger.warn('Failed to dispatch Web Push sale notification', { error: pushErr.message });
+    }
+
     res.json({
       success: true,
       message: `Sale scraping process started in the background for "${saleName}". You can monitor progress on the dashboard.`

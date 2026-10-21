@@ -226,6 +226,27 @@ async function scrapeAmazonPromoCards() {
         console.warn('Firebase RTDB sync warning:', fbErr.message);
       }
 
+      // Broadcast Web Push notification for any Live sale cards
+      try {
+        const liveCards = masterCards.filter(c => c.isActive && (c.title?.toLowerCase().includes('live') || c.badge?.toLowerCase().includes('live') || c.dealType === 'live_sale'));
+        if (liveCards.length > 0) {
+          const { broadcastWebPush } = require('../services/webPushService');
+          const topCard = liveCards[0];
+          await broadcastWebPush({
+            title: `🔥 ${topCard.title || 'New Sale'} is LIVE! | LowerDeal`,
+            body: `${topCard.badge || 'Limited-time sale'} is now live on lowerdeal.com. Check out exclusive deals!`,
+            link: 'https://lowerdeal.com',
+            extraData: {
+              saleName: topCard.title || 'Live Sale',
+              badge: topCard.badge || ''
+            }
+          });
+          console.log(`📢 Dispatched Web Push notification for live sale: ${topCard.title}`);
+        }
+      } catch (pushErr) {
+        console.warn('Web push notification broadcast warning:', pushErr.message);
+      }
+
       return masterCards;
     } else {
       console.warn('⚠️ No cards scraped; preserving existing card dataset.');
