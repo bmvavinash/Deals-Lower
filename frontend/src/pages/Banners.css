@@ -1465,7 +1465,8 @@
 .promo-tile-open-btn:hover {
   color: #1d4ed8;
   text-decoration: underline;
-=======
+}
+
 .banners-grid.list-view {
   grid-template-columns: 1fr;
   max-width: 1200px;
