@@ -9,6 +9,8 @@ interface DealFiltersProps {
     limit: number;
     offset: number;
     q?: string;
+    sortBy?: string;
+    order?: string;
   };
   onFilterChange: (filters: any) => void;
   isLoading?: boolean;
@@ -77,6 +79,31 @@ const DealFilters: React.FC<DealFiltersProps> = ({ filters, onFilterChange, isLo
             className="search-filter"
             title="Global search across all deals"
           />
+        </div>
+
+        <div className="filter-group">
+          <label>Sort By:</label>
+          <select
+            value={localFilters.sortBy || 'default'}
+            onChange={(e) => setLocalFilters({ ...localFilters, sortBy: e.target.value })}
+          >
+            <option value="default">Date Added</option>
+            <option value="updateTimestamp">Last Updated</option>
+            <option value="price">Price</option>
+            <option value="discount">Discount</option>
+            <option value="title">Title (Alphabetical)</option>
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Order:</label>
+          <select
+            value={localFilters.order || 'desc'}
+            onChange={(e) => setLocalFilters({ ...localFilters, order: e.target.value })}
+          >
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
         </div>
 
         <div className="filter-group">

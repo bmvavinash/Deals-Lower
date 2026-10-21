@@ -2,14 +2,11 @@ const { Builder, By, until } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const bannerConfig = require('../config/bannerConfig');
 const { 
-    validateBannerUrl, 
-    validateBannerContent, 
-    validateBannerImage,
     generateBannerId,
     generateBannerTimestamp,
-    categorizeBanner,
     isProductCarousel
 } = require('../utils/commonUtils');
+const { ImprovedBannerValidator } = require('../utils/improvedBannerValidator');
 const { getModuleLogger } = require('../logger/logger');
 const { bannerDB } = require('../database/firebaseDB/bannerDB');
 const { bannerUrlFixer } = require('../services/bannerUrlFixer');
@@ -20,6 +17,7 @@ class BannerExtractor {
     constructor(options = {}) {
         this.driver = null;
         this.extractedBanners = [];
+        this.validator = new ImprovedBannerValidator();
         // For banner extraction, always use normal headless browser (no login needed)
         // Only use existing Chrome if explicitly requested AND requires login
         // Banners don't need login, so default to false
@@ -333,24 +331,51 @@ class BannerExtractor {
         logger.info(`Starting banner extraction for ${name}`, { platform: platformKey });
 
         for (const url of bannerUrls) {
-            try {
-                logger.debug(`Extracting banners from: ${url}`);
-                await this.driver.get(url);
-                
-                // Wait for page to load
-                await this.driver.wait(until.elementLocated(By.css('body')), 10000);
-                
-                // Extract banners from this URL
-                const urlBanners = await this.extractBannersFromUrl(platformKey, selectors, validation);
-                banners.push(...urlBanners);
-                
-                logger.info(`Extracted ${urlBanners.length} banners from ${url}`);
-                
-            } catch (error) {
-                logger.error(`Error extracting banners from ${url}:`, { 
-                    error: error.message, 
-                    platform: platformKey 
-                });
+            let retries = 1;
+            while (retries >= 0) {
+                try {
+                    logger.debug(`Extracting banners from: ${url}`);
+                    await this.driver.get(url);
+                    
+                    // Wait for page to load
+                    await this.driver.wait(until.elementLocated(By.css('body')), 10000);
+                    
+                    // Extract banners from this URL
+                    const urlBanners = await this.extractBannersFromUrl(platformKey, selectors, validation);
+                    banners.push(...urlBanners);
+                    
+                    logger.info(`Extracted ${urlBanners.length} banners from ${url}`);
+                    break; // Success, exit retry loop
+                } catch (error) {
+                    const isSessionError = error.message.includes('invalid session id') || 
+                                           error.message.includes('disconnected') || 
+                                           error.message.includes('no such session') ||
+                                           error.message.includes('chrome not reachable') ||
+                                           error.message.includes('ECONNREFUSED') ||
+                                           error.message.includes('ECONNRESET');
+                    
+                    if (isSessionError && retries > 0) {
+                        logger.warn(`Driver session crashed/invalidated during get(${url}). Re-initializing driver and retrying...`, {
+                            error: error.message
+                        });
+                        try {
+                            await this.closeDriver();
+                        } catch (_) {}
+                        try {
+                            await this.initializeDriver();
+                        } catch (initErr) {
+                            logger.error('Failed to re-initialize driver during recovery:', { error: initErr.message });
+                            throw error;
+                        }
+                        retries--;
+                    } else {
+                        logger.error(`Error extracting banners from ${url}:`, { 
+                            error: error.message, 
+                            platform: platformKey 
+                        });
+                        break;
+                    }
+                }
             }
         }
 
@@ -431,18 +456,101 @@ class BannerExtractor {
         return banners;
     }
 
-    async extractBannersDirectly(platformKey, selectors, validation) {
+    isHomePageUrl(url, platformKey) {
+        if (!url || typeof url !== 'string') return true;
+        const trimmed = url.trim();
+        if (!trimmed || trimmed === '#' || trimmed.startsWith('javascript:') || trimmed.startsWith('about:')) return true;
+        try {
+            const parsed = new URL(trimmed);
+            const path = parsed.pathname.replace(/\/+$/, '');
+            if (path === '' || path === '/') {
+                if (!parsed.search || parsed.search === '?ref_=nav_logo' || parsed.search === '?ref_=nav_header') {
+                    return true;
+                }
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    async extractRedirectUrl(element, platformKey) {
+        try {
+            const baseUrl = bannerConfig.platforms[platformKey]?.baseUrl || `https://www.${platformKey}.com`;
+            const rawUrl = await this.driver.executeScript(`
+                var el = arguments[0];
+                if (!el) return null;
+                function isValid(u) {
+                    if (!u || typeof u !== 'string') return false;
+                    u = u.trim();
+                    if (!u || u === '#' || u.startsWith('javascript:') || u === 'about:blank') return false;
+                    return true;
+                }
+                function isHome(u) {
+                    if (!isValid(u)) return false;
+                    try {
+                        var parsed = new URL(u, window.location.origin);
+                        var path = parsed.pathname.replace(/\\/+$/, '');
+                        return path === '' || path === '/';
+                    } catch(e) { return false; }
+                }
+                function clean(u) {
+                    if (!isValid(u)) return null;
+                    try { return new URL(u, window.location.origin).href; } catch(e) { return u; }
+                }
+                if (el.tagName && el.tagName.toLowerCase() === 'a') {
+                    var h = clean(el.getAttribute('href') || el.href);
+                    if (h && !isHome(h)) return h;
+                }
+                var closestA = el.closest ? el.closest('a') : null;
+                if (closestA) {
+                    var h2 = clean(closestA.getAttribute('href') || closestA.href);
+                    if (h2 && !isHome(h2)) return h2;
+                }
+                var curr = el;
+                for (var i = 0; i < 6; i++) {
+                    if (!curr || curr === document.body) break;
+                    var d = curr.getAttribute('data-href') || curr.getAttribute('data-url') || curr.getAttribute('data-link');
+                    if (d) { var fd = clean(d); if (fd && !isHome(fd)) return fd; }
+                    curr = curr.parentElement;
+                }
+                var container = el.closest ? el.closest('[class*="slide"], [class*="card"], [class*="banner"], [class*="carousel"], [class*="item"], [class*="promo"], [class*="hero"], li, section') : null;
+                if (container) {
+                    var links = container.querySelectorAll('a[href]');
+                    for (var j = 0; j < links.length; j++) {
+                        var cand = clean(links[j].getAttribute('href') || links[j].href);
+                        if (cand && !isHome(cand)) return cand;
+                    }
+                }
+                if (closestA) {
+                    var lastHref = clean(closestA.getAttribute('href') || closestA.href);
+                    if (lastHref && !isHome(lastHref)) return lastHref;
+                }
+                return null;
+            `, element);
+
+            if (rawUrl && typeof rawUrl === 'string' && rawUrl.trim()) {
+                const resolved = new URL(rawUrl.trim(), baseUrl).href;
+                if (!this.isHomePageUrl(resolved, platformKey)) {
+                    return resolved;
+                }
+            }
+        } catch (e) {
+            logger.debug('Error extracting redirect URL:', { error: e.message });
+        }
+        return null;
+    }
+
+    async extractFromBannerImages(platformKey, selectors, validation) {
         const banners = [];
         
         try {
-            // Find all banner images directly on the page
             let bannerImages = await this.driver.findElements(By.css(selectors.bannerImage));
-            logger.debug(`Found ${bannerImages.length} banner images directly for ${platformKey}`);
+            logger.debug(`Found ${bannerImages.length} banner images directly`);
             
-            // If no images found, try alternative image selector
             if (bannerImages.length === 0 && selectors.alternativeBannerImage) {
                 bannerImages = await this.driver.findElements(By.css(selectors.alternativeBannerImage));
-                logger.debug(`Found ${bannerImages.length} banner images with alternative selector for ${platformKey}`);
+                logger.debug(`Found ${bannerImages.length} banner images with alternative selector`);
             }
             
             for (const imageElement of bannerImages) {
@@ -450,74 +558,61 @@ class BannerExtractor {
                     const imageUrl = await imageElement.getAttribute('src');
                     const altText = await imageElement.getAttribute('alt');
                     
-                    // Skip data URLs and small images
-                    if (!imageUrl || imageUrl.startsWith('data:') || imageUrl.length < 50) {
-                        continue;
-                    }
-                    
-                    // Check if this is a product carousel (should be excluded)
-                    if (isProductCarousel(imageElement, selectors)) {
-                        logger.debug(`Skipping product carousel: ${altText}`);
-                        continue;
-                    }
-                    
-                    logger.debug(`Found direct image: ${imageUrl}, alt: ${altText}`);
-
-                    // Early filter for product images (all platforms)
-                    if (this.isLikelyProductImage(imageUrl, altText, platformKey)) {
-                        logger.debug('Skipping likely product image', { platform: platformKey, imageUrl: imageUrl.substring(0, 100), altText });
+                    if (this.extractedUrls.has(imageUrl)) {
                         continue;
                     }
 
-                    // Validate banner URL
-                    const urlValidation = validateBannerUrl(imageUrl, validation.allowedDomains);
-                    if (!urlValidation.isValid) {
-                        logger.debug(`Direct banner URL validation failed:`, { 
-                            reason: urlValidation.reason, 
-                            url: imageUrl 
-                        });
+                    let width = 0, height = 0;
+                    try {
+                        const dims = await this.driver.executeScript(
+                            "return [arguments[0].naturalWidth || arguments[0].width || 0, arguments[0].naturalHeight || arguments[0].height || 0];", 
+                            imageElement
+                        );
+                        width = dims[0];
+                        height = dims[1];
+                    } catch (dimErr) {
+                        logger.debug(`Could not extract natural dimensions for element:`, { error: dimErr.message });
+                    }
+
+                    const clickRedirectUrl = await this.extractRedirectUrl(imageElement, platformKey);
+                    if (!clickRedirectUrl || this.isHomePageUrl(clickRedirectUrl, platformKey)) {
                         continue;
                     }
+
+                    const bannerData = {
+                        imageUrl,
+                        altText,
+                        title: null,
+                        clickUrl: clickRedirectUrl,
+                        element: imageElement,
+                        width,
+                        height
+                    };
                     
-                    // Validate banner content
-                    const contentValidation = validateBannerContent(altText, null, validation.excludedKeywords);
-                    if (!contentValidation.isValid) {
-                        logger.debug(`Direct banner content validation failed:`, { 
-                            reason: contentValidation.reason, 
-                            altText: altText 
-                        });
+                    const validationResult = this.validator.validateBanner(bannerData);
+                    if (!validationResult.isValid) {
                         continue;
                     }
-                    
-                    // Additional check for flight-related content
-                    const bannerConfig = require('../config/bannerConfig');
-                    const flightKeywords = bannerConfig.global.flightKeywords || [];
-                    const searchText = (altText || '').toLowerCase();
-                    if (flightKeywords.some(keyword => searchText.includes(keyword.toLowerCase()))) {
-                        logger.debug('Skipping flight-related banner', { altText });
-                        continue;
-                    }
-                    
-                    // Categorize the banner
-                    const categorization = categorizeBanner(altText, null, imageUrl, platformKey);
-                    
+
+                    this.extractedUrls.add(imageUrl);
+
                     // Generate banner data
-                    const bannerId = generateBannerId(platformKey, categorization.category);
                     const timestamp = generateBannerTimestamp();
-                    
                     const banner = {
-                        id: bannerId,
+                        id: generateBannerId(platformKey, validationResult.category),
                         url: imageUrl,
-                        clickRedirectUrl: `https://www.${platformKey}.com`, // Default redirect
+                        clickRedirectUrl: clickRedirectUrl,
                         isActive: this.defaultVisibility,
                         order: 0,
                         creationTimestamp: timestamp,
                         updateTimestamp: timestamp,
                         platform: platformKey,
-                        category: categorization.category,
-                        priority: categorization.priority,
-                        title: contentValidation.value,
-                        description: altText
+                        category: validationResult.category,
+                        priority: validationResult.category === 'hero' ? 1 : (validationResult.category === 'seasonal' ? 2 : (validationResult.category === 'promotional' ? 3 : 4)),
+                        title: altText || 'Banner',
+                        description: altText,
+                        confidence: validationResult.confidence,
+                        validationReasons: validationResult.reasons
                     };
                     
                     banners.push({
@@ -525,7 +620,7 @@ class BannerExtractor {
                         isValid: true
                     });
                     
-                    logger.debug(`Successfully extracted direct banner: ${banner.id} (${categorization.category})`);
+                    logger.debug(`Successfully extracted direct banner: ${banner.id} (${validationResult.category})`);
                     
                 } catch (error) {
                     logger.debug(`Error extracting direct banner:`, { error: error.message });
@@ -541,26 +636,31 @@ class BannerExtractor {
 
     async extractBannerFromElement(element, platformKey, selectors, validation) {
         try {
-            // Extract link URL
-            const clickRedirectUrl = await element.getAttribute('href');
-            logger.debug(`Found link: ${clickRedirectUrl}`);
+            // Extract destination link URL
+            let clickRedirectUrl = await this.extractRedirectUrl(element, platformKey);
+            logger.debug(`Found destination redirect URL: ${clickRedirectUrl}`);
             
             // Find image element within the link
             let imageElement;
             try {
                 imageElement = await element.findElement(By.css(selectors.bannerImage));
             } catch (error) {
-                // Try alternative image selector if available
                 if (selectors.alternativeBannerImage) {
                     try {
                         imageElement = await element.findElement(By.css(selectors.alternativeBannerImage));
                     } catch (altError) {
-                        logger.debug(`No image found with any selector:`, { error: altError.message });
-                        return null;
+                        try {
+                            imageElement = await element.findElement(By.css('img'));
+                        } catch (imgErr) {
+                            return null;
+                        }
                     }
                 } else {
-                    logger.debug(`No image found with primary selector:`, { error: error.message });
-                    return null;
+                    try {
+                        imageElement = await element.findElement(By.css('img'));
+                    } catch (imgErr) {
+                        return null;
+                    }
                 }
             }
             
@@ -568,79 +668,76 @@ class BannerExtractor {
             const altText = await imageElement.getAttribute('alt');
             logger.debug(`Found image: ${imageUrl}, alt: ${altText}`);
 
-            // Early filter for product images (all platforms)
-            if (this.isLikelyProductImage(imageUrl, altText, platformKey)) {
-                logger.debug('Skipping likely product image', { platform: platformKey, imageUrl: imageUrl.substring(0, 100), altText });
+            if (this.isHomePageUrl(clickRedirectUrl, platformKey)) {
+                const imgRedirect = await this.extractRedirectUrl(imageElement, platformKey);
+                if (imgRedirect && !this.isHomePageUrl(imgRedirect, platformKey)) {
+                    clickRedirectUrl = imgRedirect;
+                }
+            }
+
+            // Get browser-level natural dimensions of the image element
+            let width = 0, height = 0;
+            try {
+                const dims = await this.driver.executeScript(
+                    "return [arguments[0].naturalWidth || arguments[0].width || 0, arguments[0].naturalHeight || arguments[0].height || 0];", 
+                    imageElement
+                );
+                width = dims[0];
+                height = dims[1];
+            } catch (dimErr) {
+                logger.debug(`Could not extract natural dimensions for element:`, { error: dimErr.message });
+            }
+
+            if (!clickRedirectUrl || this.isHomePageUrl(clickRedirectUrl, platformKey)) {
+                const imgRedirect = await this.extractRedirectUrl(imageElement, platformKey);
+                if (imgRedirect && !this.isHomePageUrl(imgRedirect, platformKey)) {
+                    clickRedirectUrl = imgRedirect;
+                }
+            }
+
+            if (!clickRedirectUrl || this.isHomePageUrl(clickRedirectUrl, platformKey)) {
+                logger.debug(`Skipping link element because no non-homepage destination redirect URL found`);
                 return null;
             }
 
-            // Validate banner URL
-            const urlValidation = validateBannerUrl(imageUrl, validation.allowedDomains);
-            if (!urlValidation.isValid) {
-                logger.debug(`Banner URL validation failed:`, { 
-                    reason: urlValidation.reason, 
-                    url: imageUrl 
+            const bannerData = {
+                imageUrl,
+                altText,
+                title: null,
+                clickUrl: clickRedirectUrl,
+                element: imageElement,
+                width,
+                height
+            };
+            
+            const validationResult = this.validator.validateBanner(bannerData);
+            if (!validationResult.isValid) {
+                logger.debug(`Banner validation failed:`, { 
+                    reasons: validationResult.reasons,
+                    imageUrl: imageUrl?.substring(0, 100),
+                    width,
+                    height
                 });
                 return null;
             }
-            
-            // Validate banner content
-            const contentValidation = validateBannerContent(altText, null, validation.excludedKeywords);
-            if (!contentValidation.isValid) {
-                logger.debug(`Banner content validation failed:`, { 
-                    reason: contentValidation.reason, 
-                    altText: altText 
-                });
-                return null;
-            }
-            
-            // Additional check for flight-related content
-            const bannerConfig = require('../config/bannerConfig');
-            const flightKeywords = bannerConfig.global.flightKeywords || [];
-            const searchText = (altText || '').toLowerCase();
-            if (flightKeywords.some(keyword => searchText.includes(keyword.toLowerCase()))) {
-                logger.debug('Skipping flight-related banner', { altText });
-                return null;
-            }
-            
-            // Validate image if enabled
-            let imageValidation = { isValid: true, value: imageUrl };
-            if (bannerConfig.global.validateImages) {
-                imageValidation = await validateBannerImage(
-                    imageUrl, 
-                    validation.minImageWidth, 
-                    validation.minImageHeight
-                );
-            }
-            
-            if (!imageValidation.isValid) {
-                logger.debug(`Banner image validation failed:`, { 
-                    reason: imageValidation.reason, 
-                    url: imageUrl 
-                });
-                return null;
-            }
-            
-            // Categorize the banner
-            const categorization = categorizeBanner(altText, null, imageUrl, platformKey);
             
             // Generate banner data
-            const bannerId = generateBannerId(platformKey, categorization.category);
             const timestamp = generateBannerTimestamp();
-            
             const banner = {
-                id: bannerId,
-                url: imageValidation.value,
+                id: generateBannerId(platformKey, validationResult.category),
+                url: imageUrl,
                 clickRedirectUrl: clickRedirectUrl,
                 isActive: this.defaultVisibility,
                 order: 0,
                 creationTimestamp: timestamp,
                 updateTimestamp: timestamp,
                 platform: platformKey,
-                category: categorization.category,
-                priority: categorization.priority,
-                title: contentValidation.value,
-                description: altText
+                category: validationResult.category,
+                priority: validationResult.category === 'hero' ? 1 : (validationResult.category === 'seasonal' ? 2 : (validationResult.category === 'promotional' ? 3 : 4)),
+                title: altText || 'Banner',
+                description: altText,
+                confidence: validationResult.confidence,
+                validationReasons: validationResult.reasons
             };
             
             return {
@@ -750,7 +847,7 @@ class BannerExtractor {
             
             // Deactivate old banners (optional)
             const activeBannerIds = storedBanners.map(banner => banner.id);
-            await this.deactivateOldBanners(activeBannerIds);
+            // await this.deactivateOldBanners(activeBannerIds);
             
             return {
                 success: true,

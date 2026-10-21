@@ -471,19 +471,11 @@ const ExpandableDealCard: React.FC<ExpandableDealCardProps> = ({
               </a>
             </div>
           )}
-          {deal.links?.avinashbmv && (
+          {(deal.links?.avinashbmv || deal.links?.avinashbmvINR) && (
             <div className="affiliate-link-section">
-              <strong>Affiliate Link (Direct):</strong>
-              <a href={deal.links.avinashbmv} target="_blank" rel="noopener noreferrer">
-                {deal.links.avinashbmv}
-              </a>
-            </div>
-          )}
-          {deal.links?.avinashbmvINR && (
-            <div className="affiliate-link-section">
-              <strong>Affiliate Link (INR):</strong>
-              <a href={deal.links.avinashbmvINR} target="_blank" rel="noopener noreferrer">
-                {deal.links.avinashbmvINR}
+              <strong>Affiliate Link:</strong>
+              <a href={deal.links?.avinashbmv || deal.links?.avinashbmvINR} target="_blank" rel="noopener noreferrer">
+                {deal.links?.avinashbmv || deal.links?.avinashbmvINR}
               </a>
             </div>
           )}

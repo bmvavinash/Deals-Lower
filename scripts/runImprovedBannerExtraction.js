@@ -281,23 +281,16 @@ async function runAllPlatformsExtraction(options) {
 async function testChromeConnection(chromePort) {
     try {
         logger.info(`Testing Chrome connection on port ${chromePort}`);
-        
         const extractor = new ImprovedBannerExtractor();
         extractor.chromePort = chromePort;
-        
-        await extractor.initializeDriver();
-        
-        // Test navigation
-        await extractor.driver.get('https://www.google.com');
-        const title = await extractor.driver.getTitle();
-        
-        await extractor.closeDriver();
-        
-        logger.info('Chrome connection test successful', { port: chromePort, title });
-        return true;
-        
+        const isOpen = await extractor.checkPortOpen(chromePort);
+        if (isOpen) {
+            logger.info('Chrome port test successful');
+            return true;
+        }
+        return false;
     } catch (error) {
-        logger.error('Chrome connection test failed:', { 
+        logger.error('Chrome driver test failed:', { 
             port: chromePort, 
             error: error.message 
         });

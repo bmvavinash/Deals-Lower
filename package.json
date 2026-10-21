@@ -18,7 +18,7 @@
     "@types/node-telegram-bot-api": "^0.64.7",
     "async": "^3.2.6",
     "cheerio": "^1.0.0",
-    "chromedriver": "^148.0.3",
+    "chromedriver": "^154.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^4.18.2",
@@ -37,6 +37,7 @@
     "speakeasy": "^2.0.0",
     "telegram": "^2.25.15",
     "telegram-bot-api": "^2.0.1",
+    "tesseract.js": "^7.0.0",
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^5.0.0",
     "xlsx": "^0.18.5"

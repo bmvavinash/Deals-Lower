@@ -1,19 +1,9 @@
-const { Builder, By } = require('selenium-webdriver');
-const chrome = require('selenium-webdriver/chrome');
+const fs = require('fs');
+let content = fs.readFileSync('frontend/src/pages/BannersPage.tsx', 'utf8');
+const searchStr = `<span className="nav-count" style={{ fontWeight: 'bold', fontSize: '1.1em', color: '#2c3e50' }}>Banner {currentIndex + 1} of {visibleBanners.length}</span>`;
+const replaceStr = `${searchStr}
+                    <button onClick={() => toggleBannerStatus(banner.id, banner.isActive || false)} className={\`trigger-button \${banner.isActive ? 'btn-active' : 'btn-inactive'}\`} style={{ padding: '8px 16px', backgroundColor: banner.isActive ? '#e74c3c' : '#2ecc71', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '15px' }}>{banner.isActive ? 'Make Inactive' : 'Make Active'}</button>`;
 
-(async () => {
-    let options = new chrome.Options();
-    options.addArguments('--headless');
-    let driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
-    await driver.get('https://www.flipkart.com/homlex-4-ft-x-6-acrylic-carpet/p/itm3671973887974?pid=CPGHNA7SHW3ZJMHY');
-    
-    const res = await driver.executeScript(`
-        return Array.from(document.querySelectorAll('div, span, h1'))
-            .filter(el => el.textContent.includes('223') || el.textContent.includes('HOMLEX 4 ft'))
-            .map(el => \`\${el.tagName.toLowerCase()} class="\${el.className}" text="\${el.textContent.trim().substring(0,30)}"\`)
-            .join('\\n');
-    `);
-    
-    console.log(res);
-    await driver.quit();
-})();
+content = content.replace(searchStr, replaceStr);
+fs.writeFileSync('frontend/src/pages/BannersPage.tsx', content);
+console.log('Done');

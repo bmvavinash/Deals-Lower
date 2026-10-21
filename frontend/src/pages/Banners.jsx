@@ -3,7 +3,7 @@ import { useLocation } from 'react-router-dom';
 import './Banners.css';
 import BannerCarousel from '../components/Deals/BannerCarousel';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3003').trim();
 
 const buildBannerKey = (banner = {}) => {
   const platform = (banner.platform || '').trim().toLowerCase();

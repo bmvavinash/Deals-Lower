@@ -27,6 +27,35 @@ class BannerUrlFixer {
         return banner;
       }
       
+      // Check if it's an Extrape shortlink (they use various domains depending on the store)
+      const hasValidExtrape = currentUrl && (
+        currentUrl.includes('extp.in') || 
+        currentUrl.includes('extrape.com') ||
+        currentUrl.includes('ajiio.co') ||
+        currentUrl.includes('fkrt.co') ||
+        currentUrl.includes('myntr.in')
+      );
+      
+      const hasInrDeals = currentUrl && currentUrl.includes('inrdeals.com') && currentUrl.includes('avinashbmv');
+      const hasValidAmazon = platform === 'amazon' && currentUrl.includes('dealshubglo0c-21');
+      const isHomePageOnly = (url) => {
+        if (!url) return true;
+        const u = url.toLowerCase().replace(/https?:\/\//, '').replace(/^inrdeals\.com\/[^\/]+\//, '').replace(/\/+$/, '');
+        return u === 'www.flipkart.com' || u === 'flipkart.com' ||
+               u === 'www.amazon.in' || u === 'amazon.in' ||
+               u === 'www.myntra.com' || u === 'myntra.com' ||
+               u === 'www.ajio.com' || u === 'ajio.com';
+      };
+
+      if (platform !== 'amazon' && (hasValidExtrape || hasInrDeals) && !isHomePageOnly(currentUrl)) {
+        this.skippedCount++;
+        return banner; // Already fixed with specific destination URL
+      }
+      if (platform === 'amazon' && hasValidAmazon && !isHomePageOnly(currentUrl)) {
+        this.skippedCount++;
+        return banner; // Already fixed with specific destination URL
+      }
+      
       const expectedUrl = await this.generateCorrectUrl(banner, platform, currentUrl);
       
       if (expectedUrl && expectedUrl !== currentUrl) {
@@ -168,39 +197,34 @@ class BannerUrlFixer {
    */
   async generateNonAmazonUrl(banner, currentUrl) {
     try {
+      let cleanUrl = currentUrl.replace(/^https?:\/\//, '').replace(/^inrdeals\.com\/avi646476329\//, '');
+      if (cleanUrl.startsWith('https://') || cleanUrl.startsWith('http://')) {
+          // Already has a protocol after stripping the wrapper
+      } else {
+          cleanUrl = `https://${cleanUrl}`;
+      }
+
+      // Always try to use extrape first since INRDeals is down
+      if (global.driver) {
+        try {
+          const extrapeUrl = await getExtrapeUrl(global.driver, cleanUrl);
+          if (extrapeUrl) {
+            return extrapeUrl;
+          }
+        } catch (error) {
+          logger.error('Error using extrape for banner:', { error: error.message });
+        }
+      }
+      
       // Check if current URL has tag=dealshubglo0c-21 (blunder case)
       if (currentUrl.includes('tag=dealshubglo0c-21')) {
         logger.warn('Non-Amazon banner has Amazon tag - attempting to fix');
-        
-        // Try to use extrape if we have a driver
-        if (global.driver) {
-          try {
-            const extrapeUrl = await getExtrapeUrl(global.driver, currentUrl);
-            if (extrapeUrl) {
-              return extrapeUrl;
-            }
-          } catch (error) {
-            logger.error('Error using extrape for banner:', { error: error.message });
-          }
-        }
-        
-        // Fallback: use inrdeals.com wrapper with https://
-        const cleanUrl = currentUrl.replace(/^https?:\/\//, '').replace(/^inrdeals\.com\/avi646476329\//, '');
-        return `https://inrdeals.com/avi646476329/${cleanUrl}`;
+        // If Extrape failed, we cannot generate a valid link. Return null to skip update.
+        return null;
       }
       
-      // Check if current URL is already in correct format
-      if (currentUrl.includes('inrdeals.com/avi646476329/')) {
-        // Ensure it has https://
-        if (!currentUrl.startsWith('http://') && !currentUrl.startsWith('https://')) {
-          return `https://${currentUrl}`;
-        }
-        return currentUrl; // URL is already correct
-      }
-      
-      // If URL doesn't start with inrdeals.com, wrap it with https://
-      const cleanUrl = currentUrl.replace(/^https?:\/\//, '');
-      return `https://inrdeals.com/avi646476329/${cleanUrl}`;
+      // Extrape is compulsory. If we reach here, Extrape failed, so return null to skip updating.
+      return null;
       
     } catch (error) {
       logger.error('Error generating non-Amazon URL for banner:', { error: error.message });

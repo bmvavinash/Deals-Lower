@@ -110,7 +110,6 @@ const commandsRoutes = require('./routes/commands');
 const categoriesRoutes = require('./routes/categories');
 const matchingConfigRoutes = require('./routes/matchingConfig');
 const affiliatesRoutes = require('./routes/affiliates');
-const ipoRoutes = require('./routes/ipo');
 
 const app = express();
 const PORT = process.env.PORT || constants.frontend?.apiPort || 3003;
@@ -155,7 +154,6 @@ app.use('/api/commands', commandsRoutes);
 app.use('/api/categories', categoriesRoutes);
 app.use('/api/matching-config', matchingConfigRoutes);
 app.use('/api/affiliates', affiliatesRoutes);
-app.use('/api/ipo', ipoRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -194,9 +192,9 @@ if (require.main === module) {
       logger.error('Failed to start Notification Queue Worker', { error: error.message });
     }
 
-    // Auto-start Local Daemon if offline on API startup
+    // Auto-start Local Daemon if offline on API startup (SKIP ON RENDER)
     try {
-      if (admin.apps.length) {
+      if (admin.apps.length && !process.env.RENDER) {
         const db = admin.database();
         const heartbeatRef = db.ref('daemonHeartbeat');
         heartbeatRef.once('value', (snapshot) => {

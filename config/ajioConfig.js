@@ -29,10 +29,17 @@ module.exports = {
         { type: "css", selector: "._3KsA3 ._3AxgC" },
     ],
     images: [
+        { type: "css", selector: ".slick-slider img.img-alignment", attribute: "src", multiple: true },
+        { type: "css", selector: ".slick-slider img", attribute: "src", multiple: true },
         { type: "css", selector: ".product-image-gallery img.img-alignment", attribute: "src", multiple: true },
         { type: "css", selector: ".product-image-gallery img", attribute: "src", multiple: true },
     ],
     photo: [
+        { type: 'css', selector: 'meta[property="og:image"]', attribute: 'content' },
+        { type: 'css', selector: 'meta[name="twitter:image"]', attribute: 'content' },
+        { type: 'css', selector: 'img.rilrtl-lazy-img', attribute: 'data-src' },
+        { type: 'css', selector: 'img.rilrtl-lazy-img', attribute: 'src' },
+        { type: 'css', selector: '.rilrtl-lazy-img-loaded', attribute: 'src' },
         { type: 'className', selector: 'rilrtl-lazy-img', attribute: 'src' },
         { type: 'id', selector: 'selectedImage', attribute: 'src' },
         { type: 'className', selector: 'swatch-image-selected', attribute: 'src' },

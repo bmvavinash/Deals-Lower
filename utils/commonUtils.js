@@ -16,7 +16,7 @@ const { getModuleLogger } = require("../logger/logger");
 
 
 const logger = getModuleLogger('commonUtils');
-const { By } = require('selenium-webdriver');
+const { By, until } = require('selenium-webdriver');
 
 function validatePrice(value) {
     if (!value || typeof value !== 'string') {
@@ -673,30 +673,37 @@ async function extrapeLogin(driver) {
         } catch (error) {
             console.error("Error entering email:", error);
         }
-        try { //login for email
-            const loginButton = await driver.findElement(By.xpath('//*[@id="root"]/div/div/div/div[2]/div[2]/div[4]/button'));
+        try { // login for email (Next or Continue button usually)
+            const loginButton = await driver.findElement(By.xpath('//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "login") or contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "continue") or contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "next")] | //button[@type="submit"]'));
             await loginButton.click();
         } catch (error) {
-            console.error("Error clicking the login button:", error);
+            console.error("Error clicking the email login button:", error);
         }
-        try { // button for password
-            const loginButton = await driver.findElement(By.xpath('//*[@id="root"]/div/div/div/div[2]/div[2]/div[4]/div[3]/button'));
-            await loginButton.click();
+        
+        // Wait briefly for password field to appear
+        await new Promise(r => setTimeout(r, 2000));
+        
+        try { // button for password (could be multiple steps)
+            // Just try to find another button if needed, or maybe it's just one step now.
+            const buttons = await driver.findElements(By.xpath('//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "login") or contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "submit")]'));
+            if (buttons.length > 0) {
+                await buttons[0].click();
+            }
         } catch (error) {
-            console.error("Error clicking the login button:", error);
+            console.error("Error clicking the intermediate login button:", error);
         }
         try {
-            const passwordField = await driver.findElement(By.id("outlined"));
+            const passwordField = await driver.wait(until.elementLocated(By.xpath('//input[@type="password"]')), 5000);
             await passwordField.click();
             await passwordField.sendKeys(constants.extraPePassword);
         } catch (error) {
             console.error("Error entering password:", error);
         }
         try {
-            const loginButton = await driver.findElement(By.xpath('//*[@id="root"]/div/div/div/div[2]/div[2]/div[5]/button'));
+            const loginButton = await driver.findElement(By.xpath('//button[contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "login") or contains(translate(text(), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "submit")] | //button[@type="submit"]'));
             await loginButton.click();
         } catch (error) {
-            console.error("Error clicking the login button:", error);
+            console.error("Error clicking the final login button:", error);
         }
     } catch (outerError) {
         console.error("Error logging into Extrape:", outerError);

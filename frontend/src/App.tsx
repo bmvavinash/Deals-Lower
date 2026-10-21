@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from './components/Layout/MainLayout';
 import Dashboard from './pages/Dashboard';
 import DealsPage from './pages/DealsPage';
+import BannersPage from './pages/BannersPage';
 import MatchingConfigPage from './pages/MatchingConfigPage';
 import StocksPage from './pages/StocksPage';
 import LogsPage from './pages/LogsPage';
@@ -14,7 +15,6 @@ import ProductMatchingPage from './pages/ProductMatchingPage';
 import CommandsPage from './pages/CommandsPage';
 import UsersPage from './pages/UsersPage';
 import AffiliatesPage from './pages/AffiliatesPage';
-import Banners from './pages/Banners';
 import { NotificationProvider } from './context/NotificationContext';
 import Toaster from './components/Notifications/Toaster';
 import NotificationQueue from './components/Notifications/NotificationQueue';

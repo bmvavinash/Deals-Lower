@@ -136,7 +136,7 @@ function startCommandListener() {
       }
     }, watchdogTimeoutMs);
 
-    const child = exec(commandData.command, { cwd: path.join(__dirname, '../') }, async (error, stdout, stderr) => {
+    const child = exec(commandData.command, { cwd: path.join(__dirname, '../'), maxBuffer: 1024 * 1024 * 50 }, async (error, stdout, stderr) => {
       clearTimeout(watchdogTimer);
       const completedAt = new Date().toISOString();
       
@@ -197,13 +197,14 @@ function rescheduleJobs(schedulerConfig) {
   const favoritesInterval = schedulerConfig.favoritesInterval || 1; // Always every hour
   const dbInterval = schedulerConfig.dbUpdatesInterval || 2;
   const bannersInterval = schedulerConfig.bannersInterval || 4;
+  const dealsTrackingInterval = schedulerConfig.dealsTrackingInterval || 2; // Default 2 hours
 
   logger.info(`Schedules Updated - Active Deals Mode: ${isActiveDeals}`);
-  logger.info(`Intervals - Bulk: ${bulkInterval}h, Bot: ${botInterval}h, Favorites: ${favoritesInterval}h, DB Updates: ${dbInterval}h, Banners: ${bannersInterval}h`);
+  logger.info(`Intervals - Bulk: ${bulkInterval}h, Bot: ${botInterval}h, Favorites: ${favoritesInterval}h, DB Updates: ${dbInterval}h, Banners: ${bannersInterval}h, Deal Tracker: ${dealsTrackingInterval}h`);
 
   const triggerLocalJob = (jobName, commandLine) => {
     logger.info(`⏰ Triggering scheduled cron job: "${jobName}"`);
-    exec(commandLine, { cwd: path.join(__dirname, '../') }, (error, stdout, stderr) => {
+    exec(commandLine, { cwd: path.join(__dirname, '../'), maxBuffer: 1024 * 1024 * 50 }, (error, stdout, stderr) => {
       if (error) {
         logger.error(`Cron job "${jobName}" execution failed:`, error.message);
         return;
@@ -261,6 +262,16 @@ function rescheduleJobs(schedulerConfig) {
     activeCronJobs.set('banners', job);
     logger.info(`[Banners Extraction] scheduled on cron: "${cronExpr}"`);
   }
+
+  // 6. Active Deals Tracker scheduler (Role: all or dealsTracking)
+  if (runnerRole === 'all' || runnerRole === 'dealsTracking') {
+    const cronExpr = getCronExpression(dealsTrackingInterval);
+    const job = cron.schedule(cronExpr, () => {
+      triggerLocalJob('Active Deals Tracking', 'node scripts/trackActiveDeals.js');
+    });
+    activeCronJobs.set('dealsTracking', job);
+    logger.info(`[Active Deals Tracking] scheduled on cron: "${cronExpr}"`);
+  }
 }
 
 /**
@@ -281,6 +292,7 @@ function startConfigListener() {
         favoritesInterval: 1,
         dbUpdatesInterval: 2,
         bannersInterval: 4,
+        dealsTrackingInterval: 2,
         isActiveDealsPeriod: false,
         updatedAt: new Date().toISOString()
       };

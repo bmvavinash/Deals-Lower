@@ -31,7 +31,7 @@ const logger = createLogger({
     new transports.DailyRotateFile({
       filename: 'logs/application-%DATE%.log',
       datePattern: 'YYYY-MM-DD-HH',
-      zippedArchive: true,
+      zippedArchive: false,
       maxSize: '20m',
       maxFiles: '14d',
       format: fileFormat
@@ -41,7 +41,7 @@ const logger = createLogger({
     new transports.DailyRotateFile({
       filename: 'logs/errors-%DATE%.log',
       datePattern: 'YYYY-MM-DD-HH',
-      zippedArchive: true,
+      zippedArchive: false,
       maxSize: '20m',
       maxFiles: '30d',
       level: 'error',
@@ -52,7 +52,7 @@ const logger = createLogger({
     ...(logLevel === 'debug' ? [new transports.DailyRotateFile({
       filename: 'logs/debug-%DATE%.log',
       datePattern: 'YYYY-MM-DD-HH',
-      zippedArchive: true,
+      zippedArchive: false,
       maxSize: '20m',
       maxFiles: '7d',
       level: 'debug',

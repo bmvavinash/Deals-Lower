@@ -396,36 +396,33 @@ class ProductDealsDB {
 						const existing = product.links || {};
 						const isAmazon = (product.storeType || '').toLowerCase() === 'amazon' || /amazon\./i.test(product.productUrl || '');
 						
-						let derivedInr = existing.avinashbmvINR || "";
+						let derivedAvinashbmv = existing.avinashbmv || "";
 						
-						// Fix avinashbmvINR based on platform
+						// Fix avinashbmv based on platform
 						if (isAmazon) {
 							// For Amazon: use clean affiliate URL with productCode
 							if (product.productCode) {
-								derivedInr = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
+								derivedAvinashbmv = `https://www.amazon.in/dp/${product.productCode}?tag=dealshubglo0c-21`;
 							} else if (product.productUrl) {
 								// Extract ASIN from URL if productCode not available
 								const asinMatch = product.productUrl.match(/\/dp\/([A-Z0-9]{10})/i) || product.productUrl.match(/\/gp\/product\/([A-Z0-9]{10})/i);
 								if (asinMatch && asinMatch[1]) {
-									derivedInr = `https://www.amazon.in/dp/${asinMatch[1]}?tag=dealshubglo0c-21`;
+									derivedAvinashbmv = `https://www.amazon.in/dp/${asinMatch[1]}?tag=dealshubglo0c-21`;
 								} else {
 									// Fallback to generateAmazonAffiliateUrl
-									derivedInr = generateAmazonAffiliateUrl(product.productUrl);
+									derivedAvinashbmv = generateAmazonAffiliateUrl(product.productUrl);
 								}
 							}
 						} else {
-							// For non-Amazon: use inrdeals.com URL
-							if (product.productUrl && !derivedInr.includes('inrdeals.com')) {
-								derivedInr = `https://inrdeals.com/avi646476329/${product.productUrl}`;
-							} else if (!derivedInr) {
-								// If no URL available, keep empty
-								derivedInr = "";
+							// For non-Amazon: use inrdeals.com URL if avinashbmv is empty or doesn't have extrape/inrdeals
+							if (product.productUrl && !derivedAvinashbmv) {
+								derivedAvinashbmv = `https://inrdeals.com/avi646476329/${product.productUrl}`;
 							}
 						}
 						
 						return {
-							avinashbmv: existing.avinashbmv || "",
-							avinashbmvINR: derivedInr
+							avinashbmv: derivedAvinashbmv,
+							avinashbmvINR: ""
 						};
 					})(),
 					
@@ -575,10 +572,10 @@ class ProductDealsDB {
 					links: (() => {
 						const existing = record.links || {};
 						const isAmazon = (record.storeType || '').toLowerCase() === 'amazon' || /amazon\./i.test(record.productUrl || '');
-						const derivedInr = isAmazon ? generateAmazonAffiliateUrl(record.productUrl || existing.avinashbmvINR || '') : (existing.avinashbmvINR || "");
+						const derivedAvinashbmv = isAmazon ? generateAmazonAffiliateUrl(record.productUrl || existing.avinashbmv || '') : (existing.avinashbmv || `https://inrdeals.com/avi646476329/${record.productUrl}`);
 						return {
-							avinashbmv: existing.avinashbmv || "",
-							avinashbmvINR: derivedInr
+							avinashbmv: derivedAvinashbmv,
+							avinashbmvINR: ""
 						};
 					})(),
 					

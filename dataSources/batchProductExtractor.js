@@ -809,15 +809,16 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		}
 	}
 	
-	// Set avinashbmvINR based on platform
+	// Set avinashbmv based on platform
 	const isAmazon = /amazon\./i.test(hostname) || (raw.storeType || '').toLowerCase() === 'amazon';
 	if (isAmazon && productCode) {
 		// For Amazon: use clean affiliate URL with tag
-		links.avinashbmvINR = `https://www.amazon.in/dp/${productCode}?tag=dealshubglo0c-21`;
+		links.avinashbmv = `https://www.amazon.in/dp/${productCode}?tag=dealshubglo0c-21`;
 	} else {
 		// For non-Amazon: prepend with inrdeals.com (remove the + sign)
-		links.avinashbmvINR = `https://inrdeals.com/avi646476329/${productUrl}`;
+		links.avinashbmv = `https://inrdeals.com/avi646476329/${productUrl}`;
 	}
+	links.avinashbmvINR = "";
 
 	// Process hierarchical categories using dynamic extraction
 	const categoryData = raw.category || {};

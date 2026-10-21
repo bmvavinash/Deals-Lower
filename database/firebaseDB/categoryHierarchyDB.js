@@ -39,9 +39,19 @@ if (!defaultApp) {
 		? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
 		: `https://${DB_Name}-default-rtdb.firebaseio.com`;
 
+<<<<<<< HEAD
 	admin.initializeApp({
 		credential: admin.credential.cert(serviceAccount),
 		databaseURL: dbUrl
+=======
+if (!admin.apps.length) {
+  const databaseURL = DB_Name === 'lowerdealhub' 
+    ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+    : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+	admin.initializeApp({
+		credential: admin.credential.cert(serviceAccount),
+		databaseURL: databaseURL
+>>>>>>> filter-banner-extraction-logic
 	});
 }
 

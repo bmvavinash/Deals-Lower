@@ -13,17 +13,16 @@ const logger = getModuleLogger('improvedBannerValidator');
 class ImprovedBannerValidator {
     constructor() {
         // Keywords that indicate this is NOT a banner (product-related)
+        // Brand/category keywords (samsung, mi, tv, mobile, galaxy, washing machine) are removed 
+        // to avoid false-positive exclusions of promotional brand/category banners.
         this.productKeywords = [
             'product', 'item', 'goods', 'merchandise', 'inventory',
             'add to cart', 'buy now', 'shop now', 'view details',
-            'price', 'discount', 'offer', 'deal', 'sale price',
             'product image', 'item image', 'product photo',
-            'asin', 'sku', 'model', 'brand', 'manufacturer',
+            'asin', 'sku', 'model', 'manufacturer',
             'reviews', 'ratings', 'stars', 'customer review',
             'shipping', 'delivery', 'return', 'warranty',
             'specification', 'features', 'description', 'details',
-            'samsung', 'mi', 'tv', 'mobile', 'phone', 'galaxy',
-            'spigen', 'ez fit', 's24 ultra', 'washing machine',
             'specific product', 'individual item', 'cart', 'icon',
             'promo codes', 'influencer', 'marketing', 'associates'
         ];
@@ -53,12 +52,12 @@ class ImprovedBannerValidator {
 
         // Image dimension thresholds for banners
         this.bannerDimensions = {
-            minWidth: 400,
-            minHeight: 200,
-            maxWidth: 2000,
-            maxHeight: 800,
-            minAspectRatio: 1.5, // width/height
-            maxAspectRatio: 5.0
+            minWidth: 300,
+            minHeight: 100,
+            maxWidth: 3500,
+            maxHeight: 1200,
+            minAspectRatio: 1.2, // width/height
+            maxAspectRatio: 5.5
         };
 
         // URL patterns that indicate banner images
@@ -77,7 +76,16 @@ class ImprovedBannerValidator {
             /event/i,
             /festival/i,
             /goldbox/i,
-            /central/i
+            /central/i,
+            /flap/i,
+            /fk-p-flap/i,
+            /g\/31/i,
+            /media-amazon/i,
+            /images-amazon/i,
+            /bxcGrid/i,
+            /carousel/i,
+            /slider/i,
+            /billboard/i
         ];
 
         // URL patterns that indicate product images (should be excluded)
@@ -91,7 +99,6 @@ class ImprovedBannerValidator {
             /gallery/i,
             /thumbnail/i,
             /preview/i,
-            /samsung/i,
             /mi_2/i,
             /spigen/i,
             /s24/i,
@@ -105,6 +112,46 @@ class ImprovedBannerValidator {
             /promo_codes/i,  // Promotional codes
             /influencer/i  // Influencer content
         ];
+
+        // Keywords to exclude flight/travel banners
+        this.flightKeywords = [
+            'flight', 'flights', 'airline', 'airlines', 'airport', 'booking',
+            'book flight', 'flight booking', 'air ticket', 'air tickets',
+            'domestic flight', 'international flight', 'cheap flights',
+            'flight deals', 'flight offers', 'travel', 'air travel'
+        ];
+    }
+
+    /**
+     * Escape RegExp special characters
+     */
+    escapeRegExp(string) {
+        return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    /**
+     * Comprehensive banner validation
+    /**
+     * Check if a URL is just a generic homepage or invalid redirect
+     * @param {string} url - URL to check
+     * @returns {boolean} True if URL is homepage or invalid
+     */
+    isHomePageOnly(url) {
+        if (!url || typeof url !== 'string') return true;
+        const trimmed = url.trim();
+        if (!trimmed || trimmed === '#' || trimmed.startsWith('javascript:') || trimmed.startsWith('about:')) return true;
+        try {
+            const parsed = new URL(trimmed);
+            const path = parsed.pathname.replace(/\/+$/, '');
+            if (path === '' || path === '/') {
+                if (!parsed.search || parsed.search === '?ref_=nav_logo' || parsed.search === '?ref_=nav_header') {
+                    return true;
+                }
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
     }
 
     /**
@@ -117,7 +164,8 @@ class ImprovedBannerValidator {
         
         logger.debug('Validating banner candidate', { 
             imageUrl: imageUrl?.substring(0, 100), 
-            altText: altText?.substring(0, 50) 
+            altText: altText?.substring(0, 50),
+            clickUrl: clickUrl?.substring(0, 100)
         });
 
         const validation = {
@@ -135,7 +183,14 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 2. Check if it's a product image (should be excluded)
+        // 2. Validate destination webpage URL (MUST have a specific landing webpage, not homepage)
+        if (this.isHomePageOnly(clickUrl)) {
+            validation.isValid = false;
+            validation.reasons.push('Candidate does not redirect to a specific webpage (missing or homepage URL)');
+            return validation;
+        }
+
+        // 3. Check if it's a product image (should be excluded)
         const productCheck = this.isProductImage(imageUrl, altText, title);
         if (productCheck.isProduct) {
             validation.isValid = false;
@@ -143,7 +198,7 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 3. Check for affiliate/commission content (should be excluded)
+        // 4. Check for affiliate/commission content (should be excluded)
         const affiliateCheck = this.containsAffiliateContent(altText, title, clickUrl);
         if (affiliateCheck.containsAffiliate) {
             validation.isValid = false;
@@ -151,15 +206,23 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 4. Check if it's actually a banner
-        const bannerCheck = this.isPromotionalBanner(imageUrl, altText, title);
+        // Check for flight/travel content (should be excluded)
+        const flightCheck = this.containsFlightContent(altText, title);
+        if (flightCheck.containsFlight) {
+            validation.isValid = false;
+            validation.reasons.push(`Flight content detected: ${flightCheck.reason}`);
+            return validation;
+        }
+
+        // 5. Check if it's actually a banner
+        const bannerCheck = this.isPromotionalBanner(imageUrl, altText, title, clickUrl);
         if (!bannerCheck.isBanner) {
             validation.isValid = false;
             validation.reasons.push(`Not a promotional banner: ${bannerCheck.reason}`);
             return validation;
         }
 
-        // 5. Validate banner dimensions (if available)
+        // 6. Validate banner dimensions (if available)
         const dimensionCheck = this.validateBannerDimensions(bannerData);
         if (!dimensionCheck.isValid) {
             validation.isValid = false;
@@ -167,7 +230,7 @@ class ImprovedBannerValidator {
             return validation;
         }
 
-        // 6. Calculate confidence score
+        // 7. Calculate confidence score
         validation.confidence = this.calculateConfidence(bannerData);
         validation.category = bannerCheck.category;
 
@@ -238,9 +301,10 @@ class ImprovedBannerValidator {
             }
         }
 
-        // Check text for product keywords
+        // Check text for product keywords (using whole word boundaries to prevent substring issues)
         for (const keyword of this.productKeywords) {
-            if (text.includes(keyword)) {
+            const regex = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'i');
+            if (regex.test(text)) {
                 return { isProduct: true, reason: `Product keyword: ${keyword}` };
             }
         }
@@ -275,9 +339,10 @@ class ImprovedBannerValidator {
     containsAffiliateContent(altText, title, clickUrl) {
         const text = `${altText || ''} ${title || ''} ${clickUrl || ''}`.toLowerCase();
 
-        // Check for affiliate keywords
+        // Check for affiliate keywords (using whole word boundaries to prevent substring issues)
         for (const keyword of this.affiliateKeywords) {
-            if (text.includes(keyword)) {
+            const regex = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'i');
+            if (regex.test(text)) {
                 return { containsAffiliate: true, reason: `Affiliate keyword: ${keyword}` };
             }
         }
@@ -317,15 +382,45 @@ class ImprovedBannerValidator {
     }
 
     /**
+     * Check for flight/travel content
+     */
+    containsFlightContent(altText, title) {
+        const text = `${altText || ''} ${title || ''}`.toLowerCase();
+        for (const keyword of this.flightKeywords) {
+            const regex = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'i');
+            if (regex.test(text)) {
+                return { containsFlight: true, reason: `Flight keyword: ${keyword}` };
+            }
+        }
+        return { containsFlight: false };
+    }
+
+    /**
      * Check if image is a promotional banner
      * @param {string} imageUrl - Image URL
      * @param {string} altText - Alt text
      * @param {string} title - Title
+     * @param {string} clickUrl - Click redirect destination URL
      * @returns {Object} Check result
      */
-    isPromotionalBanner(imageUrl, altText, title) {
+    isPromotionalBanner(imageUrl, altText, title, clickUrl) {
         const text = `${altText || ''} ${title || ''}`.toLowerCase();
         const url = (imageUrl || '').toLowerCase();
+
+        // Check destination click URL patterns for banner promotions / landing pages
+        if (clickUrl) {
+            const lowerClick = clickUrl.toLowerCase();
+            const clickPatterns = [
+                /deal/i, /event/i, /offer/i, /sale/i, /b\?/i, /b\//i, /l\/\d+/i,
+                /pr\?/i, /\/p\//i, /\/dp\//i, /collection/i, /store/i, /promotion/i,
+                /festival/i, /exclusive/i, /discount/i, /coupon/i
+            ];
+            for (const pattern of clickPatterns) {
+                if (pattern.test(lowerClick)) {
+                    return { isBanner: true, category: 'promotional', reason: `Banner destination URL pattern: ${pattern}` };
+                }
+            }
+        }
 
         // Check URL patterns for banners
         for (const pattern of this.bannerUrlPatterns) {
@@ -376,31 +471,45 @@ class ImprovedBannerValidator {
      * @returns {Object} Validation result
      */
     validateBannerDimensions(bannerData) {
-        // For now, we'll do basic URL-based dimension validation
-        // In production, you might want to make HEAD requests to get actual dimensions
-        
-        const { imageUrl } = bannerData;
+        const { imageUrl, width, height } = bannerData;
         if (!imageUrl) {
             return { isValid: false, reason: 'No image URL' };
         }
 
-        // Extract dimensions from URL if available (common pattern: widthxheight)
-        const dimensionMatch = imageUrl.match(/(\d+)x(\d+)/);
-        if (dimensionMatch) {
-            const width = parseInt(dimensionMatch[1]);
-            const height = parseInt(dimensionMatch[2]);
+        // 1. If explicit element width & height are passed, use them
+        if (width !== undefined && height !== undefined && width > 0 && height > 0) {
             const aspectRatio = width / height;
-
+            
+            // Check minimum dimensions
             if (width < this.bannerDimensions.minWidth || height < this.bannerDimensions.minHeight) {
-                return { isValid: false, reason: `Too small: ${width}x${height}` };
+                return { isValid: false, reason: `Element size too small: ${width}x${height} (min: ${this.bannerDimensions.minWidth}x${this.bannerDimensions.minHeight})` };
+            }
+            
+            // Check aspect ratio
+            if (aspectRatio < this.bannerDimensions.minAspectRatio || aspectRatio > this.bannerDimensions.maxAspectRatio) {
+                return { isValid: false, reason: `Element aspect ratio invalid: ${aspectRatio.toFixed(2)} (expected: ${this.bannerDimensions.minAspectRatio}-${this.bannerDimensions.maxAspectRatio})` };
+            }
+            
+            return { isValid: true };
+        }
+
+        // 2. Otherwise fall back to extracting dimensions from the URL (supports both 1600x780 and 1600/780)
+        const dimensionMatch = imageUrl.match(/(\d+)[x/](\d+)/);
+        if (dimensionMatch) {
+            const urlWidth = parseInt(dimensionMatch[1]);
+            const urlHeight = parseInt(dimensionMatch[2]);
+            const aspectRatio = urlWidth / urlHeight;
+
+            if (urlWidth < this.bannerDimensions.minWidth || urlHeight < this.bannerDimensions.minHeight) {
+                return { isValid: false, reason: `Too small in URL: ${urlWidth}x${urlHeight}` };
             }
 
-            if (width > this.bannerDimensions.maxWidth || height > this.bannerDimensions.maxHeight) {
-                return { isValid: false, reason: `Too large: ${width}x${height}` };
+            if (urlWidth > this.bannerDimensions.maxWidth || urlHeight > this.bannerDimensions.maxHeight) {
+                return { isValid: false, reason: `Too large in URL: ${urlWidth}x${urlHeight}` };
             }
 
             if (aspectRatio < this.bannerDimensions.minAspectRatio || aspectRatio > this.bannerDimensions.maxAspectRatio) {
-                return { isValid: false, reason: `Invalid aspect ratio: ${aspectRatio.toFixed(2)}` };
+                return { isValid: false, reason: `Invalid aspect ratio in URL: ${aspectRatio.toFixed(2)}` };
             }
         }
 
@@ -452,9 +561,10 @@ class ImprovedBannerValidator {
             }
         }
 
-        // Decrease confidence for product indicators
+        // Decrease confidence for product indicators (using whole words)
         for (const keyword of this.productKeywords) {
-            if (text.includes(keyword)) {
+            const regex = new RegExp(`\\b${this.escapeRegExp(keyword)}\\b`, 'i');
+            if (regex.test(text)) {
                 confidence -= 30;
                 break;
             }
@@ -499,16 +609,16 @@ class ImprovedBannerValidator {
         const text = `${altText || ''} ${title || ''}`.toLowerCase();
         const url = (imageUrl || '').toLowerCase();
 
-        // Hero banners (highest priority)
-        const heroKeywords = ['hero', 'main', 'primary', 'featured', 'banner'];
-        if (heroKeywords.some(keyword => text.includes(keyword) || url.includes(keyword))) {
-            return { category: 'hero', priority: 1 };
-        }
-
-        // Seasonal banners
+        // Seasonal banners (checked first so they override general keywords)
         const seasonalKeywords = ['festival', 'seasonal', 'holiday', 'celebration', 'diwali', 'christmas', 'eid'];
         if (seasonalKeywords.some(keyword => text.includes(keyword))) {
             return { category: 'seasonal', priority: 2 };
+        }
+
+        // Hero banners (highest priority, generic 'banner' keyword removed)
+        const heroKeywords = ['hero', 'main', 'primary', 'featured'];
+        if (heroKeywords.some(keyword => text.includes(keyword) || url.includes(keyword))) {
+            return { category: 'hero', priority: 1 };
         }
 
         // Promotional banners
