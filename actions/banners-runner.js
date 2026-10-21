@@ -22,7 +22,11 @@ async function main() {
 
   try {
     let results;
-    await executionTracker.startDbUpdateExecution('banners-fetch', 'github-actions', { origin: 'GitHub Actions' });
+    try {
+      await executionTracker.startDbUpdateExecution('banners-fetch', 'github-actions', { origin: 'GitHub Actions' });
+    } catch (trackerErr) {
+      console.warn('Execution tracker start warning:', trackerErr.message);
+    }
     
     if (typeof extractBanners === 'function') {
       const extractor = new (BannerExtractor || function(){ this.extractBanners = extractBanners; })();
@@ -39,7 +43,11 @@ async function main() {
       throw new Error("Could not find extractBanners or BannerExtractor in ../dataSources/bannerExtractor");
     }
     
-    await executionTracker.endDbUpdateExecution('completed', results);
+    try {
+      await executionTracker.endDbUpdateExecution('completed', results);
+    } catch (trackerErr) {
+      console.warn('Execution tracker end warning:', trackerErr.message);
+    }
     console.log(`[${new Date().toISOString()}] Results summary:`, JSON.stringify(results, null, 2));
     console.log(`[${new Date().toISOString()}] Completed successfully.`);
     clearTimeout(timeoutId);

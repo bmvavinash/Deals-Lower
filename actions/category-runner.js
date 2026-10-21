@@ -111,9 +111,17 @@ async function main() {
   }, 15 * 60 * 1000);
 
   try {
-    await executionTracker.startBulkExecution('github-actions', 'deals', { origin: 'GitHub Actions', category: CATEGORY });
+    try {
+      await executionTracker.startBulkExecution('github-actions', 'deals', { origin: 'GitHub Actions', category: CATEGORY });
+    } catch (trackerErr) {
+      console.warn('Execution tracker start warning:', trackerErr.message);
+    }
     const results = await runBatch(seeds, 'website', CATEGORY);
-    await executionTracker.completeBulkExecution({ category: CATEGORY, ...results });
+    try {
+      await executionTracker.completeBulkExecution({ category: CATEGORY, ...results });
+    } catch (trackerErr) {
+      console.warn('Execution tracker complete warning:', trackerErr.message);
+    }
     console.log(`[${new Date().toISOString()}] Results summary:`, JSON.stringify(results, null, 2));
     console.log(`[${new Date().toISOString()}] Completed successfully.`);
     clearTimeout(timeoutId);
