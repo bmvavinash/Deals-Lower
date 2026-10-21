@@ -31,7 +31,8 @@ function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/affiliates" element={<AffiliatesPage />} />
-              <Route path="/banners" element={<BannersPage />} />
+              <Route path="/banners" element={<Banners />} />
+              <Route path="/promo-tiles" element={<Banners defaultTab="tiles" />} />
               <Route path="/deals" element={<DealsPage />} />
               <Route path="/matching-config" element={<MatchingConfigPage />} />
               <Route path="/stocks" element={<StocksPage />} />

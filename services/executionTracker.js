@@ -35,6 +35,33 @@ function getHostMetadata() {
   };
 }
 
+function buildClientMetadata(clientMetadata, defaultOrigin = 'CLI/Script') {
+  return {
+    ip: (clientMetadata && clientMetadata.ip) ? String(clientMetadata.ip) : 'N/A',
+    origin: (clientMetadata && clientMetadata.origin) ? String(clientMetadata.origin) : defaultOrigin,
+    userAgent: (clientMetadata && clientMetadata.userAgent) ? String(clientMetadata.userAgent) : 'N/A'
+  };
+}
+
+function sanitizeForFirebase(obj) {
+  if (obj === undefined) return null;
+  if (typeof obj === 'number' && (isNaN(obj) || !isFinite(obj))) return 0;
+  if (obj === null || typeof obj !== 'object') return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeForFirebase(item));
+  }
+  const clean = {};
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      const sanitized = sanitizeForFirebase(value);
+      if (sanitized !== undefined) {
+        clean[key] = sanitized;
+      }
+    }
+  }
+  return clean;
+}
+
 // Use existing Firebase instance
 let db;
 try {
@@ -70,7 +97,9 @@ class ExecutionTracker {
     this.ref.on('value', (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        this.currentExecution = data.current || null;
+        if (!this.currentExecution || this.currentExecution.status !== 'running') {
+          this.currentExecution = data.current || null;
+        }
         
         // Ensure currentExecution.platforms is always an object if currentExecution exists
         if (this.currentExecution && (!this.currentExecution.platforms || typeof this.currentExecution.platforms !== 'object')) {
@@ -136,7 +165,7 @@ class ExecutionTracker {
     if (this.ref) {
       try {
         await this.ref.child('current').set(null);
-        await this.ref.child('history').push(historyEntry);
+        await this.ref.child('history').push(sanitizeForFirebase(historyEntry));
       } catch (err) {
         logger.error('Failed to save execution history to Firebase', { error: err.message });
       }
@@ -171,15 +200,7 @@ class ExecutionTracker {
         ips: hostInfo.ips,
         envType: hostInfo.envType
       },
-      client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
-      } : {
-        ip: 'N/A',
-        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
-        userAgent: 'N/A'
-      }
+      client: buildClientMetadata(clientMetadata, sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script')
     };
     
     // Ensure platforms is always an object (defensive programming)
@@ -190,7 +211,7 @@ class ExecutionTracker {
     this.currentExecution = execution;
     
     if (this.ref) {
-      await this.ref.child('current').set(execution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(execution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
 
     logger.info('Bulk execution started', { executionId: execution.id });
@@ -231,21 +252,13 @@ class ExecutionTracker {
         ips: hostInfo.ips,
         envType: hostInfo.envType
       },
-      client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
-      } : {
-        ip: 'N/A',
-        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
-        userAgent: 'N/A'
-      }
+      client: buildClientMetadata(clientMetadata, sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script')
     };
 
     this.currentExecution = execution;
     
     if (this.ref) {
-      await this.ref.child('current').set(execution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(execution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
 
     logger.info('Started Telegram execution tracking', { executionId: execution.id, channel });
@@ -272,21 +285,13 @@ class ExecutionTracker {
         ips: hostInfo.ips,
         envType: hostInfo.envType
       },
-      client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
-      } : {
-        ip: 'N/A',
-        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
-        userAgent: 'N/A'
-      }
+      client: buildClientMetadata(clientMetadata, sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script')
     };
 
     this.currentExecution = execution;
     
     if (this.ref) {
-      await this.ref.child('current').set(execution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(execution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
 
     logger.info('Favorites check execution started', { executionId: execution.id, sourceType });
@@ -332,21 +337,13 @@ class ExecutionTracker {
         ips: hostInfo.ips,
         envType: hostInfo.envType
       },
-      client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
-      } : {
-        ip: 'N/A',
-        origin: sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script',
-        userAgent: 'N/A'
-      }
+      client: buildClientMetadata(clientMetadata, sourceType === 'scheduler' ? 'Scheduler' : 'CLI/Script')
     };
 
     this.currentExecution = execution;
     
     if (this.ref) {
-      await this.ref.child('current').set(execution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(execution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
 
     logger.info('DB update execution started', { id: execution.id, scriptName, sourceType });
@@ -391,7 +388,7 @@ class ExecutionTracker {
     this.currentExecution.lastUpdate = new Date().toISOString();
     
     if (this.ref) {
-      await this.ref.child('current').set(this.currentExecution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(this.currentExecution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
   }
 
@@ -454,7 +451,7 @@ class ExecutionTracker {
     }
     
     if (this.ref) {
-      await this.ref.child('current').set(this.currentExecution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(this.currentExecution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
   }
 
@@ -676,7 +673,7 @@ class ExecutionTracker {
     }
     
     if (this.ref) {
-      await this.ref.child('current').set(this.currentExecution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(this.currentExecution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
   }
 
@@ -739,7 +736,7 @@ class ExecutionTracker {
     this.currentExecution.totalUpdated += progress.updated || 0;
 
     if (this.ref) {
-      await this.ref.child('current').set(this.currentExecution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(this.currentExecution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
   }
 
@@ -761,8 +758,23 @@ class ExecutionTracker {
       
       // Ensure summary totals propagate to the root counts if available
       if (summary) {
-        executionCopy.totalProducts = summary.totalProducts !== undefined ? summary.totalProducts : executionCopy.totalProducts;
-        executionCopy.totalProcessed = summary.totalSuccess !== undefined ? summary.totalSuccess : executionCopy.totalProcessed;
+        if (typeof summary.totalProducts === 'number' && !isNaN(summary.totalProducts)) {
+          executionCopy.totalProducts = summary.totalProducts;
+        } else if (typeof summary.totalStored === 'number' && !isNaN(summary.totalStored)) {
+          executionCopy.totalProducts = summary.totalStored;
+        } else if (typeof summary.totalExtracted === 'number' && !isNaN(summary.totalExtracted)) {
+          executionCopy.totalProducts = summary.totalExtracted;
+        } else if (typeof executionCopy.totalProducts !== 'number' || isNaN(executionCopy.totalProducts)) {
+          executionCopy.totalProducts = 0;
+        }
+
+        if (typeof summary.totalSuccess === 'number' && !isNaN(summary.totalSuccess)) {
+          executionCopy.totalProcessed = summary.totalSuccess;
+        } else if (typeof summary.totalStored === 'number' && !isNaN(summary.totalStored)) {
+          executionCopy.totalProcessed = summary.totalStored;
+        } else if (typeof executionCopy.totalProcessed !== 'number' || isNaN(executionCopy.totalProcessed)) {
+          executionCopy.totalProcessed = 0;
+        }
         
         // Map created & updated counts if not already populated
         let created = 0, updated = 0;
@@ -1222,21 +1234,13 @@ class ExecutionTracker {
         ips: hostInfo.ips,
         envType: hostInfo.envType
       },
-      client: clientMetadata ? {
-        ip: clientMetadata.ip,
-        origin: clientMetadata.origin,
-        userAgent: clientMetadata.userAgent
-      } : {
-        ip: 'N/A',
-        origin: 'API/Script',
-        userAgent: 'N/A'
-      }
+      client: buildClientMetadata(clientMetadata, 'API/Script')
     };
 
     this.currentExecution = execution;
     
     if (this.ref) {
-      await this.ref.child('current').set(execution);
+      try { await this.ref.child('current').set(sanitizeForFirebase(execution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
     }
     
     logger.info('Scraper execution started', { saleName, id: execution.id });
@@ -1253,7 +1257,7 @@ class ExecutionTracker {
       }
       
       if (this.ref) {
-        await this.ref.child('current').set(this.currentExecution);
+        try { await this.ref.child('current').set(sanitizeForFirebase(this.currentExecution)); } catch (err) { logger.warn('Firebase set current error:', { error: err.message }); }
       }
     }
   }

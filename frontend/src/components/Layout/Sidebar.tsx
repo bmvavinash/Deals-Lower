@@ -18,6 +18,7 @@ const Sidebar: React.FC = () => {
     { path: '/users', label: 'Users', icon: '👥' },
     { path: '/affiliates', label: 'Affiliates', icon: '🔗' },
     { path: '/banners', label: 'Banners', icon: '🖼️' },
+    { path: '/promo-tiles', label: 'Amazon Promo Tiles', icon: '🎯' },
     { path: '/deals', label: 'Deals', icon: '🛍️' },
     { path: '/stocks', label: 'Stocks', icon: '📈' },
     { path: '/execution', label: 'Execution Monitor', icon: '🔄' },

@@ -121,6 +121,52 @@ router.get('/config', (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/notifications/webpush/subscribers
+ * Get count and summary of users subscribed to Web Push notifications
+ */
+router.get('/webpush/subscribers', async (req, res, next) => {
+  try {
+    const { getWebPushSubscribers } = require('../../../services/webPushService');
+    const data = await getWebPushSubscribers();
+    res.json({
+      success: true,
+      totalUsers: data.totalUsers,
+      subscribersCount: data.subscribersCount,
+      subscribers: data.subscribers,
+      allUsers: data.allUsers
+    });
+  } catch (error) {
+    logger.error('Error fetching Web Push subscribers', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * POST /api/notifications/webpush/broadcast
+ * Broadcast a Web Push notification to all active subscribers (e.g. Sale Live event)
+ */
+router.post('/webpush/broadcast', async (req, res, next) => {
+  try {
+    const { broadcastWebPush } = require('../../../services/webPushService');
+    const { title, body, link, icon, badge, extraData } = req.body;
+    
+    const result = await broadcastWebPush({
+      title,
+      body,
+      link,
+      icon,
+      badge,
+      extraData
+    });
+
+    res.json(result);
+  } catch (error) {
+    logger.error('Error broadcasting Web Push notification', { error: error.message });
+    next(error);
+  }
+});
+
 module.exports = router;
 
 

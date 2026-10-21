@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import './Banners.css';
+import BannerCarousel from '../components/Deals/BannerCarousel';
 
-const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3001').trim();
+const API_BASE_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3003').trim();
 
 const buildBannerKey = (banner = {}) => {
   const platform = (banner.platform || '').trim().toLowerCase();
@@ -29,7 +31,12 @@ const dedupeBanners = (banners = []) => {
   return { unique, removed };
 };
 
-const Banners = () => {
+const Banners = ({ defaultTab = 'banners' }) => {
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(
+    location.pathname === '/promo-tiles' ? 'tiles' : defaultTab
+  );
+  const [promoCardsSource, setPromoCardsSource] = useState('Firebase RTDB');
   const [banners, setBanners] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -58,6 +65,8 @@ const Banners = () => {
   const [formOriginalUrl, setFormOriginalUrl] = useState('');
   const [isGeneratingAffUrl, setIsGeneratingAffUrl] = useState(false);
   const [useCacheLive, setUseCacheLive] = useState(false);
+  const [formCarouselType, setFormCarouselType] = useState('none');
+  const [formCarouselValue, setFormCarouselValue] = useState('');
 
   // Sale Scraper states
   const [scraperSaleName, setScraperSaleName] = useState('');
@@ -67,11 +76,19 @@ const Banners = () => {
   const [scraperStatusText, setScraperStatusText] = useState(null);
   const [activeScraperTask, setActiveScraperTask] = useState(null);
 
+  // Amazon Promotional Cards states
+  const [scrapingPromoCards, setScrapingPromoCards] = useState(false);
+  const [promoCardStatus, setPromoCardStatus] = useState(null);
+  const [promoCardsCount, setPromoCardsCount] = useState(null);
+  const [promoCardsList, setPromoCardsList] = useState([]);
+  const [showPromoCardsModal, setShowPromoCardsModal] = useState(false);
+
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
     checkActiveTask();
     triggerBanners(); // Automatically fetch and display banners on mount
+    fetchPromoCards(); // Fetch promotional cards on mount
     const interval = setInterval(() => {
       fetchStats();
       checkActiveTask();
@@ -379,6 +396,48 @@ const Banners = () => {
     }
   };
 
+  const fetchPromoCards = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards`);
+      const result = await response.json();
+      if (result.success && Array.isArray(result.data)) {
+        setPromoCardsList(result.data);
+        setPromoCardsCount(result.data.length);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch promotional cards:', err);
+    }
+  };
+
+  const handleTriggerPromoCardsScrape = async () => {
+    setScrapingPromoCards(true);
+    setPromoCardStatus('⏳ Triggering Amazon Promotional Cards Scraper...');
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards/scrape`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+      if (result.success) {
+        setPromoCardStatus('🚀 Scraper initiated in background! Fetching 15+ Amazon festival promotional cards...');
+        // Refresh cards list after scraper runs
+        setTimeout(async () => {
+          await fetchPromoCards();
+          setPromoCardStatus(`✅ Amazon promotional cards successfully updated! (${promoCardsCount || 21} cards available)`);
+          setTimeout(() => setPromoCardStatus(null), 5000);
+        }, 4000);
+      } else {
+        setPromoCardStatus(`❌ Scrape error: ${result.error || 'Failed to trigger scraper'}`);
+        setTimeout(() => setPromoCardStatus(null), 5000);
+      }
+    } catch (err) {
+      setPromoCardStatus(`❌ Request failed: ${err.message}`);
+      setTimeout(() => setPromoCardStatus(null), 5000);
+    } finally {
+      setTimeout(() => setScrapingPromoCards(false), 2000);
+    }
+  };
+
   const handleSaveBanner = async (e) => {
     e.preventDefault();
     if (!formUrl.trim() || !formClickRedirectUrl.trim()) {
@@ -442,6 +501,13 @@ const Banners = () => {
     setFormDescription(banner.description || '');
     setFormIsActive(banner.isActive === true);
     setFormOrder(String(banner.order || 0));
+    if(banner.carouselConfig) {
+      setFormCarouselType(banner.carouselConfig.type || 'none');
+      setFormCarouselValue(banner.carouselConfig.value || '');
+    } else {
+      setFormCarouselType('none');
+      setFormCarouselValue('');
+    }
     setFormStatus(null);
   };
  
@@ -456,6 +522,8 @@ const Banners = () => {
     setFormDescription('');
     setFormIsActive(true);
     setFormOrder('0');
+    setFormCarouselType('none');
+    setFormCarouselValue('');
     setFormStatus(null);
   };
 
@@ -638,7 +706,32 @@ const Banners = () => {
               </button>
             )}
             
-            <div className="preview-image-container">
+            
+            <div style={{ padding: '20px', width: '100%', overflow: 'hidden' }}>
+              <BannerCarousel banner={selectedBanner} />
+              
+              <div style={{ marginTop: '20px' }}>
+                <button 
+                  onClick={async () => {
+                    const res = await fetch(`${API_BASE_URL}/api/banners/with-deals`);
+                    const data = await res.json();
+                    if(data.success) {
+                      const updated = data.data.find(b => b.id === selectedBanner.id);
+                      if(updated) {
+                         alert('Test API fetched deals successfully! Deals found: ' + (updated.carouselDeals ? updated.carouselDeals.length : 0));
+                         // We could set selectedBanner.carouselDeals to update the UI
+                      }
+                    }
+                  }}
+                  style={{ background: '#3b82f6', color: '#fff', border: 'none', padding: '10px 20px', borderRadius: '5px', cursor: 'pointer' }}
+                >
+                  Test Fetch API Carousel Deals
+                </button>
+              </div>
+            </div>
+            
+            <div className="preview-image-container" style={{ display: 'none' }}>
+
               {selectedBanner.url ? (
                 <img 
                   src={selectedBanner.url} 
@@ -766,10 +859,30 @@ const Banners = () => {
                 />
               </div>
               
+              
+              <div className="form-group">
+                <label>Carousel Configuration (Deals Overlay)</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <select value={formCarouselType} onChange={(e) => setFormCarouselType(e.target.value)}>
+                    <option value="none">No Carousel</option>
+                    <option value="category">Fetch by Category</option>
+                    <option value="platform">Fetch by Platform</option>
+                    <option value="search">Fetch by Search Term</option>
+                  </select>
+                  {formCarouselType !== 'none' && (
+                    <input 
+                      type="text" 
+                      value={formCarouselValue} 
+                      onChange={(e) => setFormCarouselValue(e.target.value)} 
+                      placeholder="Enter category / platform / term" 
+                      style={{ flex: 1 }}
+                    />
+                  )}
+                </div>
+              </div>
+
               <div className="form-group form-group-checkbox">
-                <input 
-                  type="checkbox" 
-                  id="formIsActive"
+                <input type="checkbox" id="formIsActive"
                   checked={formIsActive} 
                   onChange={(e) => setFormIsActive(e.target.checked)} 
                 />
@@ -812,6 +925,133 @@ const Banners = () => {
 
   return (
     <div className="banners">
+      {/* Top View Navigation: Separate Campaign Banners vs Amazon Promo Tiles */}
+      <div className="banners-view-tab-bar">
+        <button 
+          type="button" 
+          className={`view-tab-btn ${activeTab === 'banners' ? 'active' : ''}`}
+          onClick={() => setActiveTab('banners')}
+        >
+          🖼️ Campaign Banners
+        </button>
+        <button 
+          type="button" 
+          className={`view-tab-btn ${activeTab === 'tiles' ? 'active' : ''}`}
+          onClick={() => setActiveTab('tiles')}
+        >
+          🎯 Amazon Promo Tiles ({promoCardsList.length || 0})
+        </button>
+      </div>
+
+      {activeTab === 'tiles' ? (
+        <div className="promo-tiles-full-view">
+          <div className="promo-tiles-page-header">
+            <div className="promo-tiles-title-area">
+              <h2>🎯 Amazon Promotional Carousel Tiles</h2>
+              <p>
+                Scrapes live promotional banner cards from the Amazon India festival carousel (<code>#gwm-window</code>).
+                Stored in <strong>{promoCardsSource || 'Firebase RTDB'}</strong> and rendered in the Storefront (2nd row below hero banners) with dynamic affiliate tagging.
+              </p>
+            </div>
+            <div className="promo-tiles-header-actions">
+              <button 
+                type="button"
+                className="action-btn promo-scrape-action-btn primary-scrape-btn"
+                onClick={handleTriggerPromoCardsScrape}
+                disabled={scrapingPromoCards}
+                title="Go to Amazon and scrape all promotional cards"
+              >
+                {scrapingPromoCards ? '⏳ Scraping in progress...' : '🚀 Scrape Amazon Promo Tiles'}
+              </button>
+              <button 
+                type="button"
+                className="action-btn promo-refresh-btn"
+                onClick={fetchPromoCards}
+                title="Refresh cards from database"
+              >
+                🔄 Refresh from DB
+              </button>
+              <a 
+                href="http://localhost:3000/?ref=ramtechtelugu" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="action-btn promo-view-storefront-btn"
+                title="Open storefront on port 3000 to see live cards"
+              >
+                👁️ View Storefront Carousel (Port 3000) ↗
+              </a>
+            </div>
+          </div>
+
+          {/* Stats Bar */}
+          <div className="promo-tiles-stats-bar">
+            <div className="promo-stat-pill">
+              <span className="stat-label">Total Tiles:</span>
+              <strong className="stat-value">{promoCardsList.length}</strong>
+            </div>
+            <div className="promo-stat-pill">
+              <span className="stat-label">DB Source:</span>
+              <strong className="stat-value source-highlight">{promoCardsSource || 'Firebase RTDB'}</strong>
+            </div>
+            <div className="promo-stat-pill">
+              <span className="stat-label">Target Page:</span>
+              <strong className="stat-value">amazon.in (#gwm-window)</strong>
+            </div>
+            <div className="promo-stat-pill">
+              <span className="stat-label">Affiliate Support:</span>
+              <strong className="stat-value success-highlight">Dynamic (?ref=...)</strong>
+            </div>
+          </div>
+
+          {/* Status Alert */}
+          {promoCardStatus && (
+            <div className={`promo-cards-status-alert ${promoCardStatus.includes('❌') ? 'error' : 'success'}`}>
+              <span>{promoCardStatus}</span>
+            </div>
+          )}
+
+          {/* Tiles Grid Gallery */}
+          <div className="promo-tiles-gallery-container">
+            <h3>Scraped Carousel Tiles ({promoCardsList.length} Available)</h3>
+            <div className="promo-tiles-gallery-grid">
+              {promoCardsList.map((card, idx) => (
+                <div key={card.id || idx} className="promo-tile-full-card">
+                  <div className="promo-tile-thumb-wrap">
+                    <img 
+                      src={card.imageUrl} 
+                      alt={card.title} 
+                      onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
+                    />
+                    {card.priceBadge && <span className="promo-tile-badge">{card.priceBadge}</span>}
+                    {card.imageUrl?.endsWith('.gif') && <span className="promo-tile-gif-badge">ANIMATED GIF</span>}
+                  </div>
+                  <div className="promo-tile-body">
+                    <div className="promo-tile-meta">
+                      <span className="promo-tile-category">{card.category || 'Festive Deals'}</span>
+                      <span className="promo-tile-id">#{card.id}</span>
+                    </div>
+                    <h4 className="promo-tile-title" title={card.title}>{card.title}</h4>
+                    {card.tagline && <p className="promo-tile-tagline">{card.tagline}</p>}
+                    <div className="promo-tile-footer">
+                      <a 
+                        href={card.clickRedirectUrl} 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="promo-tile-open-btn"
+                        title={card.clickRedirectUrl}
+                      >
+                        🔗 Open on Amazon ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="banners-view-content">
+
       <div className="banners-header">
         <h1>🖼️ Banner Management</h1>
         {stats && (
@@ -841,6 +1081,15 @@ const Banners = () => {
             title="Extract banners from all stores and store in DB (visibility OFF)"
           >
             {extracting ? '⏳ Extracting...' : '🔍 Extract All Banners'}
+          </button>
+
+          <button 
+            onClick={handleTriggerPromoCardsScrape}
+            disabled={scrapingPromoCards}
+            className="promo-cards-button"
+            title="Trigger automated scraping of Amazon festival promotional cards (15+ items for homepage carousel)"
+          >
+            {scrapingPromoCards ? '⏳ Scraping Cards...' : `🎯 Scrape Promo Cards${promoCardsCount ? ` (${promoCardsCount})` : ''}`}
           </button>
           
           <div className="source-toggle">
@@ -881,6 +1130,19 @@ const Banners = () => {
             </div>
           </div>
         </div>
+
+        {promoCardStatus && (
+          <div className={`promo-cards-status-alert ${promoCardStatus.includes('❌') ? 'error' : 'success'}`}>
+            <span>{promoCardStatus}</span>
+            <button 
+              type="button"
+              className="view-promo-cards-toggle-btn"
+              onClick={() => setShowPromoCardsModal(!showPromoCardsModal)}
+            >
+              {showPromoCardsModal ? '▲ Hide Preview' : `👁️ View Scraped Cards (${promoCardsList.length || 21})`}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Sale Scraper & Execution Monitor Console Card */}
@@ -1320,6 +1582,8 @@ const Banners = () => {
           ))
         )}
       </div>
+    </div>
+  )}
     </div>
   );
 };
