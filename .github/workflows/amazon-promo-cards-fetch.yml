@@ -2,7 +2,7 @@ name: '🎯 Amazon Promotional Cards Fetch'
 
 on:
   schedule:
-    - cron: '15 * * * *'   # Every 1 hour at :15 past the hour
+    - cron: '5 * * * *'    # Every 1 hour at :05 past the hour
   workflow_dispatch:        # Allow manual trigger anytime
 
 env:
