@@ -2,8 +2,11 @@ name: '🎯 Amazon Promotional Cards Fetch'
 
 on:
   schedule:
-    - cron: '5 * * * *'    # Every 1 hour at :05 past the hour
-  workflow_dispatch:        # Allow manual trigger anytime
+    - cron: '50 * * * *'   # Testing schedule, will reset to '5 * * * *' after test
+  workflow_dispatch:       # Allow manual trigger anytime
+
+permissions:
+  contents: write
 
 env:
   HEADFUL: 'true'
@@ -21,6 +24,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -50,13 +56,14 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
 
       - name: Commit and push updated promo cards (if changed)
+        continue-on-error: true
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action [Amazon Promo Cards]"
-          git add database/amazon_promo_cards.json frontend/public/banners/card_scraped_*.png frontend/public/banners/amazon_promo_handpicked.* frontend/public/banners/amazon_8pm_deals.* frontend/public/banners/amazon_8pm_frame0.*
+          git add database/amazon_promo_cards.json frontend/public/banners/card_scraped_*.png frontend/public/banners/amazon_promo_handpicked.* frontend/public/banners/amazon_8pm_deals.* frontend/public/banners/amazon_8pm_frame0.* 2>/dev/null || true
           if ! git diff-index --quiet HEAD --; then
-            git commit -m "chore(promo-cards): auto-update Amazon promotional cards [skip ci]"
-            git push
+            git commit -m "chore(promo-cards): auto-update Amazon promotional cards [skip ci]" || true
+            git push origin HEAD:${{ github.ref_name }} || git push || echo "Git push skipped or failed due to repository permissions, continuing workflow."
           else
             echo "No changes in promotional cards detected."
           fi
