@@ -1,3 +1,4 @@
+const { deduplicatePromoCards, applyPlatformTimedSlotRules } = require('../../../services/promoCardManager');
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
@@ -150,7 +151,8 @@ router.get('/promo-cards', async (req, res) => {
         ]);
         const fbCards = snapshot.val();
         if (fbCards && Array.isArray(fbCards) && fbCards.length > 0) {
-          return res.json({ success: true, count: fbCards.length, data: fbCards, source: 'firebase' });
+          const cleanCards = applyPlatformTimedSlotRules(deduplicatePromoCards(fbCards), { filterForDisplay: true });
+          return res.json({ success: true, count: cleanCards.length, data: cleanCards, source: 'firebase' });
         }
       } catch (fbErr) {
         logger.warn('Could not read promo cards from Firebase RTDB:', { error: fbErr.message });
@@ -161,7 +163,8 @@ router.get('/promo-cards', async (req, res) => {
     const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
     if (fs.existsSync(jsonPath)) {
       const cards = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      return res.json({ success: true, count: cards.length, data: cards, source: 'local_file' });
+      const cleanCards = applyPlatformTimedSlotRules(deduplicatePromoCards(cards), { filterForDisplay: true });
+      return res.json({ success: true, count: cleanCards.length, data: cleanCards, source: 'local_file' });
     }
     res.json({ success: true, count: 0, data: [] });
   } catch (error) {

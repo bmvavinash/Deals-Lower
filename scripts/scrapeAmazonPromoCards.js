@@ -3,14 +3,19 @@
 /**
  * Automated Amazon Promotional Cards Scraper
  * 
- * Scrapes the Amazon Great Indian Festival / Event horizontal card carousel (#gwm-window)
+ * Scrapes the Amazon Great Indian Festival / Event horizontal card carousel (#gwm-window).
  * Captures pixel-perfect card screenshots and extracts click URLs, titles, and price badges.
+ * 
+ * Includes Deduplication & Upsert Logic:
+ * Checks if a card is already present by Image/GIF URL or Click Redirect URL.
+ * If already present, updates the existing card in place rather than creating duplicates.
  */
 
 const { Builder, By } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 const fs = require('fs');
 const path = require('path');
+const { upsertPromoCard, deduplicatePromoCards, isSamePromoCard, applyPlatformTimedSlotRules } = require('../services/promoCardManager');
 
 const DEALS_BANNERS_DIR = path.join(__dirname, '../frontend/public/banners');
 const AFFILIATE_BANNERS_DIR = path.resolve(__dirname, '../../Affiliate/amazon_layout_carousels_alignment/public/banners');
@@ -27,6 +32,18 @@ async function scrapeAmazonPromoCards() {
   }
   if (fs.existsSync(path.dirname(AFFILIATE_BANNERS_DIR))) {
     try { fs.mkdirSync(AFFILIATE_BANNERS_DIR, { recursive: true }); } catch {}
+  }
+
+  // Load existing cards to update them in place rather than creating duplicates
+  let masterCards = [];
+  if (fs.existsSync(OUTPUT_JSON_FILE)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(OUTPUT_JSON_FILE, 'utf8'));
+      masterCards = deduplicatePromoCards(raw);
+      console.log(`📦 Loaded ${masterCards.length} existing cards for deduplication & upsert`);
+    } catch (e) {
+      console.warn('⚠️ Could not parse existing cards JSON:', e.message);
+    }
   }
 
   const options = new chrome.Options();
@@ -69,8 +86,6 @@ async function scrapeAmazonPromoCards() {
       tiles = await driver.findElements(By.css('#gwm-window .gwm-window-tile'));
     }
     console.log(`🔍 Detected ${tiles.length} cards in #gwm-window carousel`);
-
-    const scrapedCards = [];
 
     for (let i = 0; i < tiles.length; i++) {
       tiles = await driver.findElements(By.css('#gwm-window .gwm-window-tile'));
@@ -121,7 +136,6 @@ async function scrapeAmazonPromoCards() {
 
         const is8PM = text.includes('8PM') || text.includes('8 PM') || (href && href.includes('ref_=wd8PM')) || (videoSrc && videoSrc.includes('B1nvkccQ3cL'));
         const isHandpicked = text.toLowerCase().includes('handpicked') || text.includes('3 PM') || text.includes('3PM');
-        const isVideoCard = Boolean(videoSrc) || is8PM || isHandpicked;
         let cardImageUrl = `/banners/${filename}`;
         let cardId = `amazon_promo_scraped_${i + 1}`;
 
@@ -150,32 +164,46 @@ async function scrapeAmazonPromoCards() {
           cardObj.videoUrl = videoSrc;
         }
 
-        scrapedCards.push(cardObj);
-
-        console.log(`📸 [${i + 1}/${tiles.length}] Captured "${cleanTitle}" -> ${cardImageUrl}`);
+        // UPSERT: Match by GIF url or redirect url. If already present -> update; else create.
+        const { isUpdated } = upsertPromoCard(masterCards, cardObj);
+        if (isUpdated) {
+          console.log(`🔄 [${i + 1}/${tiles.length}] Updated existing card: "${cleanTitle}" (${cardImageUrl})`);
+        } else {
+          console.log(`📸 [${i + 1}/${tiles.length}] Created new card: "${cleanTitle}" (${cardImageUrl})`);
+        }
       } catch (err) {
         console.warn(`⚠️ Failed to capture tile ${i + 1}:`, err.message);
       }
     }
 
-    // Ensure the 8PM promo card is always included as the primary featured event card
-    const has8PM = scrapedCards.some(c => c.id === 'amazon_8pm_promo' || c.title.toLowerCase().includes('8pm'));
-    if (!has8PM) {
-      scrapedCards.unshift({
-        id: 'amazon_8pm_promo',
-        title: '8PM Deals Live Now',
-        priceBadge: 'Live Now',
-        imageUrl: '/banners/amazon_8pm_deals.gif',
-        clickRedirectUrl: 'https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM',
-        platform: 'amazon',
-        videoUrl: 'https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4'
-      });
-      console.log('✨ Added 8PM Deals Live Now promo card as lead event tile');
+    // Always ensure the 8PM promo card (with its labeled GIF and destination URL) is present & updated
+    upsertPromoCard(masterCards, {
+      id: 'amazon_8pm_promo',
+      title: '8PM Deals Live Now',
+      tagline: 'Powered by SAMSUNG Galaxy | intel Core ULTRA',
+      priceBadge: 'Live Now',
+      category: 'Festive Deals',
+      imageUrl: '/banners/amazon_8pm_deals.gif',
+      clickRedirectUrl: 'https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM',
+      platform: 'amazon',
+      videoUrl: 'https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4'
+    });
+
+    // Position 8PM promo card at index 0 as featured prime-time tile
+    const p8Idx = masterCards.findIndex(c => c.id === 'amazon_8pm_promo' || c.imageUrl?.includes('amazon_8pm_deals.gif'));
+    if (p8Idx > 0) {
+      const [p8Card] = masterCards.splice(p8Idx, 1);
+      masterCards.unshift(p8Card);
     }
 
-    if (scrapedCards.length > 0) {
-      fs.writeFileSync(OUTPUT_JSON_FILE, JSON.stringify(scrapedCards, null, 2));
-      console.log(`\n🎉 Successfully scraped ${scrapedCards.length} promotional cards!`);
+    // Final deduplication pass to ensure strictly 0 duplicate GIF or redirect URLs
+    masterCards = deduplicatePromoCards(masterCards);
+    // Platform timed-slot rules: e.g. when 8PM is live on Amazon, 3PM is disabled & removed from display
+    masterCards = applyPlatformTimedSlotRules(masterCards, { filterForDisplay: true });
+
+    if (masterCards.length > 0) {
+      fs.writeFileSync(OUTPUT_JSON_FILE, JSON.stringify(masterCards, null, 2));
+      console.log(`\n🎉 Successfully processed & deduplicated ${masterCards.length} promotional cards!`);
       console.log(`📁 Saved metadata to ${OUTPUT_JSON_FILE}`);
 
       // Sync to Firebase RTDB if available
@@ -186,19 +214,19 @@ async function scrapeAmazonPromoCards() {
           try { require('../database/firebaseDB/productDealsDB'); } catch {}
         }
         if (admin && admin.apps && admin.apps.length > 0) {
-          await admin.database().ref('amazon_promo_cards').set(scrapedCards);
+          await admin.database().ref('amazon_promo_cards').set(masterCards);
           await admin.database().ref('amazon_promo_cards_meta').set({
-            count: scrapedCards.length,
+            count: masterCards.length,
             lastUpdated: new Date().toISOString(),
-            source: 'scraper'
+            source: 'scraper_upsert'
           });
-          console.log(`🔥 Synced ${scrapedCards.length} promo cards to Firebase Realtime Database (/amazon_promo_cards)`);
+          console.log(`🔥 Synced ${masterCards.length} deduplicated promo cards to Firebase Realtime Database (/amazon_promo_cards)`);
         }
       } catch (fbErr) {
         console.warn('Firebase RTDB sync warning:', fbErr.message);
       }
 
-      return scrapedCards;
+      return masterCards;
     } else {
       console.warn('⚠️ No cards scraped; preserving existing card dataset.');
       if (fs.existsSync(OUTPUT_JSON_FILE)) {
