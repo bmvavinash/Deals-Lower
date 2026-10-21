@@ -52,10 +52,19 @@ async function broadcastWebPush({ title, body, link, icon, badge, extraData = {}
     userApp = admin.app();
   }
 
+  let cleanTitle = title || '\uD83D\uDD25 New Sale is LIVE! | LowerDeal';
+  if (cleanTitle.startsWith('??')) cleanTitle = cleanTitle.replace(/^(\?\?|\?)\s*/, '\uD83D\uDD25 ');
+
+  let cleanBody = body || 'Amazon 8PM Deals are now Live on lowerdeal.com! Don’t miss limited-time price drops.';
+  cleanBody = cleanBody.replace(/http:\/\/localhost:3000/g, 'https://lowerdeal.com').replace(/localhost:3000/g, 'lowerdeal.com');
+
+  let cleanLink = link || 'https://lowerdeal.com';
+  cleanLink = cleanLink.replace(/http:\/\/localhost:3000/g, 'https://lowerdeal.com');
+
   const payload = {
-    title: title || '🔥 New Sale is LIVE! | LowerDeal',
-    body: body || 'Check out live deals and limited-time discounts on lowerdeal.com!',
-    link: link || 'https://lowerdeal.com',
+    title: cleanTitle,
+    body: cleanBody,
+    link: cleanLink,
     icon: icon || 'https://lowerdeal.com/logo192.png',
     badge: badge || 'https://lowerdeal.com/logo192.png'
   };

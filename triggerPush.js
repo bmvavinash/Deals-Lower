@@ -8,9 +8,9 @@ async function trigger() {
     console.log('Enqueuing Web Push notification...');
     
     await notificationQueue.enqueue('webpush', {
-        title: '🔥 Live Deal Alert!',
-        message: 'This is a test web push notification directly from the backend queue!',
-        link: 'http://localhost:3000',
+        title: '\uD83D\uDD25 Live Deal Alert! | LowerDeal',
+        message: 'Amazon 8PM Deals are now Live on lowerdeal.com!',
+        link: 'https://lowerdeal.com',
         token: token
     });
     

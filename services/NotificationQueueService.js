@@ -113,13 +113,34 @@ class NotificationQueueService {
             if (!job.data.token) {
                 logger.error('Web Push failed: No target token provided');
             } else {
+                let cleanTitle = job.data.title || '\uD83D\uDD25 New Deal Alert! | LowerDeal';
+                if (cleanTitle.startsWith('??')) cleanTitle = cleanTitle.replace(/^(\?\?|\?)\s*/, '\uD83D\uDD25 ');
+                
+                let cleanBody = job.data.message || job.data.body || 'Check out this new deal on lowerdeal.com!';
+                cleanBody = cleanBody.replace(/http:\/\/localhost:3000/g, 'https://lowerdeal.com').replace(/localhost:3000/g, 'lowerdeal.com');
+                
+                let cleanLink = job.data.link || 'https://lowerdeal.com';
+                cleanLink = cleanLink.replace(/http:\/\/localhost:3000/g, 'https://lowerdeal.com');
+
                 const message = {
                     notification: {
-                        title: job.data.title || 'New Deal Alert!',
-                        body: job.data.message || 'Check out this new deal!'
+                        title: cleanTitle,
+                        body: cleanBody
                     },
                     data: {
-                        link: job.data.link || '/'
+                        title: cleanTitle,
+                        message: cleanBody,
+                        link: cleanLink,
+                        source: 'lowerdeal.com'
+                    },
+                    webpush: {
+                        fcmOptions: {
+                            link: cleanLink
+                        },
+                        notification: {
+                            icon: 'https://lowerdeal.com/logo192.png',
+                            badge: 'https://lowerdeal.com/logo192.png'
+                        }
                     },
                     token: job.data.token
                 };
