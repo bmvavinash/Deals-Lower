@@ -53,7 +53,7 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action [Amazon Promo Cards]"
-          git add database/amazon_promo_cards.json frontend/public/banners/card_scraped_*.png frontend/public/banners/amazon_promo_handpicked.*
+          git add database/amazon_promo_cards.json frontend/public/banners/card_scraped_*.png frontend/public/banners/amazon_promo_handpicked.* frontend/public/banners/amazon_8pm_deals.* frontend/public/banners/amazon_8pm_frame0.*
           if ! git diff-index --quiet HEAD --; then
             git commit -m "chore(promo-cards): auto-update Amazon promotional cards [skip ci]"
             git push
