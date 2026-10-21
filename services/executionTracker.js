@@ -45,6 +45,7 @@ function buildClientMetadata(clientMetadata, defaultOrigin = 'CLI/Script') {
 
 function sanitizeForFirebase(obj) {
   if (obj === undefined) return null;
+  if (typeof obj === 'number' && (isNaN(obj) || !isFinite(obj))) return 0;
   if (obj === null || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) {
     return obj.map(item => sanitizeForFirebase(item));
@@ -52,7 +53,10 @@ function sanitizeForFirebase(obj) {
   const clean = {};
   for (const [key, value] of Object.entries(obj)) {
     if (value !== undefined) {
-      clean[key] = sanitizeForFirebase(value);
+      const sanitized = sanitizeForFirebase(value);
+      if (sanitized !== undefined) {
+        clean[key] = sanitized;
+      }
     }
   }
   return clean;
@@ -93,7 +97,9 @@ class ExecutionTracker {
     this.ref.on('value', (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        this.currentExecution = data.current || null;
+        if (!this.currentExecution || this.currentExecution.status !== 'running') {
+          this.currentExecution = data.current || null;
+        }
         
         // Ensure currentExecution.platforms is always an object if currentExecution exists
         if (this.currentExecution && (!this.currentExecution.platforms || typeof this.currentExecution.platforms !== 'object')) {
@@ -752,8 +758,23 @@ class ExecutionTracker {
       
       // Ensure summary totals propagate to the root counts if available
       if (summary) {
-        executionCopy.totalProducts = summary.totalProducts !== undefined ? summary.totalProducts : executionCopy.totalProducts;
-        executionCopy.totalProcessed = summary.totalSuccess !== undefined ? summary.totalSuccess : executionCopy.totalProcessed;
+        if (typeof summary.totalProducts === 'number' && !isNaN(summary.totalProducts)) {
+          executionCopy.totalProducts = summary.totalProducts;
+        } else if (typeof summary.totalStored === 'number' && !isNaN(summary.totalStored)) {
+          executionCopy.totalProducts = summary.totalStored;
+        } else if (typeof summary.totalExtracted === 'number' && !isNaN(summary.totalExtracted)) {
+          executionCopy.totalProducts = summary.totalExtracted;
+        } else if (typeof executionCopy.totalProducts !== 'number' || isNaN(executionCopy.totalProducts)) {
+          executionCopy.totalProducts = 0;
+        }
+
+        if (typeof summary.totalSuccess === 'number' && !isNaN(summary.totalSuccess)) {
+          executionCopy.totalProcessed = summary.totalSuccess;
+        } else if (typeof summary.totalStored === 'number' && !isNaN(summary.totalStored)) {
+          executionCopy.totalProcessed = summary.totalStored;
+        } else if (typeof executionCopy.totalProcessed !== 'number' || isNaN(executionCopy.totalProcessed)) {
+          executionCopy.totalProcessed = 0;
+        }
         
         // Map created & updated counts if not already populated
         let created = 0, updated = 0;
