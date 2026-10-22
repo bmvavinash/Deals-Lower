@@ -1,25 +1,12 @@
 [
   {
-    "id": "amazon_8pm_promo",
-    "title": "8PM Deals Live Now",
-    "tagline": "Powered by SAMSUNG Galaxy | intel Core ULTRA",
-    "priceBadge": "Live Now",
-    "category": "Festive Deals",
-    "imageUrl": "/banners/amazon_8pm_deals.gif",
-    "clickRedirectUrl": "https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM",
-    "platform": "amazon",
-    "videoUrl": "https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4",
-    "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.474Z"
-  },
-  {
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=222836655031&pd_rd_w=tJqyg&content-id=amzn1.sym.567e3920-977b-430e-8094-3a17b3c67d5d&pf_rd_p=567e3920-977b-430e-8094-3a17b3c67d5d&pf_rd_r=PPQ6K37Z22QHPPDARGB4&pd_rd_wg=NUm7t&pd_rd_r=7058a22d-10f0-48e0-8643-667a4312a702&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_2",
     "imageUrl": "/banners/card_scraped_2.png",
     "isActive": true,
     "isCompleted": false,
     "isExpired": false,
-    "lastUpdated": "2026-10-22T15:15:31.474Z",
+    "lastUpdated": "2026-10-22T20:02:35.919Z",
     "platform": "amazon",
     "priceBadge": "Under ₹99",
     "title": "Under ₹99 Fashion, home & more"
@@ -29,7 +16,7 @@
     "id": "amazon_promo_scraped_3",
     "imageUrl": "/banners/card_scraped_3.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.474Z",
+    "lastUpdated": "2026-10-22T20:02:35.919Z",
     "platform": "amazon",
     "priceBadge": "Under ₹499",
     "title": "Under ₹499 Facewashes"
@@ -39,7 +26,7 @@
     "id": "amazon_promo_scraped_4",
     "imageUrl": "/banners/card_scraped_10.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.474Z",
+    "lastUpdated": "2026-10-22T20:02:35.919Z",
     "platform": "amazon",
     "priceBadge": "Starting ₹99",
     "title": "Starting ₹99 Extension board, wipes & more Play",
@@ -50,7 +37,7 @@
     "id": "amazon_promo_scraped_5",
     "imageUrl": "/banners/card_scraped_12.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.474Z",
+    "lastUpdated": "2026-10-22T20:02:35.919Z",
     "platform": "amazon",
     "priceBadge": "Under ₹499",
     "title": "Under ₹499 Booktok favourites"
@@ -60,7 +47,7 @@
     "id": "amazon_promo_scraped_6",
     "imageUrl": "/banners/card_scraped_6.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.474Z",
+    "lastUpdated": "2026-10-22T20:02:35.919Z",
     "platform": "amazon",
     "priceBadge": "Live Now",
     "title": "Lowest prices ever"
@@ -70,7 +57,7 @@
     "id": "amazon_promo_scraped_7",
     "imageUrl": "/banners/card_scraped_11.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.474Z",
+    "lastUpdated": "2026-10-22T20:02:35.919Z",
     "platform": "amazon",
     "priceBadge": "Under ₹999",
     "title": "Under ₹999 Budget friendly Mobile accessories"
@@ -80,7 +67,7 @@
     "id": "amazon_promo_scraped_8",
     "imageUrl": "/banners/card_scraped_8.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.474Z",
+    "lastUpdated": "2026-10-22T20:02:35.920Z",
     "platform": "amazon",
     "priceBadge": "Live Now",
     "title": "Deals on Amazon Devices"
@@ -90,7 +77,7 @@
     "id": "amazon_promo_scraped_9",
     "imageUrl": "/banners/card_scraped_9.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.475Z",
+    "lastUpdated": "2026-10-22T20:02:35.920Z",
     "platform": "amazon",
     "priceBadge": "Under ₹999",
     "title": "Under ₹999 Casseroles",
@@ -101,7 +88,7 @@
     "id": "amazon_promo_scraped_13",
     "imageUrl": "/banners/card_scraped_13.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.475Z",
+    "lastUpdated": "2026-10-22T20:02:35.920Z",
     "platform": "amazon",
     "priceBadge": "Under ₹499",
     "title": "Under ₹499 Baby diapers"
@@ -111,7 +98,7 @@
     "id": "amazon_promo_scraped_15",
     "imageUrl": "/banners/card_scraped_15.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.475Z",
+    "lastUpdated": "2026-10-22T20:02:35.920Z",
     "platform": "amazon",
     "priceBadge": "Starting ₹105",
     "title": "Starting ₹105 Mystery & thrillers"
@@ -121,7 +108,7 @@
     "id": "amazon_promo_scraped_14",
     "imageUrl": "/banners/card_scraped_14.png",
     "isActive": true,
-    "lastUpdated": "2026-10-22T15:15:31.475Z",
+    "lastUpdated": "2026-10-22T20:02:35.920Z",
     "platform": "amazon",
     "priceBadge": "under ₹499",
     "title": "Festive specials under ₹499"
