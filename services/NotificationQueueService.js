@@ -151,8 +151,8 @@ class NotificationQueueService {
                                 link: cleanLink
                             },
                             notification: {
-                                icon: 'https://lowerdeal.com/logo192.png',
-                                badge: 'https://lowerdeal.com/logo192.png'
+                                icon: 'https://lowerdeal.com/logo192_v2.png',
+                                badge: 'https://lowerdeal.com/logo192_v2.png'
                             }
                         },
                         token: tok

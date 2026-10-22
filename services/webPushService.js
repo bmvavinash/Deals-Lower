@@ -123,8 +123,8 @@ async function broadcastWebPush({ title, body, link, icon, badge, extraData = {}
     title: cleanTitle,
     body: cleanBody,
     link: cleanLink,
-    icon: icon || 'https://lowerdeal.com/logo192.png',
-    badge: badge || 'https://lowerdeal.com/logo192.png'
+    icon: icon || 'https://lowerdeal.com/logo192_v2.png',
+    badge: badge || 'https://lowerdeal.com/logo192_v2.png'
   };
 
   const results = [];
