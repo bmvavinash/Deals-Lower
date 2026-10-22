@@ -8,9 +8,12 @@
     "platform": "amazon",
     "tagline": "Powered by SAMSUNG Galaxy | intel Core ULTRA",
     "category": "Festive Deals",
-    "isActive": true,
+    "isActive": false,
     "videoUrl": "https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4",
-    "lastUpdated": "2026-10-22T00:00:48.939Z"
+    "lastUpdated": "2026-10-22T04:56:18.856Z",
+    "isCompleted": true,
+    "isExpired": true,
+    "disabledReason": "8PM Deals event completed"
   },
   {
     "id": "amazon_promo_scraped_2",

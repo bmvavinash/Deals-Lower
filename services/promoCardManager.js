@@ -24,6 +24,8 @@ const PLATFORM_TIMED_SLOTS = {
   amazon: [
     {
       slot: '3pm',
+      startHour: 15, // 3 PM IST
+      endHour: 18,   // 6 PM IST
       hour: 15,
       id: 'amazon_handpicked_promo',
       label: '3 PM Picks',
@@ -35,6 +37,8 @@ const PLATFORM_TIMED_SLOTS = {
     },
     {
       slot: '8pm',
+      startHour: 20, // 8 PM IST
+      endHour: 24,   // 12 AM (Midnight IST)
       hour: 20,
       id: 'amazon_8pm_promo',
       label: '8 PM Deals',
@@ -48,6 +52,8 @@ const PLATFORM_TIMED_SLOTS = {
   flipkart: [
     {
       slot: '5pm',
+      startHour: 17,
+      endHour: 20,
       hour: 17,
       id: 'flipkart_5pm_promo',
       label: '5 PM Deals',
@@ -59,6 +65,8 @@ const PLATFORM_TIMED_SLOTS = {
     },
     {
       slot: '9pm',
+      startHour: 21,
+      endHour: 24,
       hour: 21,
       id: 'flipkart_9pm_promo',
       label: '9 PM Deals',
@@ -229,21 +237,42 @@ function applyPlatformTimedSlotRules(cardsList = [], options = { filterForDispla
   const currentHourIST = istDate.getHours();
 
   for (const [platform, slots] of Object.entries(PLATFORM_TIMED_SLOTS)) {
-    // Check which slot is currently active/live for this platform
-    // Chronological order: slots are ordered from earliest to latest
+    // 1. Check if any slot has completed or expired (outside active event hours or explicitly completed)
+    for (const slot of slots) {
+      const startH = slot.startHour !== undefined ? slot.startHour : slot.hour;
+      const endH = slot.endHour !== undefined ? slot.endHour : (startH + 4);
+      const isPastSlotWindow = (currentHourIST < startH || currentHourIST >= endH);
+
+      for (const card of cardsList) {
+        if ((card.platform === platform || !card.platform || platform === 'amazon') && slot.match(card)) {
+          // If explicitly marked inactive/completed or outside its timed slot window
+          if (card.isCompleted || card.isActive === false || isPastSlotWindow) {
+            card.isActive = false;
+            card.isCompleted = true;
+            card.isExpired = true;
+            card.disabledReason = card.disabledReason || `${slot.label} event completed`;
+          }
+        }
+      }
+    }
+
+    // 2. Active slot superseding: when a later slot is currently live, all earlier slots are disabled
     for (let i = slots.length - 1; i >= 0; i--) {
       const slot = slots[i];
-      // A slot is LIVE if an active card matching this slot is present OR current IST hour >= slot.hour
+      const startH = slot.startHour !== undefined ? slot.startHour : slot.hour;
+      const endH = slot.endHour !== undefined ? slot.endHour : (startH + 4);
+
       const hasLiveCard = cardsList.some(c => 
         (c.platform === platform || !c.platform || platform === 'amazon') && 
         slot.match(c) && 
-        c.isActive !== false
+        c.isActive === true && 
+        !c.isCompleted && 
+        !c.isExpired
       );
 
-      const isSlotLive = hasLiveCard || (currentHourIST >= slot.hour && currentHourIST < 24);
+      const isSlotCurrentlyLive = hasLiveCard && (currentHourIST >= startH && currentHourIST < endH);
 
-      if (isSlotLive) {
-        // All earlier slots for this platform should be disabled & retired!
+      if (isSlotCurrentlyLive) {
         for (let j = 0; j < i; j++) {
           const earlierSlot = slots[j];
           for (const card of cardsList) {
@@ -260,7 +289,7 @@ function applyPlatformTimedSlotRules(cardsList = [], options = { filterForDispla
   }
 
   if (options.filterForDisplay) {
-    return cardsList.filter(card => card.isActive !== false);
+    return cardsList.filter(card => card.isActive !== false && !card.isCompleted && !card.isExpired);
   }
   return cardsList;
 }
