@@ -109,9 +109,13 @@ class NotificationQueueService {
                 // We leave success=false so it can be handled appropriately or logged
             }
         } else if (job.channel === 'webpush') {
-            // Actual implementation for Web Push via FCM
-            if (!job.data.token) {
-                logger.error('Web Push failed: No target token provided');
+            // Actual implementation for Web Push via FCM with Multi-Device support
+            const targetTokens = Array.isArray(job.data.tokens) 
+                ? job.data.tokens 
+                : (job.data.token ? [job.data.token] : []);
+
+            if (targetTokens.length === 0) {
+                logger.error('Web Push failed: No target token(s) provided');
             } else {
                 let cleanTitle = job.data.title || '\uD83D\uDD25 New Deal Alert! | LowerDeal';
                 if (cleanTitle.startsWith('??')) cleanTitle = cleanTitle.replace(/^(\?\?|\?)\s*/, '\uD83D\uDD25 ');
@@ -122,45 +126,49 @@ class NotificationQueueService {
                 let cleanLink = job.data.link || 'https://lowerdeal.com';
                 cleanLink = cleanLink.replace(/http:\/\/localhost:3000/g, 'https://lowerdeal.com');
 
-                const message = {
-                    notification: {
-                        title: cleanTitle,
-                        body: cleanBody
-                    },
-                    data: {
-                        title: cleanTitle,
-                        message: cleanBody,
-                        link: cleanLink,
-                        source: 'lowerdeal.com'
-                    },
-                    webpush: {
-                        fcmOptions: {
-                            link: cleanLink
-                        },
-                        notification: {
-                            icon: 'https://lowerdeal.com/logo192.png',
-                            badge: 'https://lowerdeal.com/logo192.png'
-                        }
-                    },
-                    token: job.data.token
-                };
-                
-                // Get the secondary app which handles user profiles (dealshub-users)
-                // This matches the frontend SenderID.
+                let userApp;
                 try {
-                    const userApp = admin.app('user-favourites');
-                    await userApp.messaging().send(message);
-                    logger.info('Web Push notification triggered successfully to FCM');
-                    success = true;
+                    userApp = admin.app('user-favourites');
                 } catch (e) {
-                    if (e.code === 'app/no-app') {
-                        // Fallback to default if user-favourites isn't initialized yet
-                        await admin.messaging().send(message);
-                        logger.info('Web Push notification triggered successfully to FCM (default app)');
-                        success = true;
-                    } else {
-                        throw e;
+                    userApp = admin.app();
+                }
+
+                let deliveredCount = 0;
+                for (const tok of targetTokens) {
+                    const message = {
+                        notification: {
+                            title: cleanTitle,
+                            body: cleanBody
+                        },
+                        data: {
+                            title: cleanTitle,
+                            message: cleanBody,
+                            link: cleanLink,
+                            source: 'lowerdeal.com'
+                        },
+                        webpush: {
+                            fcmOptions: {
+                                link: cleanLink
+                            },
+                            notification: {
+                                icon: 'https://lowerdeal.com/logo192.png',
+                                badge: 'https://lowerdeal.com/logo192.png'
+                            }
+                        },
+                        token: tok
+                    };
+
+                    try {
+                        await userApp.messaging().send(message);
+                        deliveredCount++;
+                        logger.info(`Web Push notification delivered to device token: ${tok.substring(0, 20)}...`);
+                    } catch (sendErr) {
+                        logger.warn(`Web Push send error for device token ${tok.substring(0, 20)}...: ${sendErr.message}`);
                     }
+                }
+
+                if (deliveredCount > 0) {
+                    success = true;
                 }
             }
         } else {
