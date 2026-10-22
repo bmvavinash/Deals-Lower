@@ -950,7 +950,6 @@ router.get('/', async (req, res, next) => {
         deals = {};
       }
     }
-    }
     
     // Convert to array and filter out completely empty items
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
