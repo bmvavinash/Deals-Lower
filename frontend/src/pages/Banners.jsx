@@ -86,6 +86,41 @@ const Banners = ({ defaultTab = 'banners' }) => {
   const [timerPreset, setTimerPreset] = useState('60');
   const [timerCustomDateTime, setTimerCustomDateTime] = useState('');
   const [timerActionLoading, setTimerActionLoading] = useState(false);
+  const [timerMode, setTimerMode] = useState('countdown'); // 'countdown' | 'daily' | 'schedule'
+  const [timerStartsAt, setTimerStartsAt] = useState('');
+  const [timerExpiresAt, setTimerExpiresAt] = useState('');
+  const [dailyWindowEnabled, setDailyWindowEnabled] = useState(false);
+  const [dailyStartHour, setDailyStartHour] = useState(20);
+  const [dailyEndHour, setDailyEndHour] = useState(24);
+  const [timerShowCountdown, setTimerShowCountdown] = useState(true);
+  const [timerPriceBadge, setTimerPriceBadge] = useState('');
+
+  // Global Timed Slots Configuration
+  const [timedSlots, setTimedSlots] = useState({
+    amazon: [
+      { slot: '3pm', label: '3 PM Picks', startHour: 15, endHour: 18, enabled: true },
+      { slot: '8pm', label: '8 PM Deals', startHour: 20, endHour: 24, enabled: true }
+    ],
+    flipkart: [
+      { slot: '5pm', label: '5 PM Deals', startHour: 17, endHour: 20, enabled: true },
+      { slot: '9pm', label: '9 PM Deals', startHour: 21, endHour: 24, enabled: true }
+    ]
+  });
+  const [showTimedSlots, setShowTimedSlots] = useState(false);
+  const [savingTimedSlots, setSavingTimedSlots] = useState(false);
+
+  // Edit Tile Card Details State
+  const [editTileCard, setEditTileCard] = useState(null);
+  const [editTileForm, setEditTileForm] = useState({
+    title: '',
+    priceBadge: '',
+    tagline: '',
+    category: '',
+    clickRedirectUrl: '',
+    imageUrl: '',
+    isActive: true
+  });
+  const [editTileSaving, setEditTileSaving] = useState(false);
 
   useEffect(() => {
     fetchBannerSource();
@@ -93,6 +128,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
     checkActiveTask();
     triggerBanners(); // Automatically fetch and display banners on mount
     fetchPromoCards(); // Fetch promotional cards on mount
+    fetchTimedSlots(); // Fetch platform timed slots
     const interval = setInterval(() => {
       fetchStats();
       checkActiveTask();
@@ -416,19 +452,78 @@ const Banners = ({ defaultTab = 'banners' }) => {
     }
   };
 
+  const fetchTimedSlots = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/banners/timed-slots`);
+      const data = await res.json();
+      if (data && data.success && data.data) {
+        setTimedSlots(data.data);
+      }
+    } catch (err) {
+      console.warn('Failed to fetch timed slots:', err);
+    }
+  };
+
+  const handleSaveTimedSlots = async () => {
+    setSavingTimedSlots(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/banners/timed-slots`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(timedSlots)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPromoCardStatus('✅ Event timed slots updated and applied successfully');
+        setTimeout(() => setPromoCardStatus(null), 4000);
+        await fetchPromoCards();
+      } else {
+        alert(data.error || 'Failed to save timed slots');
+      }
+    } catch (err) {
+      alert(`Error saving timed slots: ${err.message}`);
+    } finally {
+      setSavingTimedSlots(false);
+    }
+  };
+
   const openTimerModal = (card) => {
     setTimerModalCard(card);
     setTimerPreset('60');
+    setTimerPriceBadge(card.priceBadge || '');
+    setTimerShowCountdown(card.showCountdown !== false);
+
+    if (card.dailyWindow && card.dailyWindow.enabled) {
+      setTimerMode('daily');
+      setDailyWindowEnabled(true);
+      setDailyStartHour(card.dailyWindow.startHour ?? 20);
+      setDailyEndHour(card.dailyWindow.endHour ?? 24);
+    } else if (card.startsAt || (card.expiresAt && !card.durationMinutes)) {
+      setTimerMode('schedule');
+      setDailyWindowEnabled(false);
+    } else {
+      setTimerMode('countdown');
+      setDailyWindowEnabled(false);
+    }
+
+    if (card.startsAt) {
+      const d = new Date(card.startsAt);
+      const localISO = (new Date(d.getTime() - d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+      setTimerStartsAt(localISO);
+    } else {
+      setTimerStartsAt('');
+    }
+
     if (card.expiresAt) {
       const d = new Date(card.expiresAt);
-      const tzOffset = d.getTimezoneOffset() * 60000;
-      const localISOTime = (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 16);
-      setTimerCustomDateTime(localISOTime);
+      const localISO = (new Date(d.getTime() - d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+      setTimerExpiresAt(localISO);
+      setTimerCustomDateTime(localISO);
     } else {
       const d = new Date(Date.now() + 2 * 3600000);
-      const tzOffset = d.getTimezoneOffset() * 60000;
-      const localISOTime = (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 16);
-      setTimerCustomDateTime(localISOTime);
+      const localISO = (new Date(d.getTime() - d.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+      setTimerExpiresAt(localISO);
+      setTimerCustomDateTime(localISO);
     }
   };
 
@@ -442,19 +537,46 @@ const Banners = ({ defaultTab = 'banners' }) => {
       } else if (actionType === 'clear') {
         body = { action: 'clear' };
       } else {
-        if (timerPreset === 'custom') {
-          if (!timerCustomDateTime) {
-            alert('Please select a valid date and time');
+        body.showCountdown = timerShowCountdown;
+        if (timerPriceBadge) body.priceBadge = timerPriceBadge;
+
+        if (timerMode === 'daily') {
+          body.dailyWindow = {
+            enabled: true,
+            startHour: Number(dailyStartHour),
+            endHour: Number(dailyEndHour)
+          };
+          delete body.expiresAt;
+        } else if (timerMode === 'schedule') {
+          if (!timerExpiresAt) {
+            alert('Please choose an End Date & Time');
             setTimerActionLoading(false);
             return;
           }
-          body = { expiresAt: new Date(timerCustomDateTime).toISOString() };
-        } else if (timerPreset === 'tonight') {
-          const tonight = new Date();
-          tonight.setHours(23, 59, 59, 999);
-          body = { expiresAt: tonight.toISOString() };
+          if (timerStartsAt) {
+            body.startsAt = new Date(timerStartsAt).toISOString();
+          } else {
+            body.startsAt = null;
+          }
+          body.expiresAt = new Date(timerExpiresAt).toISOString();
+          body.dailyWindow = { enabled: false };
         } else {
-          body = { durationMinutes: Number(timerPreset) };
+          // countdown mode
+          if (timerPreset === 'custom') {
+            if (!timerCustomDateTime) {
+              alert('Please select a valid date/time');
+              setTimerActionLoading(false);
+              return;
+            }
+            body.expiresAt = new Date(timerCustomDateTime).toISOString();
+          } else if (timerPreset === 'tonight') {
+            const tonight = new Date();
+            tonight.setHours(23, 59, 59, 999);
+            body.expiresAt = tonight.toISOString();
+          } else {
+            body.durationMinutes = Number(timerPreset);
+          }
+          body.dailyWindow = { enabled: false };
         }
       }
 
@@ -476,6 +598,45 @@ const Banners = ({ defaultTab = 'banners' }) => {
       alert(`Error updating timer: ${err.message}`);
     } finally {
       setTimerActionLoading(false);
+    }
+  };
+
+  const openEditTileModal = (card) => {
+    setEditTileCard(card);
+    setEditTileForm({
+      title: card.title || '',
+      priceBadge: card.priceBadge || '',
+      tagline: card.tagline || '',
+      category: card.category || 'Festive Deals',
+      clickRedirectUrl: card.clickRedirectUrl || '',
+      imageUrl: card.imageUrl || '',
+      isActive: card.isActive !== false && !card.isExpired
+    });
+  };
+
+  const handleSaveTileEdit = async (e) => {
+    e.preventDefault();
+    if (!editTileCard) return;
+    setEditTileSaving(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/banners/promo-cards/${editTileCard.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editTileForm)
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPromoCardStatus(`✅ Tile #${editTileCard.id} details saved!`);
+        setTimeout(() => setPromoCardStatus(null), 4000);
+        await fetchPromoCards();
+        setEditTileCard(null);
+      } else {
+        alert(data.error || 'Failed to update tile');
+      }
+    } catch (err) {
+      alert('Error updating tile: ' + err.message);
+    } finally {
+      setEditTileSaving(false);
     }
   };
 
@@ -1115,6 +1276,151 @@ const Banners = ({ defaultTab = 'banners' }) => {
             </div>
           )}
 
+          {/* Global Timed Slots Configuration Panel */}
+          <div className="timed-slots-card">
+            <div className="timed-slots-header" onClick={() => setShowTimedSlots(!showTimedSlots)}>
+              <div className="slots-title-wrap">
+                <span className="slots-icon">⚙️</span>
+                <div>
+                  <h4>Global Event Timed Slots (Amazon & Flipkart)</h4>
+                  <p>Configure automatic daily active windows (e.g. 8 PM Deals, 3 PM Handpicked, 5 PM, 9 PM)</p>
+                </div>
+              </div>
+              <button type="button" className="slots-toggle-btn">
+                {showTimedSlots ? '▲ Hide Schedule' : '▼ Configure Event Slots'}
+              </button>
+            </div>
+
+            {showTimedSlots && (
+              <div className="timed-slots-body">
+                <div className="slots-platform-group">
+                  <h5>Amazon Events</h5>
+                  <div className="slots-grid">
+                    {timedSlots.amazon && timedSlots.amazon.map((slot, idx) => (
+                      <div key={slot.slot || idx} className="slot-config-item">
+                        <div className="slot-header">
+                          <label className="slot-toggle-label">
+                            <input 
+                              type="checkbox" 
+                              checked={slot.enabled !== false}
+                              onChange={(e) => {
+                                const copy = { ...timedSlots };
+                                copy.amazon[idx].enabled = e.target.checked;
+                                setTimedSlots(copy);
+                              }}
+                            />
+                            <strong>{slot.label || slot.slot}</strong>
+                          </label>
+                          <span className="slot-badge">#{slot.slot}</span>
+                        </div>
+                        <div className="slot-hours-row">
+                          <div>
+                            <span className="hour-label">Start (IST):</span>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="23" 
+                              value={slot.startHour ?? 0}
+                              onChange={(e) => {
+                                const copy = { ...timedSlots };
+                                copy.amazon[idx].startHour = Number(e.target.value);
+                                setTimedSlots(copy);
+                              }}
+                            />
+                            <span className="hour-desc">{slot.startHour}:00</span>
+                          </div>
+                          <div>
+                            <span className="hour-label">End (IST):</span>
+                            <input 
+                              type="number" 
+                              min="1" 
+                              max="24" 
+                              value={slot.endHour ?? 24}
+                              onChange={(e) => {
+                                const copy = { ...timedSlots };
+                                copy.amazon[idx].endHour = Number(e.target.value);
+                                setTimedSlots(copy);
+                              }}
+                            />
+                            <span className="hour-desc">{slot.endHour === 24 ? 'Midnight (24:00)' : `${slot.endHour}:00`}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="slots-platform-group">
+                  <h5>Flipkart Events</h5>
+                  <div className="slots-grid">
+                    {timedSlots.flipkart && timedSlots.flipkart.map((slot, idx) => (
+                      <div key={slot.slot || idx} className="slot-config-item">
+                        <div className="slot-header">
+                          <label className="slot-toggle-label">
+                            <input 
+                              type="checkbox" 
+                              checked={slot.enabled !== false}
+                              onChange={(e) => {
+                                const copy = { ...timedSlots };
+                                copy.flipkart[idx].enabled = e.target.checked;
+                                setTimedSlots(copy);
+                              }}
+                            />
+                            <strong>{slot.label || slot.slot}</strong>
+                          </label>
+                          <span className="slot-badge">#{slot.slot}</span>
+                        </div>
+                        <div className="slot-hours-row">
+                          <div>
+                            <span className="hour-label">Start (IST):</span>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              max="23" 
+                              value={slot.startHour ?? 0}
+                              onChange={(e) => {
+                                const copy = { ...timedSlots };
+                                copy.flipkart[idx].startHour = Number(e.target.value);
+                                setTimedSlots(copy);
+                              }}
+                            />
+                            <span className="hour-desc">{slot.startHour}:00</span>
+                          </div>
+                          <div>
+                            <span className="hour-label">End (IST):</span>
+                            <input 
+                              type="number" 
+                              min="1" 
+                              max="24" 
+                              value={slot.endHour ?? 24}
+                              onChange={(e) => {
+                                const copy = { ...timedSlots };
+                                copy.flipkart[idx].endHour = Number(e.target.value);
+                                setTimedSlots(copy);
+                              }}
+                            />
+                            <span className="hour-desc">{slot.endHour === 24 ? 'Midnight (24:00)' : `${slot.endHour}:00`}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="slots-save-row">
+                  <button 
+                    type="button" 
+                    className="save-slots-btn"
+                    disabled={savingTimedSlots}
+                    onClick={handleSaveTimedSlots}
+                  >
+                    {savingTimedSlots ? 'Saving Schedule...' : '💾 Save Event Slots Schedule'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Tiles Grid Gallery */}
           <div className="promo-tiles-gallery-container">
             <h3>Scraped Carousel Tiles ({promoCardsList.length} Available)</h3>
@@ -1133,6 +1439,10 @@ const Banners = ({ defaultTab = 'banners' }) => {
                       {card.imageUrl?.endsWith('.gif') && <span className="promo-tile-gif-badge">ANIMATED GIF</span>}
                       {isCardDead ? (
                         <span className="promo-tile-countdown-badge expired">⏰ Expired (Hidden)</span>
+                      ) : card.dailyWindow && card.dailyWindow.enabled ? (
+                        <span className="promo-tile-countdown-badge timed">🔁 Daily {card.dailyWindow.startHour}:00 - {card.dailyWindow.endHour}:00 IST</span>
+                      ) : card.startsAt && new Date(card.startsAt).getTime() > Date.now() ? (
+                        <span className="promo-tile-countdown-badge timed">⏳ Starts in {formatAdminTimeRemaining(card.startsAt)}</span>
                       ) : card.expiresAt ? (
                         <span className="promo-tile-countdown-badge timed">⏳ {formatAdminTimeRemaining(card.expiresAt)}</span>
                       ) : (
@@ -1162,9 +1472,17 @@ const Banners = ({ defaultTab = 'banners' }) => {
                             type="button"
                             className="promo-tile-btn timer-btn"
                             onClick={() => openTimerModal(card)}
-                            title="Set or modify expiration timer"
+                            title="Set or modify expiration timer and schedule"
                           >
-                            ⏱️ Timer
+                            ⏱️ Timing
+                          </button>
+                          <button
+                            type="button"
+                            className="promo-tile-btn edit-btn"
+                            onClick={() => openEditTileModal(card)}
+                            title="Edit tile title, badge, links and media"
+                          >
+                            ✏️ Edit
                           </button>
                           <button
                             type="button"
@@ -1183,12 +1501,12 @@ const Banners = ({ defaultTab = 'banners' }) => {
             </div>
           </div>
 
-          {/* Promotional Tile Expiration Timer Modal */}
+          {/* Promotional Tile Expiration Timer & Schedule Modal */}
           {timerModalCard && (
             <div className="promo-timer-modal-overlay" onClick={() => setTimerModalCard(null)}>
-              <div className="promo-timer-modal" onClick={e => e.stopPropagation()}>
+              <div className="promo-timer-modal upgraded" onClick={e => e.stopPropagation()}>
                 <div className="promo-timer-modal-header">
-                  <h3>⏱️ Set Expiration Timer</h3>
+                  <h3>⏱️ Configure Tile Timings & Schedule</h3>
                   <button type="button" className="close-btn" onClick={() => setTimerModalCard(null)}>✕</button>
                 </div>
 
@@ -1205,45 +1523,152 @@ const Banners = ({ defaultTab = 'banners' }) => {
                       <div className="card-current-status">
                         Current Status: {timerModalCard.isActive === false || timerModalCard.isExpired 
                           ? <span className="status-text expired">⏰ Expired (Hidden from Storefront)</span> 
-                          : timerModalCard.expiresAt 
-                            ? <span className="status-text timed">⏳ Ends in {formatAdminTimeRemaining(timerModalCard.expiresAt)}</span>
-                            : <span className="status-text active">🟢 Always Active (No Timer)</span>}
+                          : timerModalCard.dailyWindow && timerModalCard.dailyWindow.enabled
+                            ? <span className="status-text timed">🔁 Daily {timerModalCard.dailyWindow.startHour}:00 - {timerModalCard.dailyWindow.endHour}:00 IST</span>
+                            : timerModalCard.expiresAt 
+                              ? <span className="status-text timed">⏳ Ends in {formatAdminTimeRemaining(timerModalCard.expiresAt)}</span>
+                              : <span className="status-text active">🟢 Always Active (No Timer)</span>}
                       </div>
                     </div>
                   </div>
 
-                  <div className="promo-timer-preset-group">
-                    <label className="section-label">Select Countdown Duration:</label>
-                    <div className="preset-buttons">
-                      {[
-                        { label: '⚡ 30 Mins', val: '30' },
-                        { label: '⏱️ 1 Hour', val: '60' },
-                        { label: '⏱️ 2 Hours', val: '120' },
-                        { label: '⏱️ 4 Hours', val: '240' },
-                        { label: '🌙 Ends Tonight', val: 'tonight' },
-                        { label: '📅 Custom Date/Time', val: 'custom' },
-                      ].map(p => (
-                        <button
-                          key={p.val}
-                          type="button"
-                          className={`preset-btn ${timerPreset === p.val ? 'active' : ''}`}
-                          onClick={() => setTimerPreset(p.val)}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Mode Selector Tabs */}
+                  <div className="timing-mode-tabs">
+                    <button 
+                      type="button"
+                      className={`timing-tab-btn ${timerMode === 'countdown' ? 'active' : ''}`}
+                      onClick={() => setTimerMode('countdown')}
+                    >
+                      ⚡ Quick Countdown
+                    </button>
+                    <button 
+                      type="button"
+                      className={`timing-tab-btn ${timerMode === 'daily' ? 'active' : ''}`}
+                      onClick={() => setTimerMode('daily')}
+                    >
+                      🔁 Daily Recurring Window
+                    </button>
+                    <button 
+                      type="button"
+                      className={`timing-tab-btn ${timerMode === 'schedule' ? 'active' : ''}`}
+                      onClick={() => setTimerMode('schedule')}
+                    >
+                      📅 Specific Date/Time
+                    </button>
+                  </div>
 
-                    {timerPreset === 'custom' && (
-                      <div className="custom-datetime-wrap">
-                        <label>Choose End Date & Time:</label>
-                        <input 
-                          type="datetime-local" 
-                          value={timerCustomDateTime}
-                          onChange={e => setTimerCustomDateTime(e.target.value)}
-                        />
+                  {timerMode === 'countdown' && (
+                    <div className="promo-timer-preset-group">
+                      <label className="section-label">Select Countdown Duration:</label>
+                      <div className="preset-buttons">
+                        {[
+                          { label: '⚡ 15 Mins', val: '15' },
+                          { label: '⚡ 30 Mins', val: '30' },
+                          { label: '⏱️ 1 Hour', val: '60' },
+                          { label: '⏱️ 2 Hours', val: '120' },
+                          { label: '⏱️ 4 Hours', val: '240' },
+                          { label: '⏱️ 8 Hours', val: '480' },
+                          { label: '🌙 Ends Tonight', val: 'tonight' },
+                          { label: '📅 Custom Date/Time', val: 'custom' },
+                        ].map(p => (
+                          <button
+                            key={p.val}
+                            type="button"
+                            className={`preset-btn ${timerPreset === p.val ? 'active' : ''}`}
+                            onClick={() => setTimerPreset(p.val)}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
                       </div>
-                    )}
+
+                      {timerPreset === 'custom' && (
+                        <div className="custom-datetime-wrap">
+                          <label>Choose End Date & Time:</label>
+                          <input 
+                            type="datetime-local" 
+                            value={timerCustomDateTime}
+                            onChange={e => setTimerCustomDateTime(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {timerMode === 'daily' && (
+                    <div className="daily-schedule-group">
+                      <div className="info-banner">
+                        <span className="info-icon">ℹ️</span>
+                        <span>This tile will automatically appear live on LowerDeal during this daily time window, and automatically hide outside it. Perfect for recurring events like 8 PM Deals!</span>
+                      </div>
+                      <div className="hours-config-grid">
+                        <div className="hour-input-block">
+                          <label>Start Hour (IST):</label>
+                          <input 
+                            type="number" 
+                            min="0" 
+                            max="23"
+                            value={dailyStartHour} 
+                            onChange={e => setDailyStartHour(e.target.value)} 
+                          />
+                          <span className="hour-helper-text">{dailyStartHour}:00 ({dailyStartHour >= 12 ? (dailyStartHour === 12 ? '12 PM' : `${dailyStartHour - 12} PM`) : `${dailyStartHour} AM`})</span>
+                        </div>
+                        <div className="hour-input-block">
+                          <label>End Hour (IST):</label>
+                          <input 
+                            type="number" 
+                            min="1" 
+                            max="24"
+                            value={dailyEndHour} 
+                            onChange={e => setDailyEndHour(e.target.value)} 
+                          />
+                          <span className="hour-helper-text">{dailyEndHour === 24 ? 'Midnight (12:00 AM)' : `${dailyEndHour}:00 (${dailyEndHour >= 12 ? `${dailyEndHour - 12} PM` : `${dailyEndHour} AM`})`}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {timerMode === 'schedule' && (
+                    <div className="specific-schedule-group">
+                      <div className="datetime-input-row">
+                        <div className="datetime-field">
+                          <label>Starts At (Optional, leave blank to start immediately):</label>
+                          <input 
+                            type="datetime-local" 
+                            value={timerStartsAt}
+                            onChange={e => setTimerStartsAt(e.target.value)}
+                          />
+                        </div>
+                        <div className="datetime-field">
+                          <label>Ends At (Expiration Date & Time):</label>
+                          <input 
+                            type="datetime-local" 
+                            value={timerExpiresAt}
+                            onChange={e => setTimerExpiresAt(e.target.value)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="timer-extra-options">
+                    <div className="extra-input-row">
+                      <label>Badge Text Override (Optional):</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. Live Now, Ends in 1h, Under ₹499"
+                        value={timerPriceBadge}
+                        onChange={e => setTimerPriceBadge(e.target.value)}
+                      />
+                    </div>
+                    <label className="checkbox-option">
+                      <input 
+                        type="checkbox" 
+                        checked={timerShowCountdown}
+                        onChange={e => setTimerShowCountdown(e.target.checked)}
+                      />
+                      <span>Show live ticking countdown badge on storefront tile</span>
+                    </label>
                   </div>
                 </div>
 
@@ -1255,7 +1680,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
                     onClick={() => handleApplyTimer('expire')}
                     title="Immediately expire this tile and hide it from the storefront"
                   >
-                    ⚡ Expire Now
+                    ⚡ Expire Now (Hide)
                   </button>
 
                   <button
@@ -1265,7 +1690,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
                     onClick={() => handleApplyTimer('clear')}
                     title="Remove timer and keep tile always visible"
                   >
-                    🔄 Clear Timer (Always Active)
+                    🟢 Clear Timer (Live Always)
                   </button>
 
                   <button
@@ -1274,9 +1699,97 @@ const Banners = ({ defaultTab = 'banners' }) => {
                     disabled={timerActionLoading}
                     onClick={() => handleApplyTimer('set')}
                   >
-                    {timerActionLoading ? 'Saving...' : '💾 Apply Timer'}
+                    {timerActionLoading ? 'Saving...' : '💾 Save Timings & Schedule'}
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Edit Tile Details Modal */}
+          {editTileCard && (
+            <div className="promo-timer-modal-overlay" onClick={() => setEditTileCard(null)}>
+              <div className="promo-timer-modal upgraded" onClick={e => e.stopPropagation()}>
+                <div className="promo-timer-modal-header">
+                  <h3>✏️ Edit Carousel Tile #{editTileCard.id}</h3>
+                  <button type="button" className="close-btn" onClick={() => setEditTileCard(null)}>✕</button>
+                </div>
+                <form onSubmit={handleSaveTileEdit} className="tile-edit-form">
+                  <div className="promo-timer-modal-body">
+                    <div className="form-group">
+                      <label>Title:</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={editTileForm.title}
+                        onChange={e => setEditTileForm({ ...editTileForm, title: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-row-2">
+                      <div className="form-group">
+                        <label>Price Badge:</label>
+                        <input 
+                          type="text" 
+                          placeholder="e.g. Under ₹499, Live Now"
+                          value={editTileForm.priceBadge}
+                          onChange={e => setEditTileForm({ ...editTileForm, priceBadge: e.target.value })}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label>Category:</label>
+                        <input 
+                          type="text" 
+                          value={editTileForm.category}
+                          onChange={e => setEditTileForm({ ...editTileForm, category: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div className="form-group">
+                      <label>Tagline / Subtitle:</label>
+                      <input 
+                        type="text" 
+                        value={editTileForm.tagline}
+                        onChange={e => setEditTileForm({ ...editTileForm, tagline: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Click Redirect URL (Amazon Link):</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={editTileForm.clickRedirectUrl}
+                        onChange={e => setEditTileForm({ ...editTileForm, clickRedirectUrl: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Image or GIF Asset URL:</label>
+                      <input 
+                        type="text" 
+                        required
+                        value={editTileForm.imageUrl}
+                        onChange={e => setEditTileForm({ ...editTileForm, imageUrl: e.target.value })}
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label className="checkbox-option">
+                        <input 
+                          type="checkbox" 
+                          checked={editTileForm.isActive}
+                          onChange={e => setEditTileForm({ ...editTileForm, isActive: e.target.checked })}
+                        />
+                        <span>Active on LowerDeal Storefront</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div className="promo-timer-modal-footer">
+                    <button type="button" className="btn-secondary" onClick={() => setEditTileCard(null)}>
+                      Cancel
+                    </button>
+                    <button type="submit" className="btn-primary" disabled={editTileSaving}>
+                      {editTileSaving ? 'Saving...' : '💾 Save Tile Details'}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
           )}

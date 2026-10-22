@@ -244,6 +244,78 @@ async function savePromoCardsToStore(cards) {
  * Query param ?includeExpired=true or ?all=true returns all cards including expired ones (for admin).
  * Default returns only active, unexpired cards (for storefront).
  */
+
+/**
+ * GET /api/banners/timed-slots
+ * Return configurable platform timed event slots
+ */
+router.get('/timed-slots', async (req, res) => {
+  try {
+    let slots = null;
+    if (admin.apps.length > 0) {
+      try {
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 1500));
+        const snap = await Promise.race([
+          admin.database().ref('promo_timed_slots').once('value'),
+          timeoutPromise
+        ]);
+        slots = snap.val();
+      } catch (fbErr) {
+        // fallback
+      }
+    }
+    if (!slots) {
+      const jsonPath = path.join(__dirname, '../../../database/promo_timed_slots.json');
+      if (fs.existsSync(jsonPath)) {
+        slots = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      }
+    }
+    if (!slots) {
+      slots = {
+        amazon: [
+          { slot: '3pm', label: '3 PM Picks', startHour: 15, endHour: 18, enabled: true },
+          { slot: '8pm', label: '8 PM Deals', startHour: 20, endHour: 24, enabled: true }
+        ],
+        flipkart: [
+          { slot: '5pm', label: '5 PM Deals', startHour: 17, endHour: 20, enabled: true },
+          { slot: '9pm', label: '9 PM Deals', startHour: 21, endHour: 24, enabled: true }
+        ]
+      };
+    }
+    res.json({ success: true, data: slots });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * PUT /api/banners/timed-slots
+ * Save configurable platform timed event slots to JSON and Firebase RTDB
+ */
+router.put('/timed-slots', async (req, res) => {
+  try {
+    const slots = req.body;
+    if (!slots || typeof slots !== 'object') {
+      return res.status(400).json({ success: false, error: 'Invalid slots object' });
+    }
+    const jsonPath = path.join(__dirname, '../../../database/promo_timed_slots.json');
+    fs.writeFileSync(jsonPath, JSON.stringify(slots, null, 2), 'utf8');
+
+    if (admin.apps.length > 0) {
+      try {
+        await admin.database().ref('promo_timed_slots').set(slots);
+        logger.info('Saved updated promo_timed_slots to Firebase RTDB');
+      } catch (fbErr) {
+        logger.warn('Could not save promo_timed_slots to Firebase RTDB:', { error: fbErr.message });
+      }
+    }
+
+    res.json({ success: true, message: 'Platform timed slots updated successfully', data: slots });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.get('/promo-cards', async (req, res) => {
   try {
     const includeExpired = req.query.includeExpired === 'true' || req.query.all === 'true';
@@ -343,6 +415,38 @@ async function handleSetPromoCardTimer(req, res) {
       }
     }
 
+    
+    if (startsAt !== undefined) {
+      if (startsAt) {
+        const parsedStarts = new Date(startsAt);
+        if (!isNaN(parsedStarts.getTime())) {
+          card.startsAt = parsedStarts.toISOString();
+          card.startTime = card.startsAt;
+        }
+      } else {
+        delete card.startsAt;
+        delete card.startTime;
+      }
+    }
+
+    if (dailyWindow !== undefined) {
+      if (dailyWindow && dailyWindow.enabled) {
+        card.dailyWindow = {
+          enabled: true,
+          startHour: Number(dailyWindow.startHour ?? 20),
+          endHour: Number(dailyWindow.endHour ?? 24),
+          label: dailyWindow.label || `${dailyWindow.startHour || 20}:00 - ${dailyWindow.endHour || 24}:00 IST`
+        };
+      } else {
+        delete card.dailyWindow;
+      }
+    }
+
+    if (title !== undefined) card.title = String(title).trim();
+    if (priceBadge !== undefined) card.priceBadge = String(priceBadge).trim();
+    if (tagline !== undefined) card.tagline = String(tagline).trim();
+    if (clickRedirectUrl !== undefined) card.clickRedirectUrl = String(clickRedirectUrl).trim();
+
     if (showCountdown !== undefined) {
       card.showCountdown = Boolean(showCountdown);
     }
@@ -365,6 +469,37 @@ async function handleSetPromoCardTimer(req, res) {
  * PUT & POST /api/banners/promo-cards/:id/timer
  * Set, extend, or clear countdown expiration timer on a promo card
  */
+
+/**
+ * PUT /api/banners/promo-cards/:id
+ * Update promo card details (title, priceBadge, tagline, clickRedirectUrl, imageUrl, isActive)
+ */
+router.put('/promo-cards/:id', async (req, res) => {
+  try {
+    const cardId = req.params.id;
+    const { cards } = await getPromoCardsFromStore();
+    const cardIndex = cards.findIndex(c => c.id === cardId);
+    if (cardIndex === -1) {
+      return res.status(404).json({ success: false, error: `Promo card with id '${cardId}' not found` });
+    }
+
+    const card = cards[cardIndex];
+    const allowedFields = ['title', 'priceBadge', 'tagline', 'imageUrl', 'clickRedirectUrl', 'category', 'platform', 'isActive', 'order', 'dailyWindow', 'startsAt', 'expiresAt', 'showCountdown'];
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        card[field] = req.body[field];
+      }
+    }
+    card.lastUpdated = new Date().toISOString();
+    await savePromoCardsToStore(cards);
+
+    res.json({ success: true, message: `Promo card #${cardId} updated`, data: card });
+  } catch (error) {
+    logger.error('Error updating promo card', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 router.put('/promo-cards/:id/timer', handleSetPromoCardTimer);
 router.post('/promo-cards/:id/timer', handleSetPromoCardTimer);
 

@@ -13,6 +13,7 @@
  */
 
 const path = require('path');
+const fs = require('fs');
 
 /**
  * Platform-Specific Timed Event Slots Configuration
@@ -20,6 +21,39 @@ const path = require('path');
  *  - Amazon: 3PM Handpicked Deals vs 8PM Deals Live Now
  *  - Flipkart: 5PM Deals vs 9PM Deals
  */
+
+/**
+ * Loads dynamic platform timed slots from database/promo_timed_slots.json
+ * with fallback to default PLATFORM_TIMED_SLOTS.
+ */
+function getTimedSlotsConfig() {
+  const customPath = path.join(__dirname, '../database/promo_timed_slots.json');
+  if (fs.existsSync(customPath)) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(customPath, 'utf8'));
+      const merged = {};
+      for (const [platform, defaultSlots] of Object.entries(PLATFORM_TIMED_SLOTS)) {
+        merged[platform] = defaultSlots.map(ds => {
+          const copy = { ...ds };
+          const customList = raw[platform] || [];
+          const custom = customList.find(c => c.slot === ds.slot);
+          if (custom) {
+            copy.startHour = Number(custom.startHour);
+            copy.endHour = Number(custom.endHour);
+            copy.enabled = custom.enabled !== false;
+            if (custom.label) copy.label = custom.label;
+          }
+          return copy;
+        });
+      }
+      return merged;
+    } catch (e) {
+      // fallback
+    }
+  }
+  return PLATFORM_TIMED_SLOTS;
+}
+
 const PLATFORM_TIMED_SLOTS = {
   amazon: [
     {
@@ -236,9 +270,11 @@ function applyPlatformTimedSlotRules(cardsList = [], options = { filterForDispla
   const istDate = new Date(utc + (3600000 * 5.5)); // IST is UTC + 5:30
   const currentHourIST = istDate.getHours();
 
-  for (const [platform, slots] of Object.entries(PLATFORM_TIMED_SLOTS)) {
+  const activeTimedSlots = (options && options.customSlots) || getTimedSlotsConfig();
+  for (const [platform, slots] of Object.entries(activeTimedSlots)) {
     // 1. Check if any slot has completed or expired (outside active event hours or explicitly completed)
     for (const slot of slots) {
+      if (slot.enabled === false) continue;
       const startH = slot.startHour !== undefined ? slot.startHour : slot.hour;
       const endH = slot.endHour !== undefined ? slot.endHour : (startH + 4);
       const isPastSlotWindow = (currentHourIST < startH || currentHourIST >= endH);
@@ -290,6 +326,22 @@ function applyPlatformTimedSlotRules(cardsList = [], options = { filterForDispla
 
   // 3. Generic Tile Expiration Timers
   for (const card of cardsList) {
+    // Check daily recurring window (e.g. 20:00 to 24:00 IST)
+    if (card.dailyWindow && card.dailyWindow.enabled) {
+      const sH = Number(card.dailyWindow.startHour ?? 20);
+      const eH = Number(card.dailyWindow.endHour ?? 24);
+      const isInside = (currentHourIST >= sH && currentHourIST < eH);
+      if (!isInside) {
+        card.isActive = false;
+        card.isExpired = true;
+        card.disabledReason = card.disabledReason || `Active daily between ${sH}:00 - ${eH}:00 IST`;
+      } else if (!card.expiresAt) {
+        card.isActive = true;
+        card.isExpired = false;
+        delete card.disabledReason;
+      }
+    }
+
     if (card.expiresAt) {
       const expireMs = new Date(card.expiresAt).getTime();
       if (!isNaN(expireMs)) {
@@ -323,6 +375,7 @@ function applyPlatformTimedSlotRules(cardsList = [], options = { filterForDispla
 
 module.exports = {
   PLATFORM_TIMED_SLOTS,
+  getTimedSlotsConfig,
   normalizeRedirectUrl,
   normalizeImageUrl,
   isSamePromoCard,

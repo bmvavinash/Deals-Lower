@@ -1,0 +1,34 @@
+{
+  "amazon": [
+    {
+      "slot": "3pm",
+      "label": "3 PM Picks",
+      "startHour": 15,
+      "endHour": 18,
+      "enabled": true
+    },
+    {
+      "slot": "8pm",
+      "label": "8 PM Deals",
+      "startHour": 20,
+      "endHour": 24,
+      "enabled": true
+    }
+  ],
+  "flipkart": [
+    {
+      "slot": "5pm",
+      "label": "5 PM Deals",
+      "startHour": 17,
+      "endHour": 20,
+      "enabled": true
+    },
+    {
+      "slot": "9pm",
+      "label": "9 PM Deals",
+      "startHour": 21,
+      "endHour": 24,
+      "enabled": true
+    }
+  ]
+}
