@@ -34,7 +34,7 @@ const dedupeBanners = (banners = []) => {
 const Banners = ({ defaultTab = 'banners' }) => {
   const location = useLocation();
   const [activeTab, setActiveTab] = useState(
-    location.pathname === '/promo-tiles' ? 'tiles' : defaultTab
+    location.pathname === '/promo-tiles' || new URLSearchParams(location.search).get('tab') === 'tiles' ? 'tiles' : defaultTab
   );
   const [promoCardsSource, setPromoCardsSource] = useState('Firebase RTDB');
   const [banners, setBanners] = useState([]);
@@ -82,6 +82,10 @@ const Banners = ({ defaultTab = 'banners' }) => {
   const [promoCardsCount, setPromoCardsCount] = useState(null);
   const [promoCardsList, setPromoCardsList] = useState([]);
   const [showPromoCardsModal, setShowPromoCardsModal] = useState(false);
+  const [timerModalCard, setTimerModalCard] = useState(null);
+  const [timerPreset, setTimerPreset] = useState('60');
+  const [timerCustomDateTime, setTimerCustomDateTime] = useState('');
+  const [timerActionLoading, setTimerActionLoading] = useState(false);
 
   useEffect(() => {
     fetchBannerSource();
@@ -398,15 +402,116 @@ const Banners = ({ defaultTab = 'banners' }) => {
 
   const fetchPromoCards = async () => {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards`);
+      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards?includeExpired=true`);
       const result = await response.json();
       if (result.success && Array.isArray(result.data)) {
         setPromoCardsList(result.data);
-        setPromoCardsCount(result.data.length);
+        setPromoCardsCount(result.data.filter(c => c.isActive !== false && !c.isExpired).length);
+        if (result.source) {
+          setPromoCardsSource(result.source === 'firebase' ? 'Firebase RTDB' : 'Local JSON File');
+        }
       }
     } catch (err) {
       console.warn('Failed to fetch promotional cards:', err);
     }
+  };
+
+  const openTimerModal = (card) => {
+    setTimerModalCard(card);
+    setTimerPreset('60');
+    if (card.expiresAt) {
+      const d = new Date(card.expiresAt);
+      const tzOffset = d.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 16);
+      setTimerCustomDateTime(localISOTime);
+    } else {
+      const d = new Date(Date.now() + 2 * 3600000);
+      const tzOffset = d.getTimezoneOffset() * 60000;
+      const localISOTime = (new Date(d.getTime() - tzOffset)).toISOString().slice(0, 16);
+      setTimerCustomDateTime(localISOTime);
+    }
+  };
+
+  const handleApplyTimer = async (actionType = 'set') => {
+    if (!timerModalCard) return;
+    setTimerActionLoading(true);
+    try {
+      let body = {};
+      if (actionType === 'expire') {
+        body = { action: 'expire' };
+      } else if (actionType === 'clear') {
+        body = { action: 'clear' };
+      } else {
+        if (timerPreset === 'custom') {
+          if (!timerCustomDateTime) {
+            alert('Please select a valid date and time');
+            setTimerActionLoading(false);
+            return;
+          }
+          body = { expiresAt: new Date(timerCustomDateTime).toISOString() };
+        } else if (timerPreset === 'tonight') {
+          const tonight = new Date();
+          tonight.setHours(23, 59, 59, 999);
+          body = { expiresAt: tonight.toISOString() };
+        } else {
+          body = { durationMinutes: Number(timerPreset) };
+        }
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards/${timerModalCard.id}/timer`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const result = await response.json();
+      if (result.success) {
+        setPromoCardStatus(`✅ ${result.message}`);
+        setTimeout(() => setPromoCardStatus(null), 4000);
+        await fetchPromoCards();
+        setTimerModalCard(null);
+      } else {
+        alert(result.error || 'Failed to update timer');
+      }
+    } catch (err) {
+      alert(`Error updating timer: ${err.message}`);
+    } finally {
+      setTimerActionLoading(false);
+    }
+  };
+
+  const handleQuickToggleTile = async (card) => {
+    try {
+      const isCurrentlyActive = card.isActive !== false && !card.isExpired;
+      const action = isCurrentlyActive ? 'expire' : 'clear';
+      const response = await fetch(`${API_BASE_URL}/api/banners/promo-cards/${card.id}/timer`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      const result = await response.json();
+      if (result.success) {
+        setPromoCardStatus(`✅ ${isCurrentlyActive ? 'Expired & hidden tile' : 'Reactivated tile'}: #${card.id}`);
+        setTimeout(() => setPromoCardStatus(null), 4000);
+        await fetchPromoCards();
+      }
+    } catch (err) {
+      console.error('Quick toggle error:', err);
+    }
+  };
+
+  const formatAdminTimeRemaining = (expiresAt) => {
+    if (!expiresAt) return null;
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    if (diff <= 0) return 'Expired';
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    if (hours > 24) {
+      return `${Math.floor(hours / 24)}d ${hours % 24}h remaining`;
+    }
+    if (hours > 0) {
+      return `${hours}h ${minutes}m remaining`;
+    }
+    return `${minutes}m remaining`;
   };
 
   const handleTriggerPromoCardsScrape = async () => {
@@ -1014,40 +1119,167 @@ const Banners = ({ defaultTab = 'banners' }) => {
           <div className="promo-tiles-gallery-container">
             <h3>Scraped Carousel Tiles ({promoCardsList.length} Available)</h3>
             <div className="promo-tiles-gallery-grid">
-              {promoCardsList.map((card, idx) => (
-                <div key={card.id || idx} className="promo-tile-full-card">
-                  <div className="promo-tile-thumb-wrap">
-                    <img 
-                      src={card.imageUrl} 
-                      alt={card.title} 
-                      onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
-                    />
-                    {card.priceBadge && <span className="promo-tile-badge">{card.priceBadge}</span>}
-                    {card.imageUrl?.endsWith('.gif') && <span className="promo-tile-gif-badge">ANIMATED GIF</span>}
-                  </div>
-                  <div className="promo-tile-body">
-                    <div className="promo-tile-meta">
-                      <span className="promo-tile-category">{card.category || 'Festive Deals'}</span>
-                      <span className="promo-tile-id">#{card.id}</span>
+              {promoCardsList.map((card, idx) => {
+                const isCardDead = card.isActive === false || card.isExpired;
+                return (
+                  <div key={card.id || idx} className={`promo-tile-full-card ${isCardDead ? 'card-expired' : ''}`}>
+                    <div className="promo-tile-thumb-wrap">
+                      <img 
+                        src={card.imageUrl} 
+                        alt={card.title} 
+                        onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
+                      />
+                      {card.priceBadge && <span className="promo-tile-badge">{card.priceBadge}</span>}
+                      {card.imageUrl?.endsWith('.gif') && <span className="promo-tile-gif-badge">ANIMATED GIF</span>}
+                      {isCardDead ? (
+                        <span className="promo-tile-countdown-badge expired">⏰ Expired (Hidden)</span>
+                      ) : card.expiresAt ? (
+                        <span className="promo-tile-countdown-badge timed">⏳ {formatAdminTimeRemaining(card.expiresAt)}</span>
+                      ) : (
+                        <span className="promo-tile-countdown-badge active">🟢 Live Always</span>
+                      )}
                     </div>
-                    <h4 className="promo-tile-title" title={card.title}>{card.title}</h4>
-                    {card.tagline && <p className="promo-tile-tagline">{card.tagline}</p>}
-                    <div className="promo-tile-footer">
-                      <a 
-                        href={card.clickRedirectUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="promo-tile-open-btn"
-                        title={card.clickRedirectUrl}
-                      >
-                        🔗 Open on Amazon ↗
-                      </a>
+                    <div className="promo-tile-body">
+                      <div className="promo-tile-meta">
+                        <span className="promo-tile-category">{card.category || 'Festive Deals'}</span>
+                        <span className="promo-tile-id">#{card.id}</span>
+                      </div>
+                      <h4 className="promo-tile-title" title={card.title}>{card.title}</h4>
+                      {card.tagline && <p className="promo-tile-tagline">{card.tagline}</p>}
+                      {card.disabledReason && <p className="promo-tile-reason">Reason: {card.disabledReason}</p>}
+                      <div className="promo-tile-footer">
+                        <a 
+                          href={card.clickRedirectUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="promo-tile-open-btn"
+                          title={card.clickRedirectUrl}
+                        >
+                          🔗 Amazon ↗
+                        </a>
+                        <div className="promo-tile-actions">
+                          <button
+                            type="button"
+                            className="promo-tile-btn timer-btn"
+                            onClick={() => openTimerModal(card)}
+                            title="Set or modify expiration timer"
+                          >
+                            ⏱️ Timer
+                          </button>
+                          <button
+                            type="button"
+                            className={`promo-tile-btn toggle-btn ${!isCardDead ? 'expire' : 'activate'}`}
+                            onClick={() => handleQuickToggleTile(card)}
+                            title={!isCardDead ? 'Expire and hide tile from storefront' : 'Reactivate tile'}
+                          >
+                            {!isCardDead ? '⚡ Expire' : '🔄 Reactivate'}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
+
+          {/* Promotional Tile Expiration Timer Modal */}
+          {timerModalCard && (
+            <div className="promo-timer-modal-overlay" onClick={() => setTimerModalCard(null)}>
+              <div className="promo-timer-modal" onClick={e => e.stopPropagation()}>
+                <div className="promo-timer-modal-header">
+                  <h3>⏱️ Set Expiration Timer</h3>
+                  <button type="button" className="close-btn" onClick={() => setTimerModalCard(null)}>✕</button>
+                </div>
+
+                <div className="promo-timer-modal-body">
+                  <div className="promo-timer-card-preview">
+                    <img 
+                      src={timerModalCard.imageUrl} 
+                      alt={timerModalCard.title} 
+                      onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
+                    />
+                    <div>
+                      <strong>{timerModalCard.title}</strong>
+                      <span className="card-id-text">ID: #{timerModalCard.id}</span>
+                      <div className="card-current-status">
+                        Current Status: {timerModalCard.isActive === false || timerModalCard.isExpired 
+                          ? <span className="status-text expired">⏰ Expired (Hidden from Storefront)</span> 
+                          : timerModalCard.expiresAt 
+                            ? <span className="status-text timed">⏳ Ends in {formatAdminTimeRemaining(timerModalCard.expiresAt)}</span>
+                            : <span className="status-text active">🟢 Always Active (No Timer)</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="promo-timer-preset-group">
+                    <label className="section-label">Select Countdown Duration:</label>
+                    <div className="preset-buttons">
+                      {[
+                        { label: '⚡ 30 Mins', val: '30' },
+                        { label: '⏱️ 1 Hour', val: '60' },
+                        { label: '⏱️ 2 Hours', val: '120' },
+                        { label: '⏱️ 4 Hours', val: '240' },
+                        { label: '🌙 Ends Tonight', val: 'tonight' },
+                        { label: '📅 Custom Date/Time', val: 'custom' },
+                      ].map(p => (
+                        <button
+                          key={p.val}
+                          type="button"
+                          className={`preset-btn ${timerPreset === p.val ? 'active' : ''}`}
+                          onClick={() => setTimerPreset(p.val)}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {timerPreset === 'custom' && (
+                      <div className="custom-datetime-wrap">
+                        <label>Choose End Date & Time:</label>
+                        <input 
+                          type="datetime-local" 
+                          value={timerCustomDateTime}
+                          onChange={e => setTimerCustomDateTime(e.target.value)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="promo-timer-modal-footer">
+                  <button
+                    type="button"
+                    className="btn-danger"
+                    disabled={timerActionLoading}
+                    onClick={() => handleApplyTimer('expire')}
+                    title="Immediately expire this tile and hide it from the storefront"
+                  >
+                    ⚡ Expire Now
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    disabled={timerActionLoading}
+                    onClick={() => handleApplyTimer('clear')}
+                    title="Remove timer and keep tile always visible"
+                  >
+                    🔄 Clear Timer (Always Active)
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    disabled={timerActionLoading}
+                    onClick={() => handleApplyTimer('set')}
+                  >
+                    {timerActionLoading ? 'Saving...' : '💾 Apply Timer'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : (
         <div className="banners-view-content">

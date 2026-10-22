@@ -288,8 +288,35 @@ function applyPlatformTimedSlotRules(cardsList = [], options = { filterForDispla
     }
   }
 
+  // 3. Generic Tile Expiration Timers
+  for (const card of cardsList) {
+    if (card.expiresAt) {
+      const expireMs = new Date(card.expiresAt).getTime();
+      if (!isNaN(expireMs)) {
+        if (Date.now() >= expireMs) {
+          card.isActive = false;
+          card.isExpired = true;
+          card.disabledReason = card.disabledReason || 'Tile timer expired';
+          card.remainingMs = 0;
+        } else {
+          card.isExpired = false;
+          card.remainingMs = Math.max(0, expireMs - Date.now());
+        }
+      }
+    }
+
+    if (card.startTime) {
+      const startMs = new Date(card.startTime).getTime();
+      if (!isNaN(startMs) && Date.now() < startMs) {
+        card.isActive = false;
+        card.isUpcoming = true;
+        card.disabledReason = card.disabledReason || 'Scheduled for future';
+      }
+    }
+  }
+
   if (options.filterForDisplay) {
-    return cardsList.filter(card => card.isActive !== false && !card.isCompleted && !card.isExpired);
+    return cardsList.filter(card => card.isActive !== false && !card.isCompleted && !card.isExpired && !card.isUpcoming);
   }
   return cardsList;
 }

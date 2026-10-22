@@ -3,6 +3,7 @@ import MainLayout from './components/Layout/MainLayout';
 import Dashboard from './pages/Dashboard';
 import DealsPage from './pages/DealsPage';
 import BannersPage from './pages/BannersPage';
+import Banners from './pages/Banners';
 import MatchingConfigPage from './pages/MatchingConfigPage';
 import StocksPage from './pages/StocksPage';
 import LogsPage from './pages/LogsPage';

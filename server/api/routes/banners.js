@@ -190,37 +190,76 @@ router.get('/config', async (req, res, next) => {
 });
 
 /**
+ * Helper: Retrieve promo cards from Firebase RTDB or local fallback
+ */
+async function getPromoCardsFromStore() {
+  if (admin.apps.length > 0) {
+    try {
+      const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase RTDB timeout')), 2000));
+      const snapshot = await Promise.race([
+        admin.database().ref('amazon_promo_cards').once('value'),
+        timeoutPromise
+      ]);
+      const fbCards = snapshot.val();
+      if (fbCards && Array.isArray(fbCards) && fbCards.length > 0) {
+        return { cards: fbCards, source: 'firebase' };
+      }
+    } catch (fbErr) {
+      logger.warn('Could not read promo cards from Firebase RTDB:', { error: fbErr.message });
+    }
+  }
+
+  const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
+  if (fs.existsSync(jsonPath)) {
+    try {
+      const cards = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+      return { cards: Array.isArray(cards) ? cards : [], source: 'local_file' };
+    } catch (e) {
+      logger.error('Failed to parse local amazon_promo_cards.json:', { error: e.message });
+    }
+  }
+  return { cards: [], source: 'none' };
+}
+
+/**
+ * Helper: Persist promo cards to local JSON and Firebase RTDB
+ */
+async function savePromoCardsToStore(cards) {
+  const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
+  fs.writeFileSync(jsonPath, JSON.stringify(cards, null, 2), 'utf8');
+
+  if (admin.apps.length > 0) {
+    try {
+      await admin.database().ref('amazon_promo_cards').set(cards);
+      logger.info('Saved updated promo cards to Firebase RTDB');
+    } catch (fbErr) {
+      logger.warn('Could not save promo cards to Firebase RTDB:', { error: fbErr.message });
+    }
+  }
+}
+
+/**
  * GET /api/banners/promo-cards
- * Returns latest scraped Amazon promotional cards (reads from Firebase RTDB or local JSON fallback)
+ * Returns promotional cards.
+ * Query param ?includeExpired=true or ?all=true returns all cards including expired ones (for admin).
+ * Default returns only active, unexpired cards (for storefront).
  */
 router.get('/promo-cards', async (req, res) => {
   try {
-    // 1. Try Firebase RTDB first if available
-    if (admin.apps.length > 0) {
-      try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase RTDB timeout')), 2000));
-        const snapshot = await Promise.race([
-          admin.database().ref('amazon_promo_cards').once('value'),
-          timeoutPromise
-        ]);
-        const fbCards = snapshot.val();
-        if (fbCards && Array.isArray(fbCards) && fbCards.length > 0) {
-          const cleanCards = applyPlatformTimedSlotRules(deduplicatePromoCards(fbCards), { filterForDisplay: true });
-          return res.json({ success: true, count: cleanCards.length, data: cleanCards, source: 'firebase' });
-        }
-      } catch (fbErr) {
-        logger.warn('Could not read promo cards from Firebase RTDB:', { error: fbErr.message });
-      }
-    }
+    const includeExpired = req.query.includeExpired === 'true' || req.query.all === 'true';
+    const { cards, source } = await getPromoCardsFromStore();
 
-    // 2. Fallback to local JSON file
-    const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
-    if (fs.existsSync(jsonPath)) {
-      const cards = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-      const cleanCards = applyPlatformTimedSlotRules(deduplicatePromoCards(cards), { filterForDisplay: true });
-      return res.json({ success: true, count: cleanCards.length, data: cleanCards, source: 'local_file' });
-    }
-    res.json({ success: true, count: 0, data: [] });
+    const cleanCards = applyPlatformTimedSlotRules(deduplicatePromoCards(cards), { 
+      filterForDisplay: !includeExpired 
+    });
+
+    res.json({ 
+      success: true, 
+      count: cleanCards.length, 
+      total: cards.length,
+      data: cleanCards, 
+      source 
+    });
   } catch (error) {
     logger.error('Error getting promo cards', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
@@ -241,6 +280,130 @@ router.post('/promo-cards/scrape', async (req, res) => {
     res.json({ success: true, message: 'Amazon promotional card scraping started in background' });
   } catch (error) {
     logger.error('Error starting promo card scrape', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * Handler for setting, updating, or clearing timer on a promotional tile
+ */
+async function handleSetPromoCardTimer(req, res) {
+  try {
+    const cardId = req.params.id;
+    const { expiresAt, durationMinutes, showCountdown, action } = req.body;
+    const { cards } = await getPromoCardsFromStore();
+
+    const cardIndex = cards.findIndex(c => c.id === cardId);
+    if (cardIndex === -1) {
+      return res.status(404).json({ success: false, error: `Promo card with id '${cardId}' not found` });
+    }
+
+    const card = cards[cardIndex];
+    const now = Date.now();
+
+    if (action === 'expire') {
+      // Immediately expire and hide the card
+      card.isActive = false;
+      card.isExpired = true;
+      card.isCompleted = true;
+      card.expiresAt = new Date().toISOString();
+      card.disabledReason = 'Manually expired by admin';
+    } else if (action === 'clear' || expiresAt === null) {
+      // Clear timer and keep card permanently active
+      delete card.expiresAt;
+      delete card.remainingMs;
+      delete card.disabledReason;
+      card.isActive = true;
+      card.isExpired = false;
+      card.isCompleted = false;
+    } else if (durationMinutes && Number(durationMinutes) > 0) {
+      // Set expiration relative to now (e.g. 60 minutes)
+      const expireTime = new Date(now + Number(durationMinutes) * 60 * 1000);
+      card.expiresAt = expireTime.toISOString();
+      card.isActive = true;
+      card.isExpired = false;
+      card.isCompleted = false;
+      delete card.disabledReason;
+    } else if (expiresAt) {
+      // Set specific absolute ISO expiration
+      const parsedExpires = new Date(expiresAt);
+      if (isNaN(parsedExpires.getTime())) {
+        return res.status(400).json({ success: false, error: 'Invalid expiresAt date string' });
+      }
+      card.expiresAt = parsedExpires.toISOString();
+      if (parsedExpires.getTime() > now) {
+        card.isActive = true;
+        card.isExpired = false;
+        card.isCompleted = false;
+        delete card.disabledReason;
+      } else {
+        card.isActive = false;
+        card.isExpired = true;
+        card.disabledReason = 'Timer expired';
+      }
+    }
+
+    if (showCountdown !== undefined) {
+      card.showCountdown = Boolean(showCountdown);
+    }
+    card.lastUpdated = new Date().toISOString();
+
+    await savePromoCardsToStore(cards);
+
+    res.json({
+      success: true,
+      message: `Timer updated for card #${cardId}`,
+      data: card
+    });
+  } catch (error) {
+    logger.error('Error setting promo card timer', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
+ * PUT & POST /api/banners/promo-cards/:id/timer
+ * Set, extend, or clear countdown expiration timer on a promo card
+ */
+router.put('/promo-cards/:id/timer', handleSetPromoCardTimer);
+router.post('/promo-cards/:id/timer', handleSetPromoCardTimer);
+
+/**
+ * POST /api/banners/promo-cards/:id/toggle
+ * Quickly toggle promo card active / inactive status
+ */
+router.post('/promo-cards/:id/toggle', async (req, res) => {
+  try {
+    const cardId = req.params.id;
+    const { cards } = await getPromoCardsFromStore();
+
+    const cardIndex = cards.findIndex(c => c.id === cardId);
+    if (cardIndex === -1) {
+      return res.status(404).json({ success: false, error: `Promo card with id '${cardId}' not found` });
+    }
+
+    const card = cards[cardIndex];
+    card.isActive = !card.isActive;
+    if (!card.isActive) {
+      card.isCompleted = true;
+      card.isExpired = true;
+      card.disabledReason = 'Manually toggled inactive';
+    } else {
+      card.isCompleted = false;
+      card.isExpired = false;
+      delete card.disabledReason;
+    }
+    card.lastUpdated = new Date().toISOString();
+
+    await savePromoCardsToStore(cards);
+
+    res.json({
+      success: true,
+      message: `Promo card #${cardId} is now ${card.isActive ? 'Active' : 'Inactive'}`,
+      data: card
+    });
+  } catch (error) {
+    logger.error('Error toggling promo card status', { error: error.message });
     res.status(500).json({ success: false, error: error.message });
   }
 });
