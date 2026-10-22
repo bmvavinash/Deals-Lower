@@ -122,6 +122,39 @@ const Banners = ({ defaultTab = 'banners' }) => {
   });
   const [editTileSaving, setEditTileSaving] = useState(false);
 
+  // Full-Height Detail Lightbox Modal State & Keyboard Navigation
+  const [selectedTileIndex, setSelectedTileIndex] = useState(null);
+
+  // Keyboard arrow navigation (ArrowLeft, ArrowRight, Escape) for Tile Detail Modal
+  useEffect(() => {
+    if (selectedTileIndex === null) return;
+
+    const handleKeyDown = (e) => {
+      // Don't intercept when user is typing in form inputs
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        setSelectedTileIndex(prev => {
+          if (prev === null || promoCardsList.length === 0) return null;
+          return prev > 0 ? prev - 1 : promoCardsList.length - 1;
+        });
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        setSelectedTileIndex(prev => {
+          if (prev === null || promoCardsList.length === 0) return null;
+          return prev < promoCardsList.length - 1 ? prev + 1 : 0;
+        });
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setSelectedTileIndex(null);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedTileIndex, promoCardsList.length]);
+
   useEffect(() => {
     fetchBannerSource();
     fetchStats();
@@ -1428,7 +1461,12 @@ const Banners = ({ defaultTab = 'banners' }) => {
               {promoCardsList.map((card, idx) => {
                 const isCardDead = card.isActive === false || card.isExpired;
                 return (
-                  <div key={card.id || idx} className={`promo-tile-full-card ${isCardDead ? 'card-expired' : ''}`}>
+                  <div 
+                    key={card.id || idx} 
+                    className={`promo-tile-full-card ${isCardDead ? 'card-expired' : ''}`}
+                    onClick={() => setSelectedTileIndex(idx)}
+                    title="Click to view full height details and navigate with keyboard arrows"
+                  >
                     <div className="promo-tile-thumb-wrap">
                       <img 
                         src={card.imageUrl} 
@@ -1464,6 +1502,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
                           rel="noopener noreferrer" 
                           className="promo-tile-open-btn"
                           title={card.clickRedirectUrl}
+                          onClick={e => e.stopPropagation()}
                         >
                           🔗 Amazon ↗
                         </a>
@@ -1471,7 +1510,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
                           <button
                             type="button"
                             className="promo-tile-btn timer-btn"
-                            onClick={() => openTimerModal(card)}
+                            onClick={(e) => { e.stopPropagation(); openTimerModal(card); }}
                             title="Set or modify expiration timer and schedule"
                           >
                             ⏱️ Timing
@@ -1479,7 +1518,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
                           <button
                             type="button"
                             className="promo-tile-btn edit-btn"
-                            onClick={() => openEditTileModal(card)}
+                            onClick={(e) => { e.stopPropagation(); openEditTileModal(card); }}
                             title="Edit tile title, badge, links and media"
                           >
                             ✏️ Edit
@@ -1487,7 +1526,7 @@ const Banners = ({ defaultTab = 'banners' }) => {
                           <button
                             type="button"
                             className={`promo-tile-btn toggle-btn ${!isCardDead ? 'expire' : 'activate'}`}
-                            onClick={() => handleQuickToggleTile(card)}
+                            onClick={(e) => { e.stopPropagation(); handleQuickToggleTile(card); }}
                             title={!isCardDead ? 'Expire and hide tile from storefront' : 'Reactivate tile'}
                           >
                             {!isCardDead ? '⚡ Expire' : '🔄 Reactivate'}
@@ -1500,6 +1539,194 @@ const Banners = ({ defaultTab = 'banners' }) => {
               })}
             </div>
           </div>
+
+          {/* Promotional Tile Full-Height Detail Lightbox Modal with Keyboard Navigation */}
+          {selectedTileIndex !== null && promoCardsList[selectedTileIndex] && (() => {
+            const currentTile = promoCardsList[selectedTileIndex];
+            const isTileDead = currentTile.isActive === false || currentTile.isExpired;
+
+            return (
+              <div 
+                className="promo-tile-detail-modal-overlay" 
+                onClick={() => setSelectedTileIndex(null)}
+              >
+                <div 
+                  className="promo-tile-detail-modal-container" 
+                  onClick={e => e.stopPropagation()}
+                >
+                  {/* Left / Prev Navigation Arrow */}
+                  <button
+                    type="button"
+                    className="promo-tile-lightbox-nav prev"
+                    onClick={() => setSelectedTileIndex(prev => prev > 0 ? prev - 1 : promoCardsList.length - 1)}
+                    title="Previous Tile (Left Arrow ←)"
+                    aria-label="Previous Tile"
+                  >
+                    &#10094;
+                  </button>
+
+                  {/* Modal Content Box */}
+                  <div className="promo-tile-detail-content">
+                    {/* Header */}
+                    <div className="promo-tile-detail-header">
+                      <div className="header-meta">
+                        <span className="tile-counter-badge">
+                          Tile {selectedTileIndex + 1} of {promoCardsList.length}
+                        </span>
+                        <span className="tile-category-pill">{currentTile.category || 'Festive Deals'}</span>
+                        <span className="tile-id-pill">#{currentTile.id}</span>
+                      </div>
+                      <button 
+                        type="button" 
+                        className="promo-tile-detail-close" 
+                        onClick={() => setSelectedTileIndex(null)}
+                        title="Close (Esc)"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    {/* 2-Column Body */}
+                    <div className="promo-tile-detail-body">
+                      {/* Left Column: Full-Height Poster Media */}
+                      <div className="promo-tile-detail-media-pane">
+                        <div className="promo-tile-detail-image-box">
+                          <img 
+                            src={currentTile.imageUrl} 
+                            alt={currentTile.title} 
+                            onError={(e) => { e.target.src = '/banners/card_scraped_kitchen.png'; }} 
+                          />
+                          {currentTile.priceBadge && (
+                            <span className="detail-price-badge">{currentTile.priceBadge}</span>
+                          )}
+                          {currentTile.imageUrl?.endsWith('.gif') && (
+                            <span className="detail-gif-badge">ANIMATED GIF</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Column: All Details & Timings */}
+                      <div className="promo-tile-detail-info-pane">
+                        <h2 className="detail-title">{currentTile.title}</h2>
+                        {currentTile.tagline && (
+                          <p className="detail-tagline">{currentTile.tagline}</p>
+                        )}
+
+                        {/* Status & Timing Box */}
+                        <div className="detail-status-card">
+                          <div className="status-row">
+                            <span className="label">Live Status:</span>
+                            {isTileDead ? (
+                              <span className="status-badge expired">⏰ Expired / Inactive (Hidden from Storefront)</span>
+                            ) : currentTile.dailyWindow && currentTile.dailyWindow.enabled ? (
+                              <span className="status-badge timed">🔁 Daily Recurring ({currentTile.dailyWindow.startHour}:00 - {currentTile.dailyWindow.endHour}:00 IST)</span>
+                            ) : currentTile.startsAt && new Date(currentTile.startsAt).getTime() > Date.now() ? (
+                              <span className="status-badge timed">⏳ Scheduled: Starts in {formatAdminTimeRemaining(currentTile.startsAt)}</span>
+                            ) : currentTile.expiresAt ? (
+                              <span className="status-badge timed">⏳ Active: Ends in {formatAdminTimeRemaining(currentTile.expiresAt)}</span>
+                            ) : (
+                              <span className="status-badge active">🟢 Live Always (No Expiration)</span>
+                            )}
+                          </div>
+
+                          {currentTile.dailyWindow && currentTile.dailyWindow.enabled && (
+                            <div className="status-row">
+                              <span className="label">Daily Window:</span>
+                              <span className="value-text">{currentTile.dailyWindow.startHour}:00 to {currentTile.dailyWindow.endHour}:00 IST ({currentTile.dailyWindow.label || 'Active Daily'})</span>
+                            </div>
+                          )}
+
+                          {currentTile.expiresAt && (
+                            <div className="status-row">
+                              <span className="label">Expires At:</span>
+                              <span className="value-code">{new Date(currentTile.expiresAt).toLocaleString()}</span>
+                            </div>
+                          )}
+
+                          {currentTile.priceBadge && (
+                            <div className="status-row">
+                              <span className="label">Price Badge:</span>
+                              <span className="value-highlight">{currentTile.priceBadge}</span>
+                            </div>
+                          )}
+
+                          {currentTile.category && (
+                            <div className="status-row">
+                              <span className="label">Category:</span>
+                              <span className="value-text">{currentTile.category}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Amazon Destination URL */}
+                        <div className="detail-link-box">
+                          <label className="link-label">Target Amazon URL:</label>
+                          <div className="link-display">
+                            <input 
+                              type="text" 
+                              readOnly 
+                              value={currentTile.clickRedirectUrl || ''} 
+                              onClick={e => e.target.select()}
+                            />
+                            <a 
+                              href={currentTile.clickRedirectUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="detail-open-link-btn"
+                              title="Test link directly on Amazon"
+                            >
+                              Open Link ↗
+                            </a>
+                          </div>
+                        </div>
+
+                        {/* Management Actions */}
+                        <div className="detail-actions-panel">
+                          <button
+                            type="button"
+                            className="detail-action-btn timer"
+                            onClick={() => openTimerModal(currentTile)}
+                          >
+                            ⏱️ Configure Timings & Schedule
+                          </button>
+                          <button
+                            type="button"
+                            className="detail-action-btn edit"
+                            onClick={() => openEditTileModal(currentTile)}
+                          >
+                            ✏️ Edit Tile Details
+                          </button>
+                          <button
+                            type="button"
+                            className={`detail-action-btn toggle ${!isTileDead ? 'expire' : 'activate'}`}
+                            onClick={() => handleQuickToggleTile(currentTile)}
+                          >
+                            {!isTileDead ? '⚡ Expire (Hide from Store)' : '🔄 Reactivate'}
+                          </button>
+                        </div>
+
+                        {/* Keyboard navigation hint */}
+                        <div className="detail-keyboard-hint">
+                          <span>⌨️ <strong>Arrow Keys:</strong> Press <strong>← Left</strong> or <strong>Right →</strong> to switch tiles &bull; <strong>Esc</strong> to close</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right / Next Navigation Arrow */}
+                  <button
+                    type="button"
+                    className="promo-tile-lightbox-nav next"
+                    onClick={() => setSelectedTileIndex(prev => prev < promoCardsList.length - 1 ? prev + 1 : 0)}
+                    title="Next Tile (Right Arrow →)"
+                    aria-label="Next Tile"
+                  >
+                    &#10095;
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Promotional Tile Expiration Timer & Schedule Modal */}
           {timerModalCard && (
