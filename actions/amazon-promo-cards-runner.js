@@ -3,6 +3,11 @@
 
 require('dotenv').config();
 require('./setup-firebase');
+try {
+  require('../database/firebaseDB/bannerDB');
+} catch (e) {
+  console.warn('Firebase bannerDB init warning:', e.message);
+}
 const admin = require('firebase-admin');
 const fs = require('fs');
 const path = require('path');
@@ -33,17 +38,32 @@ async function main() {
     const cards = await scrapeAmazonPromoCards();
     console.log(`[${new Date().toISOString()}] 📦 Obtained ${cards.length} promotional cards.`);
 
-    // 1. Sync to Firebase Realtime Database if admin app is available
-    if (admin.apps.length > 0 && cards && cards.length > 0) {
+    // 1. Sync to Firebase Realtime Database
+    if (cards && cards.length > 0) {
       try {
-        const db = admin.database();
-        await db.ref('amazon_promo_cards').set(cards);
-        await db.ref('amazon_promo_cards_meta').set({
-          count: cards.length,
-          lastUpdated: new Date().toISOString(),
-          source: 'github-actions'
-        });
-        console.log(`[${new Date().toISOString()}] ✅ Successfully synced ${cards.length} promo cards to Firebase Realtime Database (/amazon_promo_cards).`);
+        if (admin.apps.length === 0) {
+          const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_JSON 
+            ? JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON)
+            : undefined;
+          if (serviceAccount) {
+            admin.initializeApp({
+              credential: admin.credential.cert(serviceAccount),
+              databaseURL: 'https://lowerdealhub-default-rtdb.asia-southeast1.firebasedatabase.app'
+            });
+          }
+        }
+        if (admin.apps.length > 0) {
+          const db = admin.database();
+          await db.ref('amazon_promo_cards').set(cards);
+          await db.ref('amazon_promo_cards_meta').set({
+            count: cards.length,
+            lastUpdated: new Date().toISOString(),
+            source: 'github-actions'
+          });
+          console.log(`[${new Date().toISOString()}] ✅ Successfully synced ${cards.length} promo cards to Firebase Realtime Database (/amazon_promo_cards).`);
+        } else {
+          console.warn(`[${new Date().toISOString()}] ⚠️ Firebase admin app not initialized, skipping RTDB sync.`);
+        }
       } catch (fbErr) {
         console.warn(`[${new Date().toISOString()}] Firebase RTDB sync error:`, fbErr.message);
       }

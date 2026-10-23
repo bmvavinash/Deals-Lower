@@ -272,6 +272,17 @@ function rescheduleJobs(schedulerConfig) {
     activeCronJobs.set('dealsTracking', job);
     logger.info(`[Active Deals Tracking] scheduled on cron: "${cronExpr}"`);
   }
+
+  // 7. Amazon Promotional Cards scheduler (Role: all or promoCards)
+  if (runnerRole === 'all' || runnerRole === 'promoCards') {
+    const promoCardsInterval = schedulerConfig.promoCardsInterval || 1; // Default 1 hour
+    const cronExpr = getCronExpression(promoCardsInterval);
+    const job = cron.schedule(cronExpr, () => {
+      triggerLocalJob('Amazon Promo Cards Extraction', 'node actions/amazon-promo-cards-runner.js');
+    });
+    activeCronJobs.set('promoCards', job);
+    logger.info(`[Amazon Promo Cards Extraction] scheduled on cron: "${cronExpr}"`);
+  }
 }
 
 /**

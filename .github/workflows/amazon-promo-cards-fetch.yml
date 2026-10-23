@@ -2,8 +2,8 @@ name: '🎯 Amazon Promotional Cards Fetch'
 
 on:
   schedule:
-    - cron: '5 * * * *'    # Every 1 hour at :05 past the hour
-  workflow_dispatch:       # Allow manual trigger anytime
+    - cron: '17,47 * * * *'    # Twice an hour at off-peak minutes (:17 and :47)
+  workflow_dispatch:           # Allow manual trigger anytime
 
 permissions:
   contents: write
