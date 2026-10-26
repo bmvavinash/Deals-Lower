@@ -88,28 +88,22 @@ async function scrapeFlipkartProduct(url, text, driver) {
         try {product.category = await extractAttribute(driver, flipkartConfig.category); } catch(e) { console.log("Error in category",e);}
 
         product.links = {};
-        if(product?.photo != ""){
-          // Add INRDeals fallback directly
-          product.links.avinashbmvINR = "https://inrdeals.com/avi646476329/" + url;
-          
-          // Make Extrape URL generation non-blocking with timeout
-          try { 
-              const extrapePromise = getExtrapeUrl(driver, url, 25000); // 25 second timeout
-            product.links.avinashbmv = await Promise.race([
-                extrapePromise,
-                new Promise((resolve) => setTimeout(() => resolve(""), 25000))
-            ]) || "";
-            if (!product.links.avinashbmv) {
-                console.log("[flipkart] Extrape URL generation timed out or failed - continuing without it");
-            }
-        } catch (e) { 
-            console.log("[flipkart] Link generation error:", e.message);
-            product.links.avinashbmv = "";
+        if (product?.photo != "") {
+          const { generateAffiliateLinks } = require('../services/cuelinksService');
+          try {
+            const aff = await generateAffiliateLinks(url, 'flipkart', product.productCode);
+            product.links.avinashbmv = aff.avinashbmv;
+            product.links.avinashbmvINR = aff.avinashbmvINR;
+            console.log("[flipkart] Generated affiliate links via Cuelinks/INRDeals, isCuelinks:", aff.isCuelinks);
+          } catch (e) {
+            console.log("[flipkart] Cuelinks link generation error, using direct INRDeals fallback:", e.message);
+            product.links.avinashbmv = "https://inrdeals.com/avi646476329/" + url;
+            product.links.avinashbmvINR = "https://inrdeals.com/avi646476329/" + url;
+          }
         }
-      }
-      else {
-        console.log("[flipkart] No Photo hence skipping the link generation")
-      }
+        else {
+          console.log("[flipkart] No Photo hence skipping the link generation");
+        }
 
         // product.brand = await extractAttribute(driver, flipkartConfig.brand);
         // Log product or further processing

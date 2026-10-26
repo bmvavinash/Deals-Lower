@@ -129,8 +129,30 @@ router.post('/process-product', async (req, res) => {
     // Cloud environment detection (Render free tier has 512MB RAM and no Chrome)
     const isCloudEnv = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
     if (isCloudEnv) {
-      logger.info('Cloud environment detected (Render/Hybrid). Dispatching to Firebase command queue for Local Daemon.', { url, postProduct, saleName });
-      
+      logger.info('Cloud environment detected (Render/Hybrid). Running server-side headless extraction with Cuelinks API.', { url, postProduct, saleName });
+
+      // 1. Attempt crash-free server-side headless automation
+      try {
+        const { extractProductOnServer } = require('../../../services/headlessProductExtractor');
+        const serverResult = await extractProductOnServer(url, { postProduct, saleName });
+
+        if (serverResult && serverResult.success) {
+          logger.info('Server-side headless automation succeeded!', { productCode: serverResult.productCode });
+          return res.json({
+            success: true,
+            status: 'success',
+            processedOn: 'server',
+            productCode: serverResult.productCode,
+            data: serverResult.data,
+            isCuelinks: serverResult.isCuelinks,
+            message: `Product processed successfully on server! (Affiliate: ${serverResult.isCuelinks ? 'Cuelinks' : 'Direct'})`
+          });
+        }
+      } catch (extractErr) {
+        logger.warn('Server headless extraction failed, falling back to Firebase command queue', { error: extractErr.message });
+      }
+
+      // 2. If server extraction yielded insufficient data (e.g. Amazon captcha), queue to Local Daemon
       let isDaemonAlive = false;
       try {
         if (admin.apps.length) {

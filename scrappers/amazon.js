@@ -422,18 +422,11 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
               }
             } else {
               try {
-                // Non-Amazon products
-                product.links.avinashbmvINR = "";
-                if (generateLink) {
-                  // Generate shortlink using extrape for non-Amazon
-                  const { getExtrapeUrl } = require("../affiliate/extrape");
-                  product.links.avinashbmv = await getExtrapeUrl(driver, url) || "";
-                } else {
-                  product.links.avinashbmv = shortUrl || "";
-                }
-                if (!product.links.avinashbmv) {
-                  product.links.avinashbmv = "https://inrdeals.com/avi646476329/" + url;
-                }
+                // Non-Amazon products: use Cuelinks API with INRDeals fallback
+                const { generateAffiliateLinks } = require('../services/cuelinksService');
+                const affLinks = await generateAffiliateLinks(url, platform, product.productCode, shortUrl);
+                product.links.avinashbmv = affLinks.avinashbmv;
+                product.links.avinashbmvINR = affLinks.avinashbmvINR;
               } catch (e) { logger.error(`[${platform}] Non-Amazon link generation error:`, { error: e.message, stack: e.stack }); }
             }
           } else {
@@ -456,25 +449,11 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
                 }
                 logger.info(`[${platform}] Set Amazon affiliate URL for non-dealsglobalhub user: ${product.productCode}`);
               } else {
-                product.links.avinashbmvINR = "";
-                // Make Extrape URL generation non-blocking with timeout
-                const { getExtrapeUrl } = require("../affiliate/extrape");
-                try {
-                  const extrapePromise = getExtrapeUrl(driver, url, 25000); // 25 second timeout
-                  product.links.avinashbmv = await Promise.race([
-                    extrapePromise,
-                    new Promise((resolve) => setTimeout(() => resolve(""), 25000))
-                  ]) || "";
-                  if (!product.links.avinashbmv) {
-                    logger.warn(`[${platform}] Extrape URL generation timed out or failed - continuing without it`);
-                  }
-                } catch (extrapeError) {
-                  logger.warn(`[${platform}] Extrape URL generation error:`, { error: extrapeError.message });
-                  product.links.avinashbmv = "";
-                }
-                if (!product.links.avinashbmv) {
-                  product.links.avinashbmv = "https://inrdeals.com/avi646476329/" + url;
-                }
+                // Non-Amazon products: use Cuelinks API with INRDeals fallback
+                const { generateAffiliateLinks } = require('../services/cuelinksService');
+                const affLinks = await generateAffiliateLinks(url, platform, product.productCode);
+                product.links.avinashbmv = affLinks.avinashbmv;
+                product.links.avinashbmvINR = affLinks.avinashbmvINR;
               }
             } catch (e) { 
               logger.error(`[${platform}] Link generation error:`, { error: e.message, stack: e.stack });
