@@ -7,9 +7,9 @@ interface AuthGateProps {
   children: React.ReactNode;
 }
 
-// Authorized administrator email per user requirement
-const ALLOWED_ADMIN_EMAIL = 'avi2bmv@gmail.com';
-const SECONDARY_ALLOWED_EMAIL = 'avinash1bmv@gmail.com';
+// Authorized administrator emails per user requirement
+const ALLOWED_ADMIN_EMAILS = ['avinash1bmv@gmail.com', 'avi2bmv@gmail.com'];
+const DEFAULT_ADMIN_EMAIL = 'avinash1bmv@gmail.com';
 
 const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -29,7 +29,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     return null;
   });
 
-  const [email, setEmail] = useState(ALLOWED_ADMIN_EMAIL);
+  const [email, setEmail] = useState(DEFAULT_ADMIN_EMAIL);
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -78,7 +78,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const norm = (firebaseUser.email || '').toLowerCase();
-        if (norm !== ALLOWED_ADMIN_EMAIL && norm !== SECONDARY_ALLOWED_EMAIL) {
+        if (!ALLOWED_ADMIN_EMAILS.includes(norm)) {
           setError(`Access Denied: Email "${firebaseUser.email}" is not authorized.`);
           await signOut(auth);
           setUser(null);
@@ -106,8 +106,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     setError(null);
 
     const normalized = email.trim().toLowerCase();
-    if (normalized !== ALLOWED_ADMIN_EMAIL) {
-      setError(`Access Denied: Only "${ALLOWED_ADMIN_EMAIL}" is authorized for login.`);
+    if (!ALLOWED_ADMIN_EMAILS.includes(normalized)) {
+      setError(`Access Denied: Email "${normalized}" is not authorized for login.`);
       return;
     }
 
@@ -249,7 +249,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="avi2bmv@gmail.com"
+              placeholder="avinash1bmv@gmail.com or avi2bmv@gmail.com"
               style={styles.input}
               required
               disabled={isLoggingIn}
@@ -302,13 +302,13 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         {isLocalhost() && (
           <div style={{ marginTop: '16px' }}>
             <button onClick={handleBypassLogin} style={styles.bypassButton}>
-              Bypass as Developer ({ALLOWED_ADMIN_EMAIL})
+              Bypass as Developer ({DEFAULT_ADMIN_EMAIL})
             </button>
           </div>
         )}
 
         <div style={styles.footer}>
-          Authorized access restricted exclusively to {ALLOWED_ADMIN_EMAIL}.
+          Authorized access restricted to {ALLOWED_ADMIN_EMAILS.join(' and ')}.
         </div>
       </div>
     </div>

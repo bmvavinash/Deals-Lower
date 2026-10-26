@@ -5,8 +5,11 @@ const { getModuleLogger } = require('../../../logger/logger');
 
 const logger = getModuleLogger('auth-api');
 
-// Allowed email strictly restricted per user request: only avi2bmv@gmail.com
-const ALLOWED_ADMIN_EMAIL = 'avi2bmv@gmail.com';
+// Allowed emails strictly restricted per user request: avi2bmv@gmail.com and avinash1bmv@gmail.com
+const ALLOWED_ADMIN_EMAILS = [
+  'avi2bmv@gmail.com',
+  'avinash1bmv@gmail.com'
+];
 
 // Backend password verification (not in frontend)
 // Supported passwords: from process.env.ADMIN_PASSWORD or secure fallbacks
@@ -71,12 +74,12 @@ router.post('/login', (req, res) => {
 
   const normalizedEmail = email.trim().toLowerCase();
 
-  // 1. Strict restriction: Only avi2bmv@gmail.com is authorized
-  if (normalizedEmail !== ALLOWED_ADMIN_EMAIL) {
+  // 1. Strict restriction: Only avi2bmv@gmail.com and avinash1bmv@gmail.com are authorized
+  if (!ALLOWED_ADMIN_EMAILS.includes(normalizedEmail)) {
     logger.warn('Unauthorized email rejected at login', { email: normalizedEmail });
     return res.status(403).json({
       success: false,
-      error: `Access Denied: Only "${ALLOWED_ADMIN_EMAIL}" is authorized for administrative access.`
+      error: `Access Denied: Email "${normalizedEmail}" is not authorized for administrative access.`
     });
   }
 
@@ -99,13 +102,13 @@ router.post('/login', (req, res) => {
   }
 
   // 3. Issue secure HMAC token
-  const token = generateToken(ALLOWED_ADMIN_EMAIL);
-  logger.info('Admin successfully authenticated via email/password', { email: ALLOWED_ADMIN_EMAIL });
+  const token = generateToken(normalizedEmail);
+  logger.info('Admin successfully authenticated via email/password', { email: normalizedEmail });
 
   return res.json({
     success: true,
     user: {
-      email: ALLOWED_ADMIN_EMAIL,
+      email: normalizedEmail,
       role: 'admin'
     },
     token,
@@ -121,7 +124,7 @@ router.post('/verify', (req, res) => {
   const token = req.body?.token || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : null);
 
   const payload = verifyToken(token);
-  if (!payload || payload.email !== ALLOWED_ADMIN_EMAIL) {
+  if (!payload || !ALLOWED_ADMIN_EMAILS.includes(payload.email)) {
     return res.status(401).json({
       success: false,
       error: 'Session expired or invalid. Please sign in again.'
