@@ -222,18 +222,18 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
-    const { url, urls, postProduct = false, saleName = null } = req.body || {};
+    const { url: reqUrl, urls: reqUrls, postProduct = false, saleName = null } = req.body || {};
     
     // Extract all URLs from url or urls (string, array, or newline/comma separated)
     let rawUrls = [];
-    if (Array.isArray(urls)) {
-      rawUrls = urls;
-    } else if (typeof urls === 'string' && urls.trim()) {
-      rawUrls = urls.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
-    } else if (Array.isArray(url)) {
-      rawUrls = url;
-    } else if (typeof url === 'string' && url.trim()) {
-      rawUrls = url.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
+    if (Array.isArray(reqUrls)) {
+      rawUrls = reqUrls;
+    } else if (typeof reqUrls === 'string' && reqUrls.trim()) {
+      rawUrls = reqUrls.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
+    } else if (Array.isArray(reqUrl)) {
+      rawUrls = reqUrl;
+    } else if (typeof reqUrl === 'string' && reqUrl.trim()) {
+      rawUrls = reqUrl.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
     }
 
     const validUrls = rawUrls.map(u => {
