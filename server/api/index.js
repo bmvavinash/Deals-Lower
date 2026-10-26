@@ -145,6 +145,59 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+app.get('/api/server-capabilities', async (req, res) => {
+  const os = require('os');
+  const fs = require('fs');
+  const { execSync } = require('child_process');
+  let chromePath = null;
+  let puppeteerPath = null;
+  let puppeteerLaunchSuccess = false;
+  let puppeteerError = null;
+
+  try {
+    chromePath = execSync('which google-chrome || which chromium || which chromium-browser || echo "none"').toString().trim();
+  } catch (e) {
+    chromePath = e.message;
+  }
+
+  try {
+    const puppeteer = require('puppeteer');
+    puppeteerPath = puppeteer.executablePath();
+    const exists = fs.existsSync(puppeteerPath);
+    if (exists) {
+      const browser = await puppeteer.launch({
+        headless: 'shell',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--single-process',
+          '--no-zygote',
+          '--disable-gpu',
+          '--js-flags=--max-old-space-size=128'
+        ]
+      });
+      puppeteerLaunchSuccess = true;
+      await browser.close();
+    } else {
+      puppeteerError = `Binary not found at ${puppeteerPath}`;
+    }
+  } catch (e) {
+    puppeteerError = e.message;
+  }
+
+  res.json({
+    platform: process.platform,
+    arch: process.arch,
+    totalMem: Math.round(os.totalmem() / 1024 / 1024) + ' MB',
+    freeMem: Math.round(os.freemem() / 1024 / 1024) + ' MB',
+    chromePath,
+    puppeteerPath,
+    puppeteerLaunchSuccess,
+    puppeteerError
+  });
+});
+
 // API routes
 app.use('/api/deals', dealsRoutes);
 app.use('/api/stocks', stocksRoutes);
