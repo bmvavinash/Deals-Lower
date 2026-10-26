@@ -6,9 +6,11 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 // Fallback → Render — kept alive via UptimeRobot ping every 10 min
 // ─────────────────────────────────────────────
 
+const IS_DEV       = Boolean((import.meta as any).env?.DEV);
+const DEFAULT_URL  = IS_DEV ? '/api' : 'https://dealsoptimised.onrender.com';
 const PRIMARY_URL  = (import.meta as any).env?.VITE_PRIMARY_API_URL  || null;  // Oracle Cloud HTTPS
-const FALLBACK_URL = (import.meta as any).env?.VITE_FALLBACK_API_URL || null;  // Render HTTPS
-const LEGACY_URL   = (import.meta as any).env?.VITE_API_URL          || '/api'; // Legacy single-backend
+const FALLBACK_URL = (import.meta as any).env?.VITE_FALLBACK_API_URL || 'https://dealsoptimised.onrender.com';  // Render HTTPS
+const LEGACY_URL   = (import.meta as any).env?.VITE_API_URL          || DEFAULT_URL; // Fallback to Render in production
 
 // Determine which URL to use based on available env vars
 const API_BASE_URL = PRIMARY_URL || LEGACY_URL;

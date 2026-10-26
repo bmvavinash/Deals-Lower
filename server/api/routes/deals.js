@@ -1,3 +1,4 @@
+const admin = require('firebase-admin');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
@@ -78,6 +79,9 @@ let globalDriver = null;
 const { createChromeDriver } = require('../../../utils/seleniumDriver');
 
 async function getOrCreateDriver() {
+  if (process.env.RENDER) {
+    throw new Error('Chrome WebDriver is disabled on Render cloud to prevent container OOM crash');
+  }
   if (globalDriver) {
     try {
       // Test if the session is still valid
@@ -122,22 +126,115 @@ router.post('/process-product', async (req, res) => {
 
     logger.info('Processing product URL', { url, postProduct });
 
-    // Get or create driver - try to use global driver first (same instance as Telegram bot)
-    if (global.driver) {
-      logger.info('Using existing global driver instance');
-      driver = global.driver;
+    // Cloud environment detection (Render free tier has 512MB RAM and no Chrome)
+    const isCloudEnv = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    if (isCloudEnv) {
+      logger.info('Cloud environment detected (Render/Hybrid). Dispatching to Firebase command queue for Local Daemon.', { url, postProduct, saleName });
+      
+      let isDaemonAlive = false;
       try {
-        await driver.getCurrentUrl();
-        logger.info('Global driver is valid');
-      } catch (e) {
-        logger.warn('Global driver invalid, creating new one', { error: e.message });
+        if (admin.apps.length) {
+          const db = admin.database();
+          const heartbeatRef = db.ref('daemonHeartbeat');
+          const snapshot = await heartbeatRef.once('value');
+          const heartbeat = snapshot.val();
+          if (heartbeat && heartbeat.timestamp) {
+            const lastTime = new Date(heartbeat.timestamp).getTime();
+            isDaemonAlive = (Date.now() - lastTime) < 120000;
+          }
+        }
+      } catch (hbErr) {
+        logger.warn('Failed to check daemon heartbeat', { error: hbErr.message });
+      }
+
+      if (admin.apps.length) {
+        const db = admin.database();
+        const queueRef = db.ref('commandsQueue');
+        const newCommandRef = queueRef.push();
+        
+        const safeUrl = url.replace(/"/g, '\\"');
+        const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
+        const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
+
+        await newCommandRef.set({
+          id: `process-product-${Date.now()}`,
+          command: cliCommand,
+          name: `Process Product (${url.substring(0, 50)}...)`,
+          role: 'all',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          triggeredBy: 'dashboard'
+        });
+
+        logger.info('Successfully enqueued processSingleProduct command', { queuedId: newCommandRef.key, isDaemonAlive });
+
+        return res.json({
+          success: true,
+          status: 'success',
+          queued: true,
+          queuedId: newCommandRef.key,
+          isDaemonAlive,
+          message: isDaemonAlive 
+            ? 'Product processing queued successfully! Your active Local Daemon is executing it.'
+            : 'Product processing queued in Firebase. Please ensure Local Daemon is running locally to process it.'
+        });
+      } else {
+        logger.error('Firebase Admin not initialized. Cannot queue process-product command.');
+        return res.status(500).json({
+          success: false,
+          status: 'error',
+          message: 'Cloud server cannot process products directly and Firebase is not connected to queue tasks.'
+        });
+      }
+    }
+
+    // Local environment: attempt local driver, fallback to queue if driver fails
+    try {
+      if (global.driver) {
+        logger.info('Using existing global driver instance');
+        driver = global.driver;
+        try {
+          await driver.getCurrentUrl();
+          logger.info('Global driver is valid');
+        } catch (e) {
+          logger.warn('Global driver invalid, creating new one', { error: e.message });
+          driver = await getOrCreateDriver();
+          global.driver = driver;
+        }
+      } else {
+        logger.info('No global driver found, creating new one');
         driver = await getOrCreateDriver();
         global.driver = driver;
       }
-    } else {
-      logger.info('No global driver found, creating new one');
-      driver = await getOrCreateDriver();
-      global.driver = driver;
+    } catch (driverErr) {
+      logger.warn('Local driver initialization failed, attempting Firebase queue fallback', { error: driverErr.message });
+      if (admin.apps.length) {
+        const db = admin.database();
+        const queueRef = db.ref('commandsQueue');
+        const newCommandRef = queueRef.push();
+        const safeUrl = url.replace(/"/g, '\\"');
+        const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
+        const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
+
+        await newCommandRef.set({
+          id: `process-product-${Date.now()}`,
+          command: cliCommand,
+          name: `Process Product (${url.substring(0, 50)}...)`,
+          role: 'all',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          triggeredBy: 'dashboard'
+        });
+
+        return res.json({
+          success: true,
+          status: 'success',
+          queued: true,
+          queuedId: newCommandRef.key,
+          message: 'Local browser unavailable. Task queued in Firebase for Local Daemon.'
+        });
+      }
+      throw driverErr;
     }
 
     // Resolve URL in browser first (same as handleProductProcessing)
@@ -1680,6 +1777,34 @@ router.post('/:productCode/retrigger', async (req, res) => {
     }
 
     targetUrl = cleanProductUrl(targetUrl);
+
+    // If in cloud environment (Render), queue to Firebase commandsQueue instead of launching Chrome
+    const isCloudRetrigger = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    if (isCloudRetrigger && admin.apps.length) {
+      logger.info('Cloud environment detected on retrigger. Queueing to commandsQueue', { productCode, targetUrl });
+      const db = admin.database();
+      const queueRef = db.ref('commandsQueue');
+      const newCommandRef = queueRef.push();
+      const safeUrl = targetUrl.replace(/"/g, '\\"');
+      const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" false null`;
+
+      await newCommandRef.set({
+        id: `retrigger-${productCode}-${Date.now()}`,
+        command: cliCommand,
+        name: `Retrigger Product: ${productCode}`,
+        role: 'all',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        triggeredBy: 'dashboard-retrigger'
+      });
+
+      return res.json({
+        success: true,
+        queued: true,
+        queuedId: newCommandRef.key,
+        message: 'Product retrigger task queued in Firebase for Local Daemon execution.'
+      });
+    }
     
     const driver = global.driver || await getOrCreateDriver();
     const { scrapeProduct } = require('../../../scrappers/amazon');

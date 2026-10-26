@@ -7,7 +7,7 @@ export default defineConfig(({ mode }) => {
     plugins: [react()],
     define: {
       'import.meta.env.VITE_PRIMARY_API_URL': JSON.stringify(process.env.PRIMARY_API_URL || env.VITE_PRIMARY_API_URL || ''),
-      'import.meta.env.VITE_FALLBACK_API_URL': JSON.stringify(process.env.FALLBACK_API_URL || env.VITE_FALLBACK_API_URL || '')
+      'import.meta.env.VITE_FALLBACK_API_URL': JSON.stringify(process.env.FALLBACK_API_URL || env.VITE_FALLBACK_API_URL || 'https://dealsoptimised.onrender.com')
     },
     server: {
       port: 5173,
