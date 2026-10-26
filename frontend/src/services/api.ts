@@ -200,5 +200,13 @@ export const categoriesAPI = {
     api.post('/categories/custom', { categoryGroup, subcategoryName })
 };
 
+// Auth API
+export const authAPI = {
+  login: (email: string, password: string) =>
+    api.post('/auth/login', { email, password }),
+  verify: (token?: string) =>
+    api.post('/auth/verify', { token })
+};
+
 export default api;
 
