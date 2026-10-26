@@ -92,8 +92,12 @@ export const dealsAPI = {
     api.post(`/deals/${encodeURIComponent(productCode)}/retrigger`, {}, { params: { db }, timeout: 120000 }),
   retriggerToday: (fields: string[], priority?: string) =>
     api.post('/deals/retrigger-today', { fields, priority }, { timeout: 120000 }),
-  processProduct: (url: string, postProduct: boolean = false) =>
-    api.post('/deals/process-product', { url, postProduct }, { timeout: 120000 }),
+  processProduct: (urlOrUrls: string | string[], postProduct: boolean = false, saleName?: string) => {
+    const payload = Array.isArray(urlOrUrls)
+      ? { urls: urlOrUrls, postProduct, saleName }
+      : { url: urlOrUrls, postProduct, saleName };
+    return api.post('/deals/process-product', payload, { timeout: 180000 });
+  },
   updateProduct: (productCode: string, updates: any, db?: string) =>
     api.put(`/deals/${productCode}`, updates, { params: { db } }),
   deleteProduct: (productCode: string, db?: string) =>

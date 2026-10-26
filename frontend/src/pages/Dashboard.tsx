@@ -15,6 +15,7 @@ const Dashboard: React.FC = () => {
   const [productUrl, setProductUrl] = useState('');
   const [postProduct, setPostProduct] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processedLowerdealUrls, setProcessedLowerdealUrls] = useState<string[]>([]);
   
   // Product code search and CRUD state
   const [productCode, setProductCode] = useState('');
@@ -41,37 +42,39 @@ const Dashboard: React.FC = () => {
     if (!productUrl.trim()) {
       addNotification({
         type: 'error',
-        message: 'Product URL is required',
+        message: 'Product URL(s) required',
         source: 'Process Product',
         page: 'Dashboard'
       });
       return;
     }
 
-    let urlToProcess = productUrl.trim();
-    if (!urlToProcess.startsWith('http')) {
-      urlToProcess = `https://${urlToProcess}`;
-    }
-
     setIsProcessing(true);
+    setProcessedLowerdealUrls([]);
     addNotification({ type: 'info', message: 'Processing started...', source: 'Process Product', page: 'Dashboard' });
 
     try {
-      const response = await dealsAPI.processProduct(urlToProcess, postProduct);
+      const response = await dealsAPI.processProduct(productUrl, postProduct);
       let type: 'success' | 'error' | 'info' | 'warning' = 'success';
       if (response.data.status === 'error') type = 'error';
       else if (response.data.status === 'excluded') type = 'warning';
 
+      if (Array.isArray(response.data.lowerdealUrls) && response.data.lowerdealUrls.length > 0) {
+        setProcessedLowerdealUrls(response.data.lowerdealUrls);
+      } else if (response.data.lowerdealUrl) {
+        setProcessedLowerdealUrls([response.data.lowerdealUrl]);
+      }
+
       addNotification({
         type,
-        message: response.data.message || 'Product processed successfully',
+        message: response.data.message || 'Product(s) processed successfully',
         source: 'Process Product',
         page: 'Dashboard'
       });
     } catch (error: any) {
       addNotification({
         type: 'error',
-        message: error.response?.data?.error || error.message || 'Failed to process product',
+        message: error.response?.data?.error || error.message || 'Failed to process product(s)',
         source: 'Process Product',
         page: 'Dashboard'
       });
@@ -208,22 +211,23 @@ const Dashboard: React.FC = () => {
         <div style={{ marginBottom: '20px', padding: '20px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
             <div style={{ marginBottom: '15px' }}>
               <label htmlFor="product-url" style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold' }}>
-                Product URL (or Short URL):
+                Product URL(s) (Single URL, or multiple URLs separated by newlines / commas):
               </label>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <input
+                <textarea
                   id="product-url"
-                  type="text"
+                  rows={3}
                   value={productUrl}
                   onChange={(e) => setProductUrl(e.target.value)}
-                  placeholder="Enter full URL or short URL (e.g., https://amzn.to/...)"
+                  placeholder="Paste one or multiple product links (Amazon, Flipkart, Myntra, etc.)..."
                   style={{
                     width: '100%',
                     padding: '10px',
                     fontSize: '14px',
                     border: '1px solid #ccc',
                     borderRadius: '4px',
-                    boxSizing: 'border-box'
+                    boxSizing: 'border-box',
+                    fontFamily: 'inherit'
                   }}
                   disabled={isProcessing}
                 />
@@ -259,6 +263,24 @@ const Dashboard: React.FC = () => {
           >
             {isProcessing ? 'Processing...' : 'Submit'}
           </button>
+
+          {/* Lowerdeal URLs Display */}
+          {processedLowerdealUrls.length > 0 && (
+            <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#e8f5e9', border: '1px solid #c8e6c9', borderRadius: '6px' }}>
+              <h4 style={{ margin: '0 0 10px 0', color: '#2e7d32' }}>
+                🛒 Generated Lowerdeal URL{processedLowerdealUrls.length > 1 ? 's' : ''} ({processedLowerdealUrls.length}):
+              </h4>
+              <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                {processedLowerdealUrls.map((ldUrl, idx) => (
+                  <li key={idx} style={{ marginBottom: '6px', wordBreak: 'break-all' }}>
+                    <a href={ldUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1565c0', fontWeight: 'bold' }}>
+                      {ldUrl}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
         </div>
       </div>

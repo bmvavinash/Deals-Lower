@@ -243,6 +243,8 @@ async function extractProductOnServer(rawUrl, options = {}) {
         status: 'success',
         processedOn: 'server',
         productCode,
+        lowerdealUrl: `https://lowerdeal.com/p/${productCode}`,
+        affiliateUrl: affiliateLinks.avinashbmv || affiliateLinks.avinashbmvINR || resolvedUrl,
         data: productPayload,
         isCuelinks: affiliateLinks.isCuelinks,
         message: `Product [${platform.toUpperCase()}] ${productCode} processed successfully on server!`

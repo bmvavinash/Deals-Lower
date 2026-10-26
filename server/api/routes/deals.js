@@ -106,109 +106,233 @@ async function getOrCreateDriver() {
 }
 
 /**
+ * Helper to process a single URL in cloud environment using lightweight in-memory extraction
+ * and Cuelinks affiliate link conversion, with fallback to Firebase commandsQueue.
+ */
+async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleName = null } = {}) {
+  const { extractProductOnServer, extractProductCode } = require('../../../services/headlessProductExtractor');
+  const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
+
+  // 1. Attempt crash-free server-side headless automation
+  try {
+    const serverResult = await extractProductOnServer(targetUrl, { postProduct, saleName });
+    if (serverResult && serverResult.success) {
+      const pCode = serverResult.productCode;
+      const lowerdealUrl = serverResult.lowerdealUrl || `https://lowerdeal.com/p/${pCode}`;
+      const affiliateUrl = serverResult.affiliateUrl || serverResult.data?.links?.avinashbmv || serverResult.data?.links?.avinashbmvINR || targetUrl;
+      return {
+        originalUrl: targetUrl,
+        success: true,
+        status: 'success',
+        processedOn: 'server',
+        productCode: pCode,
+        lowerdealUrl,
+        affiliateUrl,
+        platform: serverResult.data?.storeType || 'unknown',
+        title: serverResult.data?.title || '',
+        price: serverResult.data?.price || null,
+        mrp: serverResult.data?.mrp || null,
+        discount: serverResult.data?.discount || '',
+        photo: serverResult.data?.photo || '',
+        data: serverResult.data,
+        isCuelinks: serverResult.isCuelinks,
+        message: serverResult.message || `Product [${pCode}] processed successfully on server!`
+      };
+    }
+  } catch (extractErr) {
+    logger.warn('Server headless extraction failed, falling back to Firebase command queue', { url: targetUrl, error: extractErr.message });
+  }
+
+  // 2. Fallback to Firebase Queue if server extraction yielded insufficient data
+  let isDaemonAlive = false;
+  let detectedPlatform = null;
+  let productCode = null;
+  try {
+    detectedPlatform = resolvePlatformFromUrl(targetUrl);
+    productCode = extractProductCode(targetUrl, detectedPlatform);
+  } catch (e) {
+    // ignore
+  }
+
+  try {
+    if (admin.apps.length) {
+      const db = admin.database();
+      const heartbeatRef = db.ref('daemonHeartbeat');
+      const snapshot = await heartbeatRef.once('value');
+      const heartbeat = snapshot.val();
+      if (heartbeat && heartbeat.timestamp) {
+        const lastTime = new Date(heartbeat.timestamp).getTime();
+        isDaemonAlive = (Date.now() - lastTime) < 120000;
+      }
+    }
+  } catch (hbErr) {
+    logger.warn('Failed to check daemon heartbeat', { error: hbErr.message });
+  }
+
+  if (admin.apps.length) {
+    const db = admin.database();
+    const queueRef = db.ref('commandsQueue');
+    const newCommandRef = queueRef.push();
+    
+    const safeUrl = targetUrl.replace(/"/g, '\\"');
+    const safeSaleName = saleName ? `"${safeSaleName.replace(/"/g, '\\"')}"` : 'null';
+    const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
+
+    await newCommandRef.set({
+      id: `process-product-${Date.now()}`,
+      command: cliCommand,
+      name: `Process Product (${targetUrl.substring(0, 50)}...)`,
+      role: 'all',
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      triggeredBy: 'api'
+    });
+
+    const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
+
+    return {
+      originalUrl: targetUrl,
+      success: true,
+      status: 'queued',
+      queued: true,
+      queuedId: newCommandRef.key,
+      isDaemonAlive,
+      productCode,
+      lowerdealUrl,
+      processedOn: 'queue',
+      message: isDaemonAlive 
+        ? 'Product processing queued successfully! Your active Local Daemon is executing it.'
+        : 'Product processing queued in Firebase. Please ensure Local Daemon is running locally to process it.'
+    };
+  }
+
+  return {
+    originalUrl: targetUrl,
+    success: false,
+    status: 'error',
+    message: 'Cloud server cannot process products directly and Firebase is not connected to queue tasks.'
+  };
+}
+
+/**
  * POST /api/deals/process-product
- * Process a product URL and save to database
- * Body: { url: string, postProduct: boolean }
+ * Process one or multiple product URLs and save to database
+ * Body: { url?: string, urls?: string | string[], postProduct?: boolean, saleName?: string }
  */
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
-    const { url, postProduct = false, saleName = null } = req.body;
+    const { url, urls, postProduct = false, saleName = null } = req.body || {};
     
-    if (!url || typeof url !== 'string') {
+    // Extract all URLs from url or urls (string, array, or newline/comma separated)
+    let rawUrls = [];
+    if (Array.isArray(urls)) {
+      rawUrls = urls;
+    } else if (typeof urls === 'string' && urls.trim()) {
+      rawUrls = urls.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
+    } else if (Array.isArray(url)) {
+      rawUrls = url;
+    } else if (typeof url === 'string' && url.trim()) {
+      rawUrls = url.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
+    }
+
+    const validUrls = rawUrls.map(u => {
+      let clean = String(u).trim();
+      if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+        clean = `https://${clean}`;
+      }
+      return clean;
+    }).filter(u => {
+      try {
+        const p = new URL(u);
+        return p.protocol === 'http:' || p.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    });
+
+    if (validUrls.length === 0) {
       return res.status(400).json({
         success: false,
         status: 'error',
-        message: 'Product URL is required',
+        message: 'At least one valid product URL is required',
         error: 'Product URL is required'
       });
     }
 
-    logger.info('Processing product URL', { url, postProduct });
+    logger.info('Processing product URLs', { count: validUrls.length, postProduct, saleName });
 
     // Cloud environment detection (Render free tier has 512MB RAM and no Chrome)
     const isCloudEnv = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
     if (isCloudEnv) {
-      logger.info('Cloud environment detected (Render/Hybrid). Running server-side headless extraction with Cuelinks API.', { url, postProduct, saleName });
+      logger.info('Cloud environment detected (Render/Hybrid). Running server-side headless extraction with Cuelinks API.', { count: validUrls.length, postProduct, saleName });
 
-      // 1. Attempt crash-free server-side headless automation
-      try {
-        const { extractProductOnServer } = require('../../../services/headlessProductExtractor');
-        const serverResult = await extractProductOnServer(url, { postProduct, saleName });
-
-        if (serverResult && serverResult.success) {
-          logger.info('Server-side headless automation succeeded!', { productCode: serverResult.productCode });
-          return res.json({
-            success: true,
-            status: 'success',
-            processedOn: 'server',
-            productCode: serverResult.productCode,
-            data: serverResult.data,
-            isCuelinks: serverResult.isCuelinks,
-            message: `Product processed successfully on server! (Affiliate: ${serverResult.isCuelinks ? 'Cuelinks' : 'Direct'})`
-          });
-        }
-      } catch (extractErr) {
-        logger.warn('Server headless extraction failed, falling back to Firebase command queue', { error: extractErr.message });
+      // Process up to 3 URLs concurrently
+      const CHUNK_SIZE = 3;
+      const results = [];
+      for (let i = 0; i < validUrls.length; i += CHUNK_SIZE) {
+        const chunk = validUrls.slice(i, i + CHUNK_SIZE);
+        const chunkResults = await Promise.all(
+          chunk.map(u => processProductUrlOnCloud(u, { postProduct, saleName }))
+        );
+        results.push(...chunkResults);
       }
 
-      // 2. If server extraction yielded insufficient data (e.g. Amazon captcha), queue to Local Daemon
-      let isDaemonAlive = false;
-      try {
-        if (admin.apps.length) {
-          const db = admin.database();
-          const heartbeatRef = db.ref('daemonHeartbeat');
-          const snapshot = await heartbeatRef.once('value');
-          const heartbeat = snapshot.val();
-          if (heartbeat && heartbeat.timestamp) {
-            const lastTime = new Date(heartbeat.timestamp).getTime();
-            isDaemonAlive = (Date.now() - lastTime) < 120000;
-          }
-        }
-      } catch (hbErr) {
-        logger.warn('Failed to check daemon heartbeat', { error: hbErr.message });
+      const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
+      const successful = results.filter(r => r.success);
+      const firstResult = results[0] || {};
+
+      const responsePayload = {
+        success: successful.length > 0,
+        status: successful.length === results.length ? 'success' : (successful.length > 0 ? 'partial' : 'error'),
+        total: results.length,
+        successfulCount: successful.length,
+        failedCount: results.length - successful.length,
+        lowerdealUrl: lowerdealUrls[0] || null,
+        lowerdealUrls,
+        results,
+        message: `Processed ${successful.length}/${results.length} product(s).`
+      };
+
+      // Top-level backward compatibility if single URL was passed
+      if (results.length === 1) {
+        responsePayload.productCode = firstResult.productCode;
+        responsePayload.data = firstResult.data;
+        responsePayload.processedOn = firstResult.processedOn;
+        responsePayload.isCuelinks = firstResult.isCuelinks;
+        responsePayload.queued = firstResult.queued;
+        responsePayload.queuedId = firstResult.queuedId;
+        responsePayload.isDaemonAlive = firstResult.isDaemonAlive;
+        responsePayload.message = firstResult.message || responsePayload.message;
       }
 
-      if (admin.apps.length) {
-        const db = admin.database();
-        const queueRef = db.ref('commandsQueue');
-        const newCommandRef = queueRef.push();
-        
-        const safeUrl = url.replace(/"/g, '\\"');
-        const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
-        const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
-
-        await newCommandRef.set({
-          id: `process-product-${Date.now()}`,
-          command: cliCommand,
-          name: `Process Product (${url.substring(0, 50)}...)`,
-          role: 'all',
-          status: 'pending',
-          createdAt: new Date().toISOString(),
-          triggeredBy: 'dashboard'
-        });
-
-        logger.info('Successfully enqueued processSingleProduct command', { queuedId: newCommandRef.key, isDaemonAlive });
-
-        return res.json({
-          success: true,
-          status: 'success',
-          queued: true,
-          queuedId: newCommandRef.key,
-          isDaemonAlive,
-          message: isDaemonAlive 
-            ? 'Product processing queued successfully! Your active Local Daemon is executing it.'
-            : 'Product processing queued in Firebase. Please ensure Local Daemon is running locally to process it.'
-        });
-      } else {
-        logger.error('Firebase Admin not initialized. Cannot queue process-product command.');
-        return res.status(500).json({
-          success: false,
-          status: 'error',
-          message: 'Cloud server cannot process products directly and Firebase is not connected to queue tasks.'
-        });
-      }
+      return res.json(responsePayload);
     }
+
+    // If multiple URLs in local mode, process via cloud helper
+    if (validUrls.length > 1) {
+      const results = [];
+      for (const singleUrl of validUrls) {
+        const r = await processProductUrlOnCloud(singleUrl, { postProduct, saleName });
+        results.push(r);
+      }
+      const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
+      const successful = results.filter(r => r.success);
+      return res.json({
+        success: successful.length > 0,
+        status: successful.length === results.length ? 'success' : (successful.length > 0 ? 'partial' : 'error'),
+        total: results.length,
+        successfulCount: successful.length,
+        failedCount: results.length - successful.length,
+        lowerdealUrl: lowerdealUrls[0] || null,
+        lowerdealUrls,
+        results,
+        message: `Processed ${successful.length}/${results.length} product(s).`
+      });
+    }
+
+    // Single URL in local environment
+    const url = validUrls[0];
 
     // Local environment: attempt local driver, fallback to queue if driver fails
     try {
@@ -377,12 +501,27 @@ router.post('/process-product', async (req, res) => {
       message = 'Product processed successfully';
     }
 
+    const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
+
     res.json({
       success: status === 'success' || status === 'excluded',
       status,
       message,
       error,
       result: result,
+      productCode,
+      lowerdealUrl,
+      lowerdealUrls: lowerdealUrl ? [lowerdealUrl] : [],
+      results: [
+        {
+          originalUrl: url,
+          success: status === 'success' || status === 'excluded',
+          status,
+          productCode,
+          lowerdealUrl,
+          message
+        }
+      ],
       timestamp: new Date().toISOString()
     });
 
