@@ -129,17 +129,10 @@ app.use((req, res, next) => {
   next();
 });
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    version: '1.0.0'
-  });
-});
-
-app.get('/api/health', (req, res) => {
-  res.json({ 
+// Health check endpoint (supports all methods: GET, HEAD, POST, OPTIONS)
+app.all(['/health', '/api/health'], (req, res) => {
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.status(200).json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
     version: '1.0.0'
