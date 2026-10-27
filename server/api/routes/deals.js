@@ -139,6 +139,14 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
         isCuelinks: serverResult.isCuelinks,
         message: serverResult.message || `Product [${pCode}] processed successfully on server!`
       };
+    } else if (serverResult && serverResult.status === 'error') {
+      return {
+        originalUrl: targetUrl,
+        success: false,
+        status: 'error',
+        productCode: serverResult.productCode || null,
+        message: serverResult.message || 'Product not found on merchant website.'
+      };
     }
   } catch (extractErr) {
     logger.warn('Server headless extraction failed, falling back to Firebase command queue', { url: targetUrl, error: extractErr.message });
@@ -223,21 +231,22 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
-    // Authenticate if credentials or token are provided
+    // Strictly require administrator authentication on the API level
     const authResult = authenticateRequest(req);
-    if (!authResult.authenticated && !authResult.unauthenticated) {
-      // Credentials or token were provided in headers or body, but failed verification
+    if (!authResult.authenticated) {
+      logger.warn('Unauthorized API request rejected on /deals/process-product', {
+        ip: req.ip,
+        error: authResult.error
+      });
       return res.status(401).json({
         success: false,
         status: 'error',
-        error: authResult.error || 'Access Denied: Invalid authentication credentials or token.'
+        error: authResult.error || 'Access Denied: Administrator authentication required via Bearer token or x-admin-email & x-admin-password headers.'
       });
     }
 
-    if (authResult.authenticated) {
-      req.adminUser = authResult.user;
-      logger.info('Authenticated admin executing process-product', { email: authResult.user.email, authType: authResult.authType });
-    }
+    req.adminUser = authResult.user;
+    logger.info('Authenticated admin executing process-product', { email: authResult.user.email, authType: authResult.authType });
 
     const { url: reqUrl, urls: reqUrls, postProduct = false, saleName = null } = req.body || {};
     
