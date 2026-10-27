@@ -199,25 +199,29 @@ app.get('/api/server-capabilities', async (req, res) => {
   });
 });
 
-// API routes
-app.use('/api/deals', dealsRoutes);
-app.use('/api/stocks', stocksRoutes);
-app.use('/api/logs', logsRoutes);
-app.use('/api/scheduler', schedulerRoutes);
-app.use('/api/notifications', notificationsRoutes);
-app.use('/api/analytics', analyticsRoutes);
-app.use('/api/execution', executionRoutes);
-app.use('/api/news', newsRoutes);
-app.use('/api/banners', bannersRoutes);
-app.use('/api/dad-expenses', dadExpensesRoutes);
-app.use('/api/favorites', favoritesRoutes);
-app.use('/api/category-priority', categoryPriorityRoutes);
-app.use('/api/commands', commandsRoutes);
-app.use('/api/categories', categoriesRoutes);
-app.use('/api/matching-config', matchingConfigRoutes);
-app.use('/api/affiliates', affiliatesRoutes);
-app.use('/api/auth', authRoutes);
-app.use('/auth', authRoutes);
+// API routes (mounted on both /api/* and /* for dual fail-safe URL resolution)
+const mountApiRoute = (path, router) => {
+  app.use(`/api${path}`, router);
+  app.use(path, router);
+};
+
+mountApiRoute('/deals', dealsRoutes);
+mountApiRoute('/stocks', stocksRoutes);
+mountApiRoute('/logs', logsRoutes);
+mountApiRoute('/scheduler', schedulerRoutes);
+mountApiRoute('/notifications', notificationsRoutes);
+mountApiRoute('/analytics', analyticsRoutes);
+mountApiRoute('/execution', executionRoutes);
+mountApiRoute('/news', newsRoutes);
+mountApiRoute('/banners', bannersRoutes);
+mountApiRoute('/dad-expenses', dadExpensesRoutes);
+mountApiRoute('/favorites', favoritesRoutes);
+mountApiRoute('/category-priority', categoryPriorityRoutes);
+mountApiRoute('/commands', commandsRoutes);
+mountApiRoute('/categories', categoriesRoutes);
+mountApiRoute('/matching-config', matchingConfigRoutes);
+mountApiRoute('/affiliates', affiliatesRoutes);
+mountApiRoute('/auth', authRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -2,15 +2,26 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 // ─────────────────────────────────────────────
 // Multi-Backend Resilient API Client
-// Primary  → Oracle Cloud (via Cloudflare Tunnel HTTPS) — faster, more RAM
+// Primary  → Oracle Cloud (via Cloudflare Tunnel HTTPS) — if configured & online
 // Fallback → Render — kept alive via UptimeRobot ping every 10 min
 // ─────────────────────────────────────────────
 
+const ensureApiBase = (url: string | null | undefined): string => {
+  if (!url) return '';
+  const trimmed = url.trim().replace(/\/+$/, '');
+  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
+};
+
 const IS_DEV       = Boolean((import.meta as any).env?.DEV);
-const DEFAULT_URL  = IS_DEV ? '/api' : 'https://dealsoptimised.onrender.com/api';
-const PRIMARY_URL  = (import.meta as any).env?.VITE_PRIMARY_API_URL  || null;  // Oracle Cloud HTTPS
-const FALLBACK_URL = (import.meta as any).env?.VITE_FALLBACK_API_URL || 'https://dealsoptimised.onrender.com/api';  // Render HTTPS
-const LEGACY_URL   = (import.meta as any).env?.VITE_API_URL          || DEFAULT_URL; // Fallback to Render in production
+const RAW_DEFAULT  = IS_DEV ? '/api' : 'https://dealsoptimised.onrender.com/api';
+const RAW_PRIMARY  = (import.meta as any).env?.VITE_PRIMARY_API_URL  || null;
+const RAW_FALLBACK = (import.meta as any).env?.VITE_FALLBACK_API_URL || 'https://dealsoptimised.onrender.com/api';
+const RAW_LEGACY   = (import.meta as any).env?.VITE_API_URL          || RAW_DEFAULT;
+
+const DEFAULT_URL  = RAW_DEFAULT;
+const PRIMARY_URL  = RAW_PRIMARY ? ensureApiBase(RAW_PRIMARY) : null;
+const FALLBACK_URL = ensureApiBase(RAW_FALLBACK) || 'https://dealsoptimised.onrender.com/api';
+const LEGACY_URL   = ensureApiBase(RAW_LEGACY);
 
 // Determine which URL to use based on available env vars
 const API_BASE_URL = PRIMARY_URL || LEGACY_URL;
@@ -24,22 +35,41 @@ const FALLBACK_RETRY_MS = 2 * 60 * 1000; // Re-try primary every 2 minutes
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 12000,
+  timeout: 15000,
 });
 
 // ─────────────────────────────────────────────
-// Request interceptor: switch to fallback when in fallback mode
+// Request interceptor: attach auth token & resolve baseURL
 // ─────────────────────────────────────────────
 api.interceptors.request.use((config) => {
+  // Attach token from admin session if available
+  try {
+    const saved = localStorage.getItem('admin_auth_session');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.token) {
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = `Bearer ${parsed.token}`;
+      }
+    }
+  } catch {
+    // ignore JSON error
+  }
+
   if (usingFallback && FALLBACK_URL) {
     config.baseURL = FALLBACK_URL;
-    // Periodically attempt to return to primary
     if (Date.now() - fallbackCheckedAt > FALLBACK_RETRY_MS) {
-      usingFallback = false; // optimistically try primary again
+      usingFallback = false;
     }
   } else if (PRIMARY_URL) {
     config.baseURL = PRIMARY_URL;
   }
+
+  // Ensure config.baseURL always ends with /api if it's an absolute url
+  if (config.baseURL && !config.baseURL.startsWith('/') && !config.baseURL.endsWith('/api')) {
+    config.baseURL = ensureApiBase(config.baseURL);
+  }
+
   return config;
 });
 
@@ -48,7 +78,6 @@ api.interceptors.request.use((config) => {
 // ─────────────────────────────────────────────
 api.interceptors.response.use(
   (response) => {
-    // Successful response — if we were in fallback, stay there until next check
     return response;
   },
   async (error) => {
@@ -64,7 +93,7 @@ api.interceptors.response.use(
       usingFallback = true;
       fallbackCheckedAt = Date.now();
       config.baseURL = FALLBACK_URL;
-      console.warn('[API] Primary backend unreachable. Switching to fallback (Render).');
+      console.warn('[API] Primary backend unreachable. Switching to fallback (Render):', FALLBACK_URL);
       return api.request(config);
     }
 
@@ -213,4 +242,3 @@ export const authAPI = {
 };
 
 export default api;
-
