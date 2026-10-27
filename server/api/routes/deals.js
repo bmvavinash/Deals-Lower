@@ -28,6 +28,7 @@ const processProduct = handleProductProcessingModule.processProduct || (async (d
 const { executionTracker } = require('../../../services/executionTracker');
 const { spawn } = require('child_process');
 const net = require('net');
+const { authenticateRequest } = require('./auth');
 
 const logger = getModuleLogger('deals-api');
 const TELEGRAM_LOCK_FILE = path.join(__dirname, '../../../.telegram-bot.lock');
@@ -222,6 +223,22 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
+    // Authenticate if credentials or token are provided
+    const authResult = authenticateRequest(req);
+    if (!authResult.authenticated && !authResult.unauthenticated) {
+      // Credentials or token were provided in headers or body, but failed verification
+      return res.status(401).json({
+        success: false,
+        status: 'error',
+        error: authResult.error || 'Access Denied: Invalid authentication credentials or token.'
+      });
+    }
+
+    if (authResult.authenticated) {
+      req.adminUser = authResult.user;
+      logger.info('Authenticated admin executing process-product', { email: authResult.user.email, authType: authResult.authType });
+    }
+
     const { url: reqUrl, urls: reqUrls, postProduct = false, saleName = null } = req.body || {};
     
     // Extract all URLs from url or urls (string, array, or newline/comma separated)
@@ -294,6 +311,12 @@ router.post('/process-product', async (req, res) => {
         message: `Processed ${successful.length}/${results.length} product(s).`
       };
 
+      if (authResult.authenticated) {
+        responsePayload.authenticated = true;
+        responsePayload.authenticatedAs = authResult.user.email;
+        responsePayload.authType = authResult.authType;
+      }
+
       // Top-level backward compatibility if single URL was passed
       if (results.length === 1) {
         responsePayload.productCode = firstResult.productCode;
@@ -318,7 +341,7 @@ router.post('/process-product', async (req, res) => {
       }
       const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
       const successful = results.filter(r => r.success);
-      return res.json({
+      const responsePayload = {
         success: successful.length > 0,
         status: successful.length === results.length ? 'success' : (successful.length > 0 ? 'partial' : 'error'),
         total: results.length,
@@ -328,7 +351,13 @@ router.post('/process-product', async (req, res) => {
         lowerdealUrls,
         results,
         message: `Processed ${successful.length}/${results.length} product(s).`
-      });
+      };
+      if (authResult.authenticated) {
+        responsePayload.authenticated = true;
+        responsePayload.authenticatedAs = authResult.user.email;
+        responsePayload.authType = authResult.authType;
+      }
+      return res.json(responsePayload);
     }
 
     // Single URL in local environment
