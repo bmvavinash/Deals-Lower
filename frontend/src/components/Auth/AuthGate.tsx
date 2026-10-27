@@ -152,7 +152,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       const result = await signInWithPopup(auth, googleProvider);
       const loggedUser = result.user;
       const norm = (loggedUser.email || '').toLowerCase();
-      if (norm !== ALLOWED_ADMIN_EMAIL && norm !== SECONDARY_ALLOWED_EMAIL) {
+      if (!ALLOWED_ADMIN_EMAILS.includes(norm)) {
         setError(`Access Denied: Email "${loggedUser.email}" is not authorized.`);
         await signOut(auth);
       }
@@ -184,8 +184,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   };
 
   const handleBypassLogin = () => {
-    localStorage.setItem('auth_bypass_user', ALLOWED_ADMIN_EMAIL);
-    setBypassUser(ALLOWED_ADMIN_EMAIL);
+    localStorage.setItem('auth_bypass_user', ALLOWED_ADMIN_EMAILS[0]);
+    setBypassUser(ALLOWED_ADMIN_EMAILS[0]);
     setError(null);
   };
 
@@ -201,12 +201,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
 
   // Authentication check
   const isAuthenticated = 
-    Boolean(adminSession && adminSession.email.toLowerCase() === ALLOWED_ADMIN_EMAIL) ||
-    Boolean(user && (user.email === ALLOWED_ADMIN_EMAIL || user.email === SECONDARY_ALLOWED_EMAIL)) ||
-    Boolean(isLocalhost() && (bypassUser === ALLOWED_ADMIN_EMAIL || bypassUser === SECONDARY_ALLOWED_EMAIL));
+    Boolean(adminSession && adminSession.email && ALLOWED_ADMIN_EMAILS.includes(adminSession.email.toLowerCase())) ||
+    Boolean(user && user.email && ALLOWED_ADMIN_EMAILS.includes(user.email.toLowerCase())) ||
+    Boolean(isLocalhost() && bypassUser && ALLOWED_ADMIN_EMAILS.includes(bypassUser.toLowerCase()));
 
   if (isAuthenticated) {
-    const currentAdminEmail = adminSession?.email || user?.email || bypassUser || ALLOWED_ADMIN_EMAIL;
+    const currentAdminEmail = adminSession?.email || user?.email || bypassUser || ALLOWED_ADMIN_EMAILS[0];
     return (
       <>
         <div style={styles.floatingHeader}>
