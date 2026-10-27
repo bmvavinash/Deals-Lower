@@ -79,7 +79,7 @@ router.post('/login', (req, res) => {
     logger.warn('Unauthorized email rejected at login', { email: normalizedEmail });
     return res.status(403).json({
       success: false,
-      error: `Access Denied: Email "${normalizedEmail}" is not authorized for administrative access.`
+      error: 'Access Denied: Invalid credentials or unauthorized account.'
     });
   }
 

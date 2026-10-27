@@ -9,7 +9,6 @@ interface AuthGateProps {
 
 // Authorized administrator emails per user requirement
 const ALLOWED_ADMIN_EMAILS = ['avinash1bmv@gmail.com', 'avi2bmv@gmail.com'];
-const DEFAULT_ADMIN_EMAIL = 'avinash1bmv@gmail.com';
 
 const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -29,7 +28,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     return null;
   });
 
-  const [email, setEmail] = useState(DEFAULT_ADMIN_EMAIL);
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -107,7 +106,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
 
     const normalized = email.trim().toLowerCase();
     if (!ALLOWED_ADMIN_EMAILS.includes(normalized)) {
-      setError(`Access Denied: Email "${normalized}" is not authorized for login.`);
+      setError('Access Denied: Invalid credentials or unauthorized account.');
       return;
     }
 
@@ -249,7 +248,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="avinash1bmv@gmail.com or avi2bmv@gmail.com"
+              placeholder="Enter your administrator email"
               style={styles.input}
               required
               disabled={isLoggingIn}
@@ -302,13 +301,13 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         {isLocalhost() && (
           <div style={{ marginTop: '16px' }}>
             <button onClick={handleBypassLogin} style={styles.bypassButton}>
-              Bypass as Developer ({DEFAULT_ADMIN_EMAIL})
+              Bypass as Developer
             </button>
           </div>
         )}
 
         <div style={styles.footer}>
-          Authorized access restricted to {ALLOWED_ADMIN_EMAILS.join(' and ')}.
+          DealsOptimised Administrative Portal • Authorized Access Only
         </div>
       </div>
     </div>

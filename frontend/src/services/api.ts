@@ -7,9 +7,9 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 // ─────────────────────────────────────────────
 
 const IS_DEV       = Boolean((import.meta as any).env?.DEV);
-const DEFAULT_URL  = IS_DEV ? '/api' : 'https://dealsoptimised.onrender.com';
+const DEFAULT_URL  = IS_DEV ? '/api' : 'https://dealsoptimised.onrender.com/api';
 const PRIMARY_URL  = (import.meta as any).env?.VITE_PRIMARY_API_URL  || null;  // Oracle Cloud HTTPS
-const FALLBACK_URL = (import.meta as any).env?.VITE_FALLBACK_API_URL || 'https://dealsoptimised.onrender.com';  // Render HTTPS
+const FALLBACK_URL = (import.meta as any).env?.VITE_FALLBACK_API_URL || 'https://dealsoptimised.onrender.com/api';  // Render HTTPS
 const LEGACY_URL   = (import.meta as any).env?.VITE_API_URL          || DEFAULT_URL; // Fallback to Render in production
 
 // Determine which URL to use based on available env vars

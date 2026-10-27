@@ -217,6 +217,7 @@ app.use('/api/categories', categoriesRoutes);
 app.use('/api/matching-config', matchingConfigRoutes);
 app.use('/api/affiliates', affiliatesRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
