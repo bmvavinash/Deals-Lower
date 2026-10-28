@@ -14,6 +14,53 @@ const updateProduct = require('../database/firebaseDB/firebaseUpdate');
 
 const logger = getModuleLogger('headless-product-extractor');
 
+// Known bot challenges, firewall blocks, or error titles that indicate extraction failure
+const BLOCKED_TITLE_PATTERNS = [
+  /^Access Denied/i,
+  /^Oops!\s*Something went wrong/i,
+  /^Robot Check/i,
+  /^Page Not Found/i,
+  /^403 Forbidden/i,
+  /^404 Not Found/i,
+  /Attention Required!\s*\|\s*Cloudflare/i,
+  /Just a moment\.\.\./i,
+  /Security Verification/i,
+  /^Blocked/i,
+  /Challenge/i,
+  /Online Shopping India\s*\|\s*Buy Mobiles/i
+];
+
+/**
+ * Checks if HTML or status code indicates merchant bot-block, 403, 404, or error page
+ * @param {number} status 
+ * @param {string} html 
+ * @returns {boolean}
+ */
+function isMerchantBlockedOrError(status, html) {
+  if (status === 403 || status === 401 || status === 503 || status === 404) return true;
+  if (!html || typeof html !== 'string') return true;
+
+  // Title-based checks
+  const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  const rawTitle = titleMatch ? titleMatch[1].trim() : '';
+  if (BLOCKED_TITLE_PATTERNS.some(regex => regex.test(rawTitle))) return true;
+
+  // Body content-based checks
+  const blockedSnippets = [
+    "You don't have permission to access",
+    "Enter the characters you see below",
+    "Reference &#35;18",
+    "Reference #18",
+    "Your request was blocked",
+    "Cloudflare Ray ID",
+    "The Web address you entered is not a functioning page",
+    "Looking for something?"
+  ];
+  if (blockedSnippets.some(snippet => html.includes(snippet))) return true;
+
+  return false;
+}
+
 /**
  * Extracts structured JSON-LD scripts from HTML
  * @param {string} html 
@@ -95,7 +142,7 @@ function extractProductCode(url, platform) {
     return idMatch ? idMatch[1] : null;
   }
   if (p === 'ajio') {
-    const ajioMatch = url.match(/\/p\/([a-z0-9_]+)/i) || url.match(/([0-9]{9})/);
+    const ajioMatch = url.match(/\/p\/([a-z0-9_]+)/i) || url.match(/([0-9]{9}(?:_[a-z0-9]+)?)/i);
     return ajioMatch ? ajioMatch[1] : null;
   }
 
@@ -132,8 +179,9 @@ async function extractProductOnServer(rawUrl, options = {}) {
   // Amazon India responds with full server-side pricing HTML when fetched with mobile browser user-agent
   const userAgent = detectedInitialPlatform === 'amazon'
     ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4.1 Mobile/15E148 Safari/604.1'
-    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36';
+    : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
+  let fetchStatus = 200;
   try {
     const res = await fetch(rawUrl, {
       method: 'GET',
@@ -142,30 +190,16 @@ async function extractProductOnServer(rawUrl, options = {}) {
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7'
       },
-      redirect: 'follow'
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20000)
     });
 
+    fetchStatus = res.status;
     resolvedUrl = res.url || rawUrl;
     responseHtml = await res.text();
     logger.info('Resolved URL on server', { original: rawUrl, resolved: resolvedUrl, status: res.status });
-
-    // Check if the merchant returned 404 or Page Not Found
-    const isPageNotFound = res.status === 404 || 
-                           responseHtml.includes('Page Not Found') || 
-                           responseHtml.includes('Looking for something?') ||
-                           responseHtml.includes('The Web address you entered is not a functioning page');
-    if (isPageNotFound) {
-      const pCode = extractProductCode(resolvedUrl, detectedInitialPlatform) || 'unknown';
-      logger.warn('Product page returned 404 or Page Not Found on merchant', { url: resolvedUrl, productCode: pCode });
-      return {
-        success: false,
-        status: 'error',
-        productCode: pCode,
-        message: `Product [${pCode}] was not found or has been removed from ${detectedInitialPlatform}.`
-      };
-    }
   } catch (fetchErr) {
-    logger.warn('Failed initial fetch redirect resolution, using raw URL', { error: fetchErr.message });
+    logger.warn('Failed initial fetch, using raw URL', { error: fetchErr.message });
   }
 
   // 2. Identify platform and product code
@@ -173,7 +207,6 @@ async function extractProductOnServer(rawUrl, options = {}) {
   let productCode = extractProductCode(resolvedUrl, platform);
 
   if (!productCode) {
-    // Generate deterministic fallback code if URL doesn't have standard pattern
     try {
       const parsed = new URL(resolvedUrl);
       const pathParts = parsed.pathname.split('/').filter(Boolean);
@@ -181,6 +214,29 @@ async function extractProductOnServer(rawUrl, options = {}) {
     } catch {
       productCode = `prod-${Date.now()}`;
     }
+  }
+
+  // Check if merchant returned an error, 403, 404, or bot challenge
+  if (isMerchantBlockedOrError(fetchStatus, responseHtml)) {
+    const errorMsg = fetchStatus === 404 
+      ? `Product [${productCode}] was not found or has been removed from ${platform.toUpperCase()}.`
+      : `Unable to extract product details from ${platform.toUpperCase()}: Merchant access denied or bot challenge.`;
+    
+    logger.warn('Product page returned blocked/error response on merchant', {
+      url: resolvedUrl,
+      productCode,
+      status: fetchStatus,
+      platform
+    });
+
+    return {
+      success: false,
+      status: 'error',
+      productCode,
+      platform,
+      error: errorMsg,
+      message: errorMsg
+    };
   }
 
   // 3. Load HTML into Cheerio
@@ -211,6 +267,20 @@ async function extractProductOnServer(rawUrl, options = {}) {
                .replace(/\s*-\s*Buy\s.*$/i, '')
                .trim();
 
+  // Check if title is a blocked/error title that slipped through
+  if (BLOCKED_TITLE_PATTERNS.some(r => r.test(title))) {
+    const errorMsg = `Unable to extract product details from ${platform.toUpperCase()}: Merchant returned "${title}".`;
+    logger.warn('Product title matched block pattern', { productCode, title, platform });
+    return {
+      success: false,
+      status: 'error',
+      productCode,
+      platform,
+      error: errorMsg,
+      message: errorMsg
+    };
+  }
+
   // Extract Photo / Image
   let photo = '';
   if (productJson.image) {
@@ -238,6 +308,43 @@ async function extractProductOnServer(rawUrl, options = {}) {
               $('h1.pdp-title').text().trim() || 
               '';
   brand = brand.replace(/^Brand:\s*/i, '').replace(/^Visit the\s*/i, '').replace(/\s*Store$/i, '').trim();
+
+  // --- Out of Stock Detection ---
+  const offer = Array.isArray(productJson.offers) ? productJson.offers[0] : (productJson.offers || {});
+  const offerAvailability = String(offer?.availability || '').toLowerCase();
+  const isJsonLdOOS = offerAvailability.includes('outofstock') || offerAvailability.includes('soldout') || offerAvailability.includes('discontinued');
+
+  const metaAvailability = String(meta['og:availability'] || meta['product:availability'] || meta['availability'] || '').toLowerCase();
+  const isMetaOOS = metaAvailability.includes('out of stock') || metaAvailability.includes('oos') || metaAvailability.includes('soldout');
+
+  const isAmazonOOS = platform === 'amazon' && (
+    $('#availability').text().includes('Currently unavailable') ||
+    $('#availability').text().includes('out of stock') ||
+    $('#outOfStock').length > 0 ||
+    responseHtml.includes('Currently unavailable.') ||
+    responseHtml.includes("We don't know when or if this item will be back in stock.")
+  );
+
+  const isFlipkartOOS = platform === 'flipkart' && (
+    $('._16FRp0').text().includes('Sold Out') ||
+    $('._16FRp0').text().includes('Currently Out of Stock') ||
+    responseHtml.includes('Currently Out of Stock') ||
+    responseHtml.includes('This item is currently out of stock')
+  );
+
+  const isMyntraOOS = platform === 'myntra' && (
+    $('.pdp-out-of-stock').length > 0 ||
+    $('.pdp-sold-out').length > 0 ||
+    responseHtml.includes('This product is currently out of stock') ||
+    responseHtml.includes('"availability":"OutOfStock"')
+  );
+
+  const isAjioOOS = platform === 'ajio' && (
+    $('.out-of-stock').length > 0 ||
+    responseHtml.includes('Product is currently out of stock')
+  );
+
+  const isOutOfStock = Boolean(isJsonLdOOS || isMetaOOS || isAmazonOOS || isFlipkartOOS || isMyntraOOS || isAjioOOS);
 
   // Extract Price & MRP based on platform
   let price = null;
@@ -320,8 +427,7 @@ async function extractProductOnServer(rawUrl, options = {}) {
   }
 
   // Generic Schema / JSON-LD Fallback for Price & MRP
-  if (!price && productJson.offers) {
-    const offer = Array.isArray(productJson.offers) ? productJson.offers[0] : productJson.offers;
+  if (!price && offer) {
     price = cleanPrice(offer?.price || offer?.lowPrice);
     mrp = cleanPrice(offer?.highPrice);
   }
@@ -334,7 +440,6 @@ async function extractProductOnServer(rawUrl, options = {}) {
     const discPercent = Math.round(((Number(mrp) - Number(price)) / Number(mrp)) * 100);
     discount = `${discPercent}%`;
   } else if (!mrp && price && discount) {
-    // Infer MRP if discount is available
     const discNum = parseInt(discount.replace(/[^\d]/g, ''), 10);
     if (!isNaN(discNum) && discNum > 0 && discNum < 100) {
       mrp = String(Math.round(Number(price) / (1 - (discNum / 100))));
@@ -348,20 +453,53 @@ async function extractProductOnServer(rawUrl, options = {}) {
                        responseHtml.includes('Save ₹500') || 
                        responseHtml.includes('₹500 off');
     if (isPromo500 && (mrp && Number(mrp) > 2000)) {
-      // Suspect false 500 price on a high-value product (e.g. iPhone, Samsung, Premium Luggage)
       logger.warn('Suppressed suspicious promotional ₹500 price', { productCode, mrp });
       price = null;
     }
   }
 
-  logger.info('Extracted product attributes on server', {
+  // --- Strict Validation of Extracted Details ---
+  const isValidTitle = Boolean(title && title.trim().length >= 3 && title !== `Product ${productCode}`);
+  const isValidPhoto = Boolean(photo && typeof photo === 'string' && (photo.startsWith('http://') || photo.startsWith('https://')));
+  const isValidPrice = Boolean(price && Number(price) > 0);
+
+  const missingFields = [];
+  if (!isValidTitle) missingFields.push('title');
+  if (!isValidPhoto) missingFields.push('image/photo URL');
+  if (!isValidPrice && !isOutOfStock) missingFields.push('price (item is not marked out of stock)');
+
+  if (missingFields.length > 0) {
+    const errorMsg = `Unable to extract product details for [${productCode}] on ${platform.toUpperCase()}: Missing ${missingFields.join(', ')}.`;
+    logger.warn('Server headless extraction failed validation', {
+      productCode,
+      platform,
+      missingFields,
+      isOutOfStock,
+      hasTitle: isValidTitle,
+      hasPhoto: isValidPhoto,
+      hasPrice: isValidPrice
+    });
+
+    return {
+      success: false,
+      status: 'error',
+      productCode,
+      platform,
+      outOfStock: isOutOfStock,
+      error: errorMsg,
+      message: errorMsg
+    };
+  }
+
+  logger.info('Extracted product attributes on server successfully', {
     platform,
     productCode,
-    hasTitle: Boolean(title),
+    title,
     price: price || 'N/A',
     mrp: mrp || 'N/A',
     discount: discount || 'N/A',
-    hasPhoto: Boolean(photo)
+    hasPhoto: Boolean(photo),
+    isOutOfStock
   });
 
   // 4. Generate Affiliate Links using Cuelinks API (and Amazon tag for Amazon)
@@ -373,14 +511,12 @@ async function extractProductOnServer(rawUrl, options = {}) {
     logger.warn('Affiliate link generation deferred/fallback used', { error: affErr.message });
   }
 
-  // 5. Always persist product to Firebase Realtime Database
-  // Do NOT block or require local browser daemon even if some fields are missing.
-  // lowerdeal.com queue links API handles async enrichment.
+  // 5. Persist validated product to Firebase Realtime Database
   const todayDate = getformattedDate();
   const productPayload = {
     productCode,
-    title: title || `Product ${productCode}`,
-    productText: title || `Product ${productCode}`,
+    title,
+    productText: title,
     price: price ? String(price) : '',
     mrp: mrp ? String(mrp) : '',
     discount: discount || '',
@@ -389,6 +525,10 @@ async function extractProductOnServer(rawUrl, options = {}) {
     productUrl: resolvedUrl,
     url: resolvedUrl,
     storeType: platform,
+    inStock: !isOutOfStock,
+    outOfStock: isOutOfStock,
+    availability: isOutOfStock ? 'OutOfStock' : 'InStock',
+    productStatus: isOutOfStock ? 'outOfStock' : 'active',
     links: {
       avinashbmv: affiliateLinks.avinashbmv || resolvedUrl,
       avinashbmvINR: affiliateLinks.avinashbmvINR || resolvedUrl
@@ -400,7 +540,7 @@ async function extractProductOnServer(rawUrl, options = {}) {
 
   try {
     await updateProduct(productCode, productPayload);
-    logger.info('Successfully saved product to Firebase Realtime Database on server', { productCode });
+    logger.info('Successfully saved validated product to Firebase Realtime Database on server', { productCode, isOutOfStock });
 
     return {
       success: true,
@@ -410,8 +550,13 @@ async function extractProductOnServer(rawUrl, options = {}) {
       lowerdealUrl: `https://lowerdeal.com/p/${productCode}`,
       affiliateUrl: affiliateLinks.avinashbmv || affiliateLinks.avinashbmvINR || resolvedUrl,
       data: productPayload,
+      outOfStock: isOutOfStock,
+      inStock: !isOutOfStock,
+      availability: isOutOfStock ? 'OutOfStock' : 'InStock',
       isCuelinks: affiliateLinks.isCuelinks,
-      message: `Product [${platform.toUpperCase()}] ${productCode} processed successfully on server!`
+      message: isOutOfStock
+        ? `Product [${platform.toUpperCase()}] ${productCode} processed successfully (⚠️ Currently Out of Stock)!`
+        : `Product [${platform.toUpperCase()}] ${productCode} processed successfully on server!`
     };
   } catch (dbErr) {
     logger.error('Failed to save product to Firebase', { error: dbErr.message });

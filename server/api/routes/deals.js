@@ -135,21 +135,35 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
         mrp: serverResult.data?.mrp || null,
         discount: serverResult.data?.discount || '',
         photo: serverResult.data?.photo || '',
+        outOfStock: Boolean(serverResult.outOfStock),
+        inStock: serverResult.inStock !== undefined ? serverResult.inStock : !serverResult.outOfStock,
+        availability: serverResult.availability || (serverResult.outOfStock ? 'OutOfStock' : 'InStock'),
         data: serverResult.data,
         isCuelinks: serverResult.isCuelinks,
         message: serverResult.message || `Product [${pCode}] processed successfully on server!`
       };
-    } else if (serverResult && serverResult.status === 'error') {
+    } else if (serverResult && (!serverResult.success || serverResult.status === 'error')) {
       return {
         originalUrl: targetUrl,
         success: false,
         status: 'error',
         productCode: serverResult.productCode || null,
-        message: serverResult.message || 'Product not found on merchant website.'
+        platform: serverResult.platform || 'unknown',
+        outOfStock: Boolean(serverResult.outOfStock),
+        error: serverResult.error || serverResult.message || 'Unable to get product details from merchant.',
+        message: serverResult.message || serverResult.error || 'Unable to get product details from merchant.'
       };
     }
   } catch (extractErr) {
-    logger.warn('Server headless extraction failed, falling back to Firebase command queue', { url: targetUrl, error: extractErr.message });
+    logger.warn('Server headless extraction failed', { url: targetUrl, error: extractErr.message });
+    return {
+      originalUrl: targetUrl,
+      success: false,
+      status: 'error',
+      productCode: null,
+      error: `Server extraction failed: ${extractErr.message}`,
+      message: `Unable to extract product details: ${extractErr.message}`
+    };
   }
 
   // 2. Fallback to Firebase Queue if server extraction yielded insufficient data
@@ -306,18 +320,35 @@ router.post('/process-product', async (req, res) => {
 
       const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
       const successful = results.filter(r => r.success);
+      const failed = results.filter(r => !r.success);
       const firstResult = results[0] || {};
+
+      let overallStatus = 'success';
+      if (successful.length === 0) {
+        overallStatus = 'error';
+      } else if (failed.length > 0) {
+        overallStatus = 'partial';
+      }
+
+      let summaryMessage = `Processed ${successful.length}/${results.length} product(s) successfully.`;
+      if (failed.length > 0) {
+        const errorDetails = failed.map(f => {
+          const code = f.productCode ? `[${f.productCode}]` : '';
+          return `${code} ${f.error || f.message || 'Failed'}`.trim();
+        }).join('; ');
+        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed: ${errorDetails}`;
+      }
 
       const responsePayload = {
         success: successful.length > 0,
-        status: successful.length === results.length ? 'success' : (successful.length > 0 ? 'partial' : 'error'),
+        status: overallStatus,
         total: results.length,
         successfulCount: successful.length,
-        failedCount: results.length - successful.length,
+        failedCount: failed.length,
         lowerdealUrl: lowerdealUrls[0] || null,
         lowerdealUrls,
         results,
-        message: `Processed ${successful.length}/${results.length} product(s).`
+        message: summaryMessage
       };
 
       if (authResult.authenticated) {
@@ -335,6 +366,12 @@ router.post('/process-product', async (req, res) => {
         responsePayload.queued = firstResult.queued;
         responsePayload.queuedId = firstResult.queuedId;
         responsePayload.isDaemonAlive = firstResult.isDaemonAlive;
+        responsePayload.outOfStock = Boolean(firstResult.outOfStock);
+        responsePayload.inStock = firstResult.inStock !== undefined ? firstResult.inStock : !firstResult.outOfStock;
+        responsePayload.availability = firstResult.availability || (firstResult.outOfStock ? 'OutOfStock' : 'InStock');
+        if (!firstResult.success) {
+          responsePayload.error = firstResult.error || firstResult.message;
+        }
         responsePayload.message = firstResult.message || responsePayload.message;
       }
 
@@ -350,16 +387,34 @@ router.post('/process-product', async (req, res) => {
       }
       const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
       const successful = results.filter(r => r.success);
+      const failed = results.filter(r => !r.success);
+
+      let overallStatus = 'success';
+      if (successful.length === 0) {
+        overallStatus = 'error';
+      } else if (failed.length > 0) {
+        overallStatus = 'partial';
+      }
+
+      let summaryMessage = `Processed ${successful.length}/${results.length} product(s) successfully.`;
+      if (failed.length > 0) {
+        const errorDetails = failed.map(f => {
+          const code = f.productCode ? `[${f.productCode}]` : '';
+          return `${code} ${f.error || f.message || 'Failed'}`.trim();
+        }).join('; ');
+        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed: ${errorDetails}`;
+      }
+
       const responsePayload = {
         success: successful.length > 0,
-        status: successful.length === results.length ? 'success' : (successful.length > 0 ? 'partial' : 'error'),
+        status: overallStatus,
         total: results.length,
         successfulCount: successful.length,
-        failedCount: results.length - successful.length,
+        failedCount: failed.length,
         lowerdealUrl: lowerdealUrls[0] || null,
         lowerdealUrls,
         results,
-        message: `Processed ${successful.length}/${results.length} product(s).`
+        message: summaryMessage
       };
       if (authResult.authenticated) {
         responsePayload.authenticated = true;
