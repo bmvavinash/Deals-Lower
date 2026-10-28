@@ -12,6 +12,7 @@ env:
   HEADFUL: 'true'
   CI: 'true'
   NODE_ENV: production
+  CUELINKS_API_KEY: ${{ secrets.CUELINKS_API_KEY }}
 
 jobs:
   amazon-promo-cards-fetch:

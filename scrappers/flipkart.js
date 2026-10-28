@@ -94,11 +94,11 @@ async function scrapeFlipkartProduct(url, text, driver) {
             const aff = await generateAffiliateLinks(url, 'flipkart', product.productCode);
             product.links.avinashbmv = aff.avinashbmv;
             product.links.avinashbmvINR = aff.avinashbmvINR;
-            console.log("[flipkart] Generated affiliate links via Cuelinks/INRDeals, isCuelinks:", aff.isCuelinks);
+            console.log("[flipkart] Generated affiliate links via Cuelinks, isCuelinks:", aff.isCuelinks);
           } catch (e) {
-            console.log("[flipkart] Cuelinks link generation error, using direct INRDeals fallback:", e.message);
-            product.links.avinashbmv = "https://inrdeals.com/avi646476329/" + url;
-            product.links.avinashbmvINR = "https://inrdeals.com/avi646476329/" + url;
+            console.log("[flipkart] Cuelinks link generation error, using clean merchant URL fallback:", e.message);
+            product.links.avinashbmv = url;
+            product.links.avinashbmvINR = "";
           }
         }
         else {

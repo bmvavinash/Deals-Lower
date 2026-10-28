@@ -42,6 +42,14 @@ This document lists all GitHub Secrets required for the workflows in this reposi
 - **Source**: Firebase Console → Project Settings → General → Web API Key
 - **Used by**: Any workflow that needs client-side Firebase auth
 
+
+
+### CUELINKS_API_KEY
+- **Description**: Cuelinks v3 REST API token for automated affiliate shortlink conversion on non-Amazon products
+- **Format**: API Token string from Cuelinks publisher dashboard
+- **Source**: Cuelinks Publisher Dashboard -> Developer API
+- **Used by**: All category-* workflows, hot-deals-telegram, stale-products-update, banners-fetch, amazon-promo-cards-fetch
+
 ## Workflow-to-Secret Mapping
 
 | Workflow | FIREBASE_SERVICE_ACCOUNT_JSON | USERS_FIREBASE_SERVICE_ACCOUNT_JSON | TELEGRAM_BOT_KEY | DEALS_GLOBAL_BOT_KEY |

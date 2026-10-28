@@ -17,6 +17,7 @@ env:
   CLOUDFLARE_R2_BUCKET_NAME: ${{ secrets.CLOUDFLARE_R2_BUCKET_NAME }}
   CI: 'true'
   NODE_ENV: production
+  CUELINKS_API_KEY: ${{ secrets.CUELINKS_API_KEY }}
 
 jobs:
   category-beauty:

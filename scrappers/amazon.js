@@ -464,8 +464,8 @@ async function scrapeProduct(url, platform, driver, text = "", keyExist = false,
                 product.links.avinashbmvINR = "";
                 logger.info(`[${platform}] Using fallback Amazon URL after error: ${product.productCode}`);
               } else if (platform !== "amazon") {
-                // For non-Amazon: set inrdeals.com URL
-                product.links.avinashbmv = "https://inrdeals.com/avi646476329/" + url;
+                // For non-Amazon: set clean merchant URL fallback (INRDeals disabled)
+                product.links.avinashbmv = url;
                 product.links.avinashbmvINR = "";
               }
             }
