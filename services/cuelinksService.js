@@ -65,12 +65,13 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
 
     if (response.ok) {
       const data = await response.json();
-      if (data && data.short_url) {
+      const shortUrl = data?.short_url || data?.data?.short_url || data?.data?.tracking_url || data?.data?.affiliate_url || data?.url || data?.data?.url;
+      if (shortUrl) {
         logger.info('Successfully converted URL via Cuelinks API', {
           originalUrl: cleanUrl,
-          shortUrl: data.short_url
+          shortUrl: shortUrl
         });
-        return data.short_url;
+        return shortUrl;
       }
     }
 
