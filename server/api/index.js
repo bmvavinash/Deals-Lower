@@ -253,6 +253,32 @@ if (require.main === module) {
       logger.error('Failed to start Notification Queue Worker', { error: error.message });
     }
 
+    // Autonomous Keep-Alive Self-Ping (Prevents Render free tier from hibernating)
+    try {
+      const publicUrl = process.env.RENDER_EXTERNAL_URL || 'https://dealsoptimised.onrender.com';
+      const PING_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes (well below Render's 15-minute inactivity threshold)
+
+      const sendSelfPing = async () => {
+        try {
+          const pingUrl = `${publicUrl.replace(/\/+$/, '')}/health`;
+          const res = await fetch(pingUrl, {
+            headers: { 'User-Agent': 'DealsOptimised-SelfPing/1.0' }
+          });
+          logger.info(`Keep-alive self-ping sent to ${pingUrl}`, { status: res.status });
+        } catch (pingErr) {
+          logger.warn(`Keep-alive self-ping warning (will retry next interval)`, { error: pingErr.message });
+        }
+      };
+
+      // Run initial ping after 2 minutes, then every 5 minutes
+      setTimeout(sendSelfPing, 2 * 60 * 1000);
+      const keepAliveTimer = setInterval(sendSelfPing, PING_INTERVAL_MS);
+      if (keepAliveTimer.unref) keepAliveTimer.unref();
+      logger.info('Autonomous Keep-Alive Self-Ping scheduled every 5 minutes.');
+    } catch (keepAliveErr) {
+      logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
+    }
+
     // Auto-start Local Daemon if offline on API startup (SKIP ON RENDER)
     try {
       if (admin.apps.length && !process.env.RENDER) {

@@ -1,0 +1,37 @@
+name: Render Keep-Alive Ping
+
+on:
+  schedule:
+    # Trigger every 10 minutes (0, 10, 20, 30, 40, 50)
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: render-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ping Render Backend Health Endpoint
+        run: |
+          echo "Pinging DealsOptimised on Render to prevent hibernation..."
+          RESPONSE=$(curl -s -S -L \
+            --connect-timeout 25 \
+            --max-time 60 \
+            --retry 3 \
+            --retry-delay 10 \
+            -H "User-Agent: GitHubActions-KeepAlive/1.0" \
+            "https://dealsoptimised.onrender.com/health")
+          echo "Response: $RESPONSE"
+
+          # Verify response contains status ok
+          if echo "$RESPONSE" | grep -q '"status":"ok"'; then
+            echo "✅ DealsOptimised Render backend is active and healthy."
+          else
+            echo "⚠️ Health check returned non-standard payload, pinging /api/health fallback..."
+            curl -s -S -L --connect-timeout 20 --max-time 45 "https://dealsoptimised.onrender.com/api/health"
+          fi
