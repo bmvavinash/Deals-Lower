@@ -43,7 +43,7 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
 
   const apiKey = process.env.CUELINKS_API_KEY || process.env.REACT_APP_CUELINKS_API_KEY;
   if (!apiKey || apiKey === 'YOUR_CUELINKS_API_KEY_HERE') {
-    logger.warn('Cuelinks API key missing in environment, falling back to INRDeals');
+    logger.warn('Cuelinks API key missing in environment, falling back to direct merchant URL');
     return null;
   }
 
@@ -90,8 +90,9 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
  * Matching lowerdeal.com priority:
  * 1. For Amazon: Direct Amazon affiliate URL with tag (default: dealshubglo0c-21)
  * 2. For non-Amazon (Flipkart, Myntra, Ajio, etc.):
- *    - First try Cuelinks REST API
- *    - Fallback to INRDeals (https://inrdeals.com/avi646476329/{url})
+ *    - Priority 1: ExtraPe (product.links.avinashbmv / existingExtrape)
+ *    - Priority 2: Cuelinks via REST API
+ *    - Priority 3: Direct clean merchant URL (INRDeals disabled)
  * @param {string} targetUrl - Merchant product URL
  * @param {string} platform - Store platform (amazon, flipkart, myntra, ajio, etc.)
  * @param {string} [productCode] - Optional platform product code
@@ -126,9 +127,25 @@ async function generateAffiliateLinks(targetUrl, platform = '', productCode = ''
   }
 
   // --- Non-Amazon platforms (Flipkart, Myntra, Ajio, Croma, etc.) ---
-  const inrdealsUrl = `https://inrdeals.com/avi646476329/${cleanUrl}`;
+  // INRDeals disabled per user requirement.
+  // Priority 1: ExtraPe shortlink if already present and valid
+  const hasValidExtrape = existingExtrape && !existingExtrape.includes('inrdeals.com') && (
+    existingExtrape.includes('extp.in') ||
+    existingExtrape.includes('extrape.com') ||
+    existingExtrape.includes('ajiio.co') ||
+    existingExtrape.includes('fkrt.co') ||
+    existingExtrape.includes('myntr.in')
+  );
 
-  // 1. Try Cuelinks API
+  if (hasValidExtrape) {
+    return {
+      avinashbmv: existingExtrape,
+      avinashbmvINR: '',
+      isCuelinks: false
+    };
+  }
+
+  // Priority 2: Cuelinks API
   let cuelinksUrl = null;
   try {
     cuelinksUrl = await convertToCuelinks(cleanUrl);
@@ -136,12 +153,12 @@ async function generateAffiliateLinks(targetUrl, platform = '', productCode = ''
     logger.warn('Error during Cuelinks conversion', { error: err.message });
   }
 
-  // 2. Final link resolution (Cuelinks -> existing Extrape -> INRDeals)
-  const finalAvinashbmv = cuelinksUrl || existingExtrape || inrdealsUrl;
+  // Priority 3: Direct clean merchant URL fallback (INRDeals disabled)
+  const finalAvinashbmv = cuelinksUrl || cleanUrl;
 
   return {
     avinashbmv: finalAvinashbmv,
-    avinashbmvINR: inrdealsUrl,
+    avinashbmvINR: '',
     isCuelinks: Boolean(cuelinksUrl)
   };
 }
