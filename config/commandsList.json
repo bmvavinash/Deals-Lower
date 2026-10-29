@@ -33,5 +33,19 @@
     "command": "node scripts/automateBannerExtraction.js",
     "role": "banners",
     "purpose": "Extracts banner links and details from retail platforms and stores them under the banners database node."
+  },
+  {
+    "id": "extract-stocks-whatsapp",
+    "name": "Extract Stocks from WhatsApp (Live)",
+    "command": "node scripts/extractWhatsAppStocks.js 9222",
+    "role": "stocks",
+    "purpose": "Attaches to Chrome port 9222 WhatsApp Web, extracts advisory trade messages from the active chat, parses signals, fetches CMP, and saves them to Multi-DB."
+  },
+  {
+    "id": "run-stocks-telegram-bot",
+    "name": "Start Stock Telegram Bot & Ingestion",
+    "command": "node scripts/runStockBot.js",
+    "role": "stocks",
+    "purpose": "Runs the Telegram Ingestion Bot to listen for forwarded stock calls, answer /insights & /signals, and post clarification questions for unmapped tickers."
   }
 ]

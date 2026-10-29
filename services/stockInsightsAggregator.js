@@ -1,0 +1,227 @@
+const { getAllSignals, saveBestInsights, getBestInsights } = require('../database/stocksMultiDB');
+const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
+const { checkAndTriggerSignalNotification } = require('./stockAlertNotificationService');
+const { getModuleLogger } = require('../logger/logger');
+
+const logger = getModuleLogger('stockInsightsAggregator');
+
+/**
+ * Scan all stored signals, refresh live quotes, trigger alerts, and produce ranked Best Insights
+ */
+async function generateBestInsights() {
+  logger.info('Generating best equity insights...');
+  const allSignals = await getAllSignals();
+
+  if (allSignals.length === 0) {
+    return [];
+  }
+
+  // Refresh live CMP for all active signals and check alert triggers
+  const refreshedSignals = [];
+  const symbolMap = new Map();
+
+  for (const sig of allSignals) {
+    if (!sig.symbol) continue;
+    
+    // Group signals by symbol for multi-source consensus
+    const symKey = sig.symbol.toUpperCase();
+    if (!symbolMap.has(symKey)) {
+      symbolMap.set(symKey, []);
+    }
+    symbolMap.get(symKey).push(sig);
+
+    // Fetch quote
+    const quote = await getLiveQuote(sig.symbol);
+    const evaluated = evaluateSignalWithCMP(sig, quote) || sig;
+    refreshedSignals.push(evaluated);
+
+    // Check if CMP meets requirements and trigger notification asynchronously (non-blocking)
+    if (evaluated.currentCMP) {
+      checkAndTriggerSignalNotification(evaluated).catch(err => {
+        logger.debug('Notification trigger check error:', { error: err.message });
+      });
+    }
+  }
+
+  const actionableInsights = [];
+
+  // 1. Triggered Exits / Targets Reached (Highest Urgency - Priority 1)
+  const triggeredExits = refreshedSignals.filter(s => 
+    (s.status === 'TRIGGERED' || s.status === 'TGT1_HIT' || s.status === 'TGT2_HIT') &&
+    s.currentCMP && s.entryPrice
+  );
+  for (const sig of triggeredExits) {
+    const targetLevel = Number(sig.entryPrice || sig.entryMin || sig.target1);
+    const gainPercent = targetLevel && sig.currentCMP 
+      ? Number((((sig.currentCMP - targetLevel) / targetLevel) * 100).toFixed(1))
+      : 0;
+
+    actionableInsights.push({
+      type: 'ACTIONABLE_EXIT',
+      symbol: sig.symbol,
+      companyName: sig.companyName || sig.symbol,
+      action: sig.action || 'SELL',
+      targetLevel,
+      currentCMP: sig.currentCMP,
+      dayChangePercent: sig.dayChangePercent !== undefined ? sig.dayChangePercent : null,
+      gainPercent,
+      reason: `CMP ₹${sig.currentCMP} is +${gainPercent}% above recommended exit price of ₹${targetLevel}`,
+      source: sig.source,
+      rating: sig.rating,
+      priority: 1,
+      signal: sig
+    });
+  }
+
+  // 2. Fresh Buy Opportunities in Range (Priority 2)
+  const buyOpportunities = refreshedSignals.filter(s => 
+    s.action === 'BUY' && (s.status === 'IN_BUY_RANGE' || (s.entryMax && s.currentCMP && s.currentCMP <= s.entryMax))
+  );
+  for (const sig of buyOpportunities) {
+    const buyUpto = Number(sig.entryMax || sig.entryPrice);
+    const discountPercent = buyUpto && sig.currentCMP 
+      ? Number((((buyUpto - sig.currentCMP) / buyUpto) * 100).toFixed(1))
+      : 0;
+
+    actionableInsights.push({
+      type: 'BUY_OPPORTUNITY',
+      symbol: sig.symbol,
+      companyName: sig.companyName || sig.symbol,
+      action: 'BUY',
+      buyUpto,
+      targetLevel: buyUpto,
+      currentCMP: sig.currentCMP,
+      dayChangePercent: sig.dayChangePercent !== undefined ? sig.dayChangePercent : null,
+      discountPercent,
+      rating: sig.rating,
+      reason: `CMP ₹${sig.currentCMP} is trading at a ${discountPercent}% discount (Buy upto ₹${buyUpto})`,
+      source: sig.source,
+      priority: sig.rating && sig.rating >= 2 ? 1 : 2,
+      signal: sig
+    });
+  }
+
+  // 3. Multi-Source Consensus Analysis
+  for (const [sym, groupSignals] of symbolMap.entries()) {
+    const buyCalls = groupSignals.filter(s => s.action === 'BUY');
+    const sellCalls = groupSignals.filter(s => s.action?.includes('SELL') || s.action?.includes('EXIT'));
+
+    const distinctSources = new Set(groupSignals.map(s => s.source)).size;
+    const signalWithPrice = groupSignals.find(s => s.entryPrice || s.entryMax || s.entryMin || s.target1) || groupSignals[0];
+    const signalWithCMP = groupSignals.find(s => s.currentCMP) || groupSignals[0];
+    const dominantAction = buyCalls.length >= sellCalls.length ? 'BUY' : 'SELL';
+    const targetLevel = Number(signalWithPrice.entryPrice || signalWithPrice.entryMax || signalWithPrice.entryMin || signalWithPrice.target1 || 0);
+    const currentCMP = signalWithCMP.currentCMP || null;
+    const dayChangePercent = signalWithCMP.dayChangePercent !== undefined ? signalWithCMP.dayChangePercent : null;
+
+    if (groupSignals.length > 1) {
+      let consensusReason = `${groupSignals.length} calls agreeing on ${dominantAction} (${distinctSources} source)`;
+      if (currentCMP && targetLevel) {
+        if (dominantAction === 'SELL' && currentCMP >= targetLevel) {
+          const gain = (((currentCMP - targetLevel) / targetLevel) * 100).toFixed(1);
+          consensusReason += ` • Target Met (+${gain}% above ₹${targetLevel})`;
+        } else if (dominantAction === 'BUY' && currentCMP <= targetLevel) {
+          const disc = (((targetLevel - currentCMP) / targetLevel) * 100).toFixed(1);
+          consensusReason += ` • In Buy Zone (${disc}% discount, Buy upto ₹${targetLevel})`;
+        } else {
+          consensusReason += ` • Target Level: ₹${targetLevel}`;
+        }
+      } else if (targetLevel) {
+        consensusReason += ` • Target Level: ₹${targetLevel}`;
+      }
+
+      actionableInsights.push({
+        type: 'CONSENSUS',
+        symbol: sym,
+        companyName: signalWithPrice.companyName || sym,
+        action: dominantAction,
+        dominantAction,
+        targetLevel: targetLevel || null,
+        buyUpto: dominantAction === 'BUY' ? targetLevel : null,
+        totalCalls: groupSignals.length,
+        distinctSources,
+        currentCMP: currentCMP,
+        dayChangePercent: dayChangePercent,
+        reason: consensusReason,
+        summary: consensusReason,
+        rating: signalWithPrice.rating || null,
+        source: distinctSources > 1 ? `Consensus (${distinctSources} sources)` : signalWithPrice.source,
+        signals: groupSignals,
+        priority: 3
+      });
+    }
+  }
+
+  // Deduplicate insights per stock symbol: single best card per stock
+  const seenSymbols = new Set();
+  const dedupedInsights = [];
+
+  // Sort by priority (1 is highest)
+  actionableInsights.sort((a, b) => a.priority - b.priority);
+
+  for (const item of actionableInsights) {
+    const key = item.symbol;
+    if (!seenSymbols.has(key)) {
+      seenSymbols.add(key);
+      dedupedInsights.push(item);
+    }
+  }
+
+  // Save to Multi-DB
+  await saveBestInsights(dedupedInsights);
+  logger.info(`Generated ${dedupedInsights.length} actionable insights.`);
+  return dedupedInsights;
+}
+
+/**
+ * Format insights into a clean Telegram Markdown message
+ */
+function formatTelegramInsightsMessage(insights) {
+  if (!insights || insights.length === 0) {
+    return '📊 *Stocks Equity Hub*: No high-conviction insights at this moment.';
+  }
+
+  let text = '🚀 *BEST EQUITY INSIGHTS & SIGNALS*\n';
+  text += '━━━━━━━━━━━━━━━━━━━━━━\n';
+
+  const exits = insights.filter(i => i.type === 'ACTIONABLE_EXIT');
+  const buys = insights.filter(i => i.type === 'BUY_OPPORTUNITY');
+  const consensus = insights.filter(i => i.type === 'CONSENSUS');
+
+  if (exits.length > 0) {
+    text += '\n🎯 *Actionable Exits / Targets Reached:*\n';
+    exits.forEach(e => {
+      text += `• *${e.symbol}* (${e.companyName})\n`;
+      text += `  Target/Exit: ₹${e.targetLevel} | *CMP: ₹${e.currentCMP}* ✅\n`;
+      text += `  _${e.reason}_\n`;
+    });
+  }
+
+  if (buys.length > 0) {
+    text += '\n🟢 *Fresh Buy Opportunities (In Range):*\n';
+    buys.forEach(b => {
+      const star = b.rating ? `[⭐ Rating ${b.rating}] ` : '';
+      text += `• *${b.symbol}* ${star}(Buy upto ₹${b.buyUpto || b.targetLevel})\n`;
+      text += `  *CMP: ₹${b.currentCMP}* (Discount: ${b.discountPercent}%)\n`;
+      text += `  Source: ${b.source}\n`;
+    });
+  }
+
+  if (consensus.length > 0) {
+    text += '\n🤝 *Multi-Source Consensus:*\n';
+    consensus.forEach(c => {
+      text += `• *${c.symbol}*: ${c.totalCalls} calls agreeing on *${c.action || c.dominantAction}*\n`;
+      if (c.targetLevel) text += `  Level: ₹${c.targetLevel} | `;
+      if (c.currentCMP) text += `CMP: ₹${c.currentCMP}\n`;
+    });
+  }
+
+  text += '\n━━━━━━━━━━━━━━━━━━━━━━\n';
+  text += `🕒 Generated: ${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}`;
+  return text;
+}
+
+module.exports = {
+  generateBestInsights,
+  formatTelegramInsightsMessage
+};

@@ -1,0 +1,32 @@
+{
+  "stocks": {
+    "channelId": "",
+    "channelType": "group_with_topics",
+    "topics": {
+      "high_conviction": null,
+      "buy_trades": null,
+      "sell_trades": null,
+      "daily_insights": null
+    },
+    "batching": {
+      "enabled": true,
+      "batchWindowMs": 5000,
+      "maxItemsPerMessage": 10
+    },
+    "alertThresholds": {
+      "minRatingForBuyAlert": 3,
+      "minDiscountPercent": 5
+    }
+  },
+  "deals": {
+    "channelId": "@dealshubglobal",
+    "channelType": "channel",
+    "topics": {
+      "electronics": null,
+      "fashion": null,
+      "amazon": null,
+      "flipkart": null,
+      "general": null
+    }
+  }
+}
