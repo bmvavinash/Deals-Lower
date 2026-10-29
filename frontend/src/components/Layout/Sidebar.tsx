@@ -9,9 +9,14 @@ interface MenuItem {
   children?: MenuItem[];
 }
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ isOpen = false, onClose }) => {
   const location = useLocation();
-  const [expandedSections, setExpandedSections] = useState<string[]>([]);
+  const [expandedSections, setExpandedSections] = useState<string[]>(['Stocks']);
 
   const menuItems: MenuItem[] = [
     { path: '/dashboard', label: 'Dashboard', icon: '📊' },
@@ -20,7 +25,14 @@ const Sidebar: React.FC = () => {
     { path: '/banners', label: 'Banners', icon: '🖼️' },
     { path: '/promo-tiles', label: 'Amazon Promo Tiles', icon: '🎯' },
     { path: '/deals', label: 'Deals', icon: '🛍️' },
-    { path: '/stocks', label: 'Stocks', icon: '📈' },
+    {
+      label: 'Stocks',
+      icon: '📈',
+      children: [
+        { path: '/stocks/equity', label: 'Equity', icon: '📊' },
+        { path: '/stocks/ipo', label: 'IPO', icon: '🚀' }
+      ]
+    },
     { path: '/execution', label: 'Execution Monitor', icon: '🔄' },
     { path: '/logs', label: 'Logs', icon: '📝' },
     { path: '/scheduler', label: 'Scheduler', icon: '⏰' },
@@ -56,10 +68,21 @@ const Sidebar: React.FC = () => {
     return false;
   };
 
+  const handleNavClick = () => {
+    if (onClose) {
+      onClose();
+    }
+  };
+
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="sidebar-header">
         <h1>Deals Dashboard</h1>
+        {onClose && (
+          <button className="sidebar-close-btn" onClick={onClose} aria-label="Close Sidebar">
+            ✕
+          </button>
+        )}
       </div>
       <nav className="sidebar-nav">
         {menuItems.map(item => {
@@ -84,6 +107,7 @@ const Sidebar: React.FC = () => {
                         key={child.path}
                         to={child.path!}
                         className={`nav-item nav-subitem ${location.pathname === child.path ? 'active' : ''}`}
+                        onClick={handleNavClick}
                       >
                         <span className="nav-icon">{child.icon}</span>
                         <span className="nav-label">{child.label}</span>
@@ -100,6 +124,7 @@ const Sidebar: React.FC = () => {
               key={item.path}
               to={item.path!}
               className={`nav-item ${isActive(item) ? 'active' : ''}`}
+              onClick={handleNavClick}
             >
               <span className="nav-icon">{item.icon}</span>
               <span className="nav-label">{item.label}</span>
@@ -112,4 +137,3 @@ const Sidebar: React.FC = () => {
 };
 
 export default Sidebar;
-

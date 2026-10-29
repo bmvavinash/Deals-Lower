@@ -209,8 +209,8 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     const currentAdminEmail = adminSession?.email || user?.email || bypassUser || ALLOWED_ADMIN_EMAILS[0];
     return (
       <>
-        <div style={styles.floatingHeader}>
-          <span style={styles.userEmail}>
+        <div className="admin-floating-pill" style={styles.floatingHeader}>
+          <span style={styles.userEmail} className="admin-email-text">
             Admin: {currentAdminEmail}
             {adminSession && <span style={styles.sessionTag}>(Verified Session)</span>}
             {!isConfigured && isLocalhost() && !adminSession && <span style={styles.bypassTag}>(Local Bypass)</span>}

@@ -138,7 +138,33 @@ export const stocksAPI = {
   getZerodha: () => api.get('/stocks/zerodha'),
   getXAlpha: () => api.get('/stocks/xalpha'),
   getRecommendations: () => api.get('/stocks/recommendations'),
-  getAll: () => api.get('/stocks')
+  getAll: () => api.get('/stocks'),
+  getEquitySignals: (params?: { action?: string; status?: string; source?: string }) =>
+    api.get('/stocks/equity/signals', { params }),
+  getEquityInsights: () => api.get('/stocks/equity/insights'),
+  extractWhatsApp: (port?: number) => api.post('/stocks/equity/extract-whatsapp', { port }),
+  extractSheets: (port?: number) => api.post('/stocks/equity/extract-sheets', { port }),
+  parseText: (data: { text: string; source?: string; saveToDB?: boolean }) =>
+    api.post('/stocks/equity/parse-text', data),
+  getClarifications: () => api.get('/stocks/equity/clarifications'),
+  resolveClarification: (data: { signalId: string; symbol: string; notes?: string }) =>
+    api.post('/stocks/equity/resolve-clarification', data),
+  getQuote: (symbol: string) => api.get(`/stocks/equity/quote/${symbol}`),
+  getNotifications: () => api.get('/stocks/equity/notifications'),
+  triggerCheck: () => api.post('/stocks/equity/trigger-check'),
+  refreshQuotes: (force?: boolean) => api.post('/stocks/equity/refresh-quotes', { force }),
+  getRefresherStatus: () => api.get('/stocks/equity/refresher-status'),
+  startRefresher: (intervalSeconds?: number) => api.post('/stocks/equity/refresher-start', { intervalSeconds }),
+  stopRefresher: () => api.post('/stocks/equity/refresher-stop'),
+  getTelegramConfig: () => api.get('/stocks/equity/telegram-config'),
+  saveTelegramConfig: (data: any) => api.post('/stocks/equity/telegram-config', data),
+  testTelegramTopic: (data: { topic: string; customText?: string }) => api.post('/stocks/equity/telegram-test', data),
+  getSchedulerStatus: () => api.get('/stocks/scheduler/status'),
+  startScheduler: () => api.post('/stocks/scheduler/start'),
+  stopScheduler: () => api.post('/stocks/scheduler/stop'),
+  triggerSchedulerWhatsApp: () => api.post('/stocks/scheduler/trigger-whatsapp'),
+  triggerSchedulerCMP: () => api.post('/stocks/scheduler/trigger-cmp'),
+  triggerSchedulerSheets: () => api.post('/stocks/scheduler/trigger-sheets')
 };
 
 // IPO API
