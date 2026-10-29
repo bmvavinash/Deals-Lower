@@ -1341,9 +1341,17 @@ const EquityPage: React.FC = () => {
       ) : (
         /* 13. Signals Container: Supports both Touch Cards & Full Table */
         <div className={`signals-container view-${viewMode}`}>
-          {filteredSignals.length === 0 ? (
+          {isLoading && signals.length === 0 ? (
+            <div style={{ padding: '60px 20px', textAlign: 'center', color: '#4f46e5' }}>
+              <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
+              <div style={{ fontWeight: 600, fontSize: '16px' }}>Loading Live Trade Signals & Market Quotes...</div>
+              <div style={{ fontSize: '13px', color: '#6b7280', marginTop: '6px' }}>Connecting to Multi-DB & refreshing live CMPs...</div>
+            </div>
+          ) : filteredSignals.length === 0 ? (
             <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9ca3af' }}>
-              No stock signals found matching your current filter. Try adjusting the star rating or source filter above.
+              <div style={{ fontSize: '24px', marginBottom: '8px' }}>🔍</div>
+              <div>No stock signals found matching your current filter.</div>
+              <div style={{ fontSize: '12px', marginTop: '4px' }}>Try switching the tab to "All" or adjusting the star rating filter above.</div>
             </div>
           ) : (
             <>

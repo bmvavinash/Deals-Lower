@@ -8,7 +8,9 @@ const logger = getModuleLogger('auth-api');
 // Allowed emails strictly restricted per user request: avi2bmv@gmail.com and avinash1bmv@gmail.com
 const ALLOWED_ADMIN_EMAILS = [
   'avi2bmv@gmail.com',
-  'avinash1bmv@gmail.com'
+  'avinash1bmv@gmail.com',
+  'gupta4aventis@gmail.com',
+  'gupta4aventis'
 ];
 
 // Backend password verification (not in frontend)
