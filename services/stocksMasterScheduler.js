@@ -17,6 +17,7 @@ let localIntervals = [];
 const schedulerState = {
   startedAt: null,
   isMasterActive: false,
+  environment: 'idle',
   whatsappPoller: {
     enabled: true,
     intervalMinutes: 3,
@@ -236,59 +237,77 @@ async function runMarketCloseDigest() {
 /**
  * Start the Master Stocks Scheduler
  */
-function startMasterScheduler() {
+function startMasterScheduler(options = {}) {
   if (isSchedulerRunning) {
     logger.info('Stocks Master Scheduler is already running.');
     return { success: true, status: 'already_running', state: getSchedulerState() };
   }
 
+  const isCloud = Boolean(options.isCloud || process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.IS_CLOUD);
+
   isSchedulerRunning = true;
   schedulerState.isMasterActive = true;
   schedulerState.startedAt = new Date().toISOString();
+  schedulerState.environment = isCloud ? 'cloud (Render 24/7)' : 'local (PC Port 9223)';
 
-  logger.info('🚀 Starting Stocks Master Scheduler:');
-  logger.info('  1. WhatsApp Ingestion: Every 3 minutes (Port 9223)');
-  logger.info('  2. Live CMP Refresher: Every 2 minutes (Market hours)');
-  logger.info('  3. Google Sheets Sync: Every 15 minutes (Port 9223)');
-  logger.info('  4. Telegram Ingestion Poller: 24/7 continuous');
+  logger.info(`🚀 Starting Stocks Master Scheduler in [${schedulerState.environment}] mode:`);
+  logger.info('  • Live CMP Refresher: Every 2 minutes (Market hours: Mon-Fri 09:15-15:30 IST)');
+  logger.info('  • Telegram Ingestion Poller: 24/7 continuous (Listening for forwarded trades in @dealsequity)');
 
   // A. Start 24/7 Telegram Ingestion Listener
   startTelegramIngestion();
 
-  // B. WhatsApp Poller (every 3 minutes)
-  const waTask = cron.schedule('*/3 * * * *', () => {
-    runWhatsAppScheduledJob().catch(e => logger.warn('WA job warning:', { error: e.message }));
-  });
-  cronTasks.push(waTask);
-
-  // C. CMP Refresher (every 2 minutes)
+  // B. CMP Refresher (every 2 minutes during market hours)
   const cmpTask = cron.schedule('*/2 * * * *', () => {
     runCMPRefresherJob().catch(e => logger.warn('CMP job warning:', { error: e.message }));
   });
   cronTasks.push(cmpTask);
 
-  // D. Google Sheets Sync (every 15 minutes)
-  const sheetsTask = cron.schedule('*/15 * * * *', () => {
-    runGoogleSheetsScheduledJob().catch(e => logger.warn('Sheets job warning:', { error: e.message }));
-  });
-  cronTasks.push(sheetsTask);
-
-  // E. Market Open Digest (09:15 IST Mon-Fri = 03:45 UTC)
+  // C. Market Open Digest (09:15 IST Mon-Fri = 03:45 UTC)
   const openTask = cron.schedule('45 3 * * 1-5', () => {
     runMarketOpenDigest().catch(e => logger.warn('Market open warning:', { error: e.message }));
   });
   cronTasks.push(openTask);
 
-  // F. Market Close Digest (15:30 IST Mon-Fri = 10:00 UTC)
+  // D. Market Close Digest (15:30 IST Mon-Fri = 10:00 UTC)
   const closeTask = cron.schedule('0 10 * * 1-5', () => {
     runMarketCloseDigest().catch(e => logger.warn('Market close warning:', { error: e.message }));
   });
   cronTasks.push(closeTask);
 
-  // Run initial warm-up execution after 5 seconds
+  // E. Local-Only Browser Scrapers (WhatsApp & Google Sheets via Chrome 9223)
+  if (!isCloud) {
+    logger.info('  • WhatsApp Ingestion: Every 3 minutes (Port 9223)');
+    logger.info('  • Google Sheets Sync: Every 15 minutes (Port 9223)');
+
+    schedulerState.whatsappPoller.enabled = true;
+    schedulerState.sheetsSync.enabled = true;
+
+    const waTask = cron.schedule('*/3 * * * *', () => {
+      runWhatsAppScheduledJob().catch(e => logger.warn('WA job warning:', { error: e.message }));
+    });
+    cronTasks.push(waTask);
+
+    const sheetsTask = cron.schedule('*/15 * * * *', () => {
+      runGoogleSheetsScheduledJob().catch(e => logger.warn('Sheets job warning:', { error: e.message }));
+    });
+    cronTasks.push(sheetsTask);
+
+    // Warm-up WhatsApp poller after 5s
+    setTimeout(() => {
+      runWhatsAppScheduledJob().catch(() => {});
+    }, 5000);
+  } else {
+    logger.info('  • WhatsApp & Sheets: Skipped in Cloud mode (runs on local PC via Port 9223)');
+    schedulerState.whatsappPoller.enabled = false;
+    schedulerState.whatsappPoller.lastStatus = 'runs_on_local_pc_only';
+    schedulerState.sheetsSync.enabled = false;
+    schedulerState.sheetsSync.lastStatus = 'runs_on_local_pc_only';
+  }
+
+  // Initial warm-up execution for CMP after 5 seconds
   setTimeout(() => {
     runCMPRefresherJob().catch(() => {});
-    runWhatsAppScheduledJob().catch(() => {});
   }, 5000);
 
   return { success: true, status: 'started', state: getSchedulerState() };

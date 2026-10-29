@@ -279,6 +279,15 @@ if (require.main === module) {
       logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
     }
 
+    // Auto-start Stocks Master Scheduler (Runs 24/7 Telegram poller & Market hours CMP alerts in cloud & local)
+    try {
+      const { startMasterScheduler } = require('../../services/stocksMasterScheduler');
+      startMasterScheduler();
+      logger.info('🚀 Stocks Master Scheduler auto-started on server boot.');
+    } catch (schedErr) {
+      logger.error('Failed to auto-start Stocks Master Scheduler on boot', { error: schedErr.message });
+    }
+
     // Auto-start Local Daemon if offline on API startup (SKIP ON RENDER)
     try {
       if (admin.apps.length && !process.env.RENDER) {
