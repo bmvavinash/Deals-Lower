@@ -1,12 +1,14 @@
 {
   "stocks": {
-    "channelId": "",
+    "channelId": "@dealsequity",
+    "chatId": "-1004332585915",
     "channelType": "group_with_topics",
     "topics": {
-      "high_conviction": null,
-      "buy_trades": null,
-      "sell_trades": null,
-      "daily_insights": null
+      "high_conviction": 2,
+      "buy_trades": 3,
+      "sell_trades": 4,
+      "ingestion": 6,
+      "daily_insights": 2
     },
     "batching": {
       "enabled": true,
