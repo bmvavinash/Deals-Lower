@@ -111,7 +111,6 @@ const categoriesRoutes = require('./routes/categories');
 const matchingConfigRoutes = require('./routes/matchingConfig');
 const affiliatesRoutes = require('./routes/affiliates');
 const authRoutes = require('./routes/auth');
-const cuelinksRoutes = require('./routes/cuelinks');
 
 const app = express();
 const PORT = process.env.PORT || constants.frontend?.apiPort || 3003;
@@ -216,7 +215,6 @@ mountApiRoute('/categories', categoriesRoutes);
 mountApiRoute('/matching-config', matchingConfigRoutes);
 mountApiRoute('/affiliates', affiliatesRoutes);
 mountApiRoute('/auth', authRoutes);
-mountApiRoute('/cuelinks', cuelinksRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -279,6 +277,15 @@ if (require.main === module) {
       logger.info('Autonomous Keep-Alive Self-Ping scheduled every 5 minutes.');
     } catch (keepAliveErr) {
       logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
+    }
+
+    // Auto-start Stocks Master Scheduler (Runs 24/7 Telegram poller & Market hours CMP alerts in cloud & local)
+    try {
+      const { startMasterScheduler } = require('../../services/stocksMasterScheduler');
+      startMasterScheduler();
+      logger.info('🚀 Stocks Master Scheduler auto-started on server boot.');
+    } catch (schedErr) {
+      logger.error('Failed to auto-start Stocks Master Scheduler on boot', { error: schedErr.message });
     }
 
     // Auto-start Local Daemon if offline on API startup (SKIP ON RENDER)
