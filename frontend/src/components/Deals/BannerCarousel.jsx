@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './BannerCarousel.css';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3003';
+const API_BASE_URL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.')) ? '/api' : 'https://dealsoptimised.onrender.com/api';
 
 const BannerCarousel = ({ banner }) => {
   const [deals, setDeals] = useState([]);

@@ -2,40 +2,26 @@ import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 // ─────────────────────────────────────────────
 // Multi-Backend Resilient API Client
-// Primary  → Oracle Cloud (via Cloudflare Tunnel HTTPS) — if configured & online
-// Fallback → Render — kept alive via UptimeRobot ping every 10 min
+// Local dev  → /api (proxied by Vite to localhost:3003)
+// Production → https://dealsoptimised.onrender.com/api (Render Cloud)
 // ─────────────────────────────────────────────
 
-const ensureApiBase = (url: string | null | undefined): string => {
-  if (!url) return '';
-  const trimmed = url.trim().replace(/\/+$/, '');
-  return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
-};
+const isLocal = typeof window !== 'undefined' && (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname.startsWith('192.168.')
+);
 
-const IS_DEV       = Boolean((import.meta as any).env?.DEV);
-const RAW_DEFAULT  = IS_DEV ? '/api' : 'https://dealsoptimised.onrender.com/api';
-const RAW_PRIMARY  = (import.meta as any).env?.VITE_PRIMARY_API_URL  || null;
-const RAW_FALLBACK = (import.meta as any).env?.VITE_FALLBACK_API_URL || 'https://dealsoptimised.onrender.com/api';
-const RAW_LEGACY   = (import.meta as any).env?.VITE_API_URL          || RAW_DEFAULT;
+const API_BASE_URL = isLocal ? '/api' : 'https://dealsoptimised.onrender.com/api';
+const FALLBACK_URL = 'https://dealsoptimised.onrender.com/api';
 
-const DEFAULT_URL  = RAW_DEFAULT;
-const PRIMARY_URL  = RAW_PRIMARY ? ensureApiBase(RAW_PRIMARY) : null;
-const FALLBACK_URL = ensureApiBase(RAW_FALLBACK) || 'https://dealsoptimised.onrender.com/api';
-const LEGACY_URL   = ensureApiBase(RAW_LEGACY);
-
-// Determine which URL to use based on available env vars
-const API_BASE_URL = PRIMARY_URL || LEGACY_URL;
-
-// Track whether we are currently in fallback mode
 let usingFallback = false;
-let fallbackCheckedAt = 0;
-const FALLBACK_RETRY_MS = 2 * 60 * 1000; // Re-try primary every 2 minutes
 
 // Create the primary axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 15000,
+  timeout: 30000,
 });
 
 // ─────────────────────────────────────────────
