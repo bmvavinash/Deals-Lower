@@ -17,7 +17,7 @@ function cleanMerchantUrl(url) {
   let cleaned = url.replace(/^@+/, '').trim();
 
   // Unwrap INRDeals wrapper if already present
-  const inrdealsPattern = /^https?:\/\/(?:www\.)?inrdeals\.com\/(?:[a-zA-Z0-9]+\/)?(.*)$/;
+  const inrdealsPattern = /^https?:\/\/(?:www\.)?inrdeals\.com\/(?:[a-zA-Z0-9_-]+\/)?(.*)$/i;
   const match = cleaned.match(inrdealsPattern);
   if (match) {
     try {
@@ -29,7 +29,35 @@ function cleanMerchantUrl(url) {
       // ignore
     }
   }
+
+  // Unwrap legacy linksredirect wrappers if nested
+  const linksredirectPattern = /^https?:\/\/linksredirect\.com\/.*[?&]url=([^&]+)/i;
+  const lrMatch = cleaned.match(linksredirectPattern);
+  if (lrMatch) {
+    try {
+      const decoded = decodeURIComponent(lrMatch[1]);
+      if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+        return cleanMerchantUrl(decoded);
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   return cleaned;
+}
+
+/**
+ * Generates the standardized Cuelinks deeplink wrapper for non-Amazon links
+ * Format: https://linksredirect.com/?cid=<CUELINKS_CID>&source=linkkit&url=<encodeURIComponent(productUrl)>
+ * @param {string} productUrl - Clean merchant product page URL (preserves query params like ?pid=)
+ * @returns {string}
+ */
+function buildCuelinksDeeplink(productUrl) {
+  if (!productUrl || typeof productUrl !== 'string') return '';
+  const cid = (process.env.CUELINKS_CID || process.env.REACT_APP_CUELINKS_CID || '214534').trim();
+  const cleanUrl = cleanMerchantUrl(productUrl);
+  return `https://linksredirect.com/?cid=${cid}&source=linkkit&url=${encodeURIComponent(cleanUrl)}`;
 }
 
 /**
@@ -43,8 +71,8 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
 
   const apiKey = process.env.CUELINKS_API_KEY || process.env.REACT_APP_CUELINKS_API_KEY;
   if (!apiKey || apiKey === 'YOUR_CUELINKS_API_KEY_HERE') {
-    logger.warn('Cuelinks API key missing in environment, falling back to direct merchant URL');
-    return null;
+    // If no API key configured, use the direct deeplink redirect format
+    return buildCuelinksDeeplink(originalUrl);
   }
 
   const cleanUrl = cleanMerchantUrl(originalUrl);
@@ -75,30 +103,27 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
       }
     }
 
-    logger.warn('Cuelinks API returned non-OK status or missing short_url', {
-      status: response.status,
-      url: cleanUrl
-    });
-    return null;
+    // Fallback to standard Cuelinks deeplink format
+    return buildCuelinksDeeplink(cleanUrl);
   } catch (error) {
-    logger.error('Cuelinks conversion request failed', { error: error.message });
-    return null;
+    logger.warn('Cuelinks API conversion error, using deeplink fallback', { error: error.message });
+    return buildCuelinksDeeplink(cleanUrl);
   }
 }
 
 /**
  * Builds affiliate links for a product across Amazon and non-Amazon platforms
- * Matching lowerdeal.com priority:
- * 1. For Amazon: Direct Amazon affiliate URL with tag (default: dealshubglo0c-21)
+ * Matching requirements:
+ * 1. For Amazon: Direct Amazon affiliate URL with tag (dealshubglo0c-21):
+ *    https://www.amazon.in/dp/<ASIN>?tag=dealshubglo0c-21
  * 2. For non-Amazon (Flipkart, Myntra, Ajio, etc.):
- *    - Priority 1: ExtraPe (product.links.avinashbmv / existingExtrape)
- *    - Priority 2: Cuelinks via REST API
- *    - Priority 3: Direct clean merchant URL (INRDeals disabled)
+ *    Cuelinks deeplink applied to affiliateUrl and links (avinashbmv, avinashbmvINR):
+ *    https://linksredirect.com/?cid=<CUELINKS_CID>&source=linkkit&url=<encodeURIComponent(productUrl)>
  * @param {string} targetUrl - Merchant product URL
  * @param {string} platform - Store platform (amazon, flipkart, myntra, ajio, etc.)
  * @param {string} [productCode] - Optional platform product code
- * @param {string} [existingExtrape] - Optional existing ExtraPe shortlink to preserve
- * @returns {Promise<{ avinashbmv: string, avinashbmvINR: string, isCuelinks: boolean }>}
+ * @param {string} [existingExtrape] - Optional existing ExtraPe shortlink to preserve if requested
+ * @returns {Promise<{ avinashbmv: string, avinashbmvINR: string, affiliateUrl: string, isCuelinks: boolean }>}
  */
 async function generateAffiliateLinks(targetUrl, platform = '', productCode = '', existingExtrape = '') {
   const cleanUrl = cleanMerchantUrl(targetUrl);
@@ -122,50 +147,27 @@ async function generateAffiliateLinks(targetUrl, platform = '', productCode = ''
     }
     return {
       avinashbmv: amazonUrl,
-      avinashbmvINR: '',
+      avinashbmvINR: cleanUrl,
+      affiliateUrl: amazonUrl,
       isCuelinks: false
     };
   }
 
   // --- Non-Amazon platforms (Flipkart, Myntra, Ajio, Croma, etc.) ---
-  // INRDeals disabled per user requirement.
-  // Priority 1: ExtraPe shortlink if already present and valid
-  const hasValidExtrape = existingExtrape && !existingExtrape.includes('inrdeals.com') && (
-    existingExtrape.includes('extp.in') ||
-    existingExtrape.includes('extrape.com') ||
-    existingExtrape.includes('ajiio.co') ||
-    existingExtrape.includes('fkrt.co') ||
-    existingExtrape.includes('myntr.in')
-  );
-
-  if (hasValidExtrape) {
-    return {
-      avinashbmv: existingExtrape,
-      avinashbmvINR: '',
-      isCuelinks: false
-    };
-  }
-
-  // Priority 2: Cuelinks API
-  let cuelinksUrl = null;
-  try {
-    cuelinksUrl = await convertToCuelinks(cleanUrl);
-  } catch (err) {
-    logger.warn('Error during Cuelinks conversion', { error: err.message });
-  }
-
-  // Priority 3: Direct clean merchant URL fallback (INRDeals disabled)
-  const finalAvinashbmv = cuelinksUrl || cleanUrl;
+  // Generate standardized Cuelinks deeplink preserving full query params (like ?pid=)
+  const cuelinksDeeplink = buildCuelinksDeeplink(cleanUrl);
 
   return {
-    avinashbmv: finalAvinashbmv,
-    avinashbmvINR: '',
-    isCuelinks: Boolean(cuelinksUrl)
+    avinashbmv: cuelinksDeeplink,
+    avinashbmvINR: cuelinksDeeplink,
+    affiliateUrl: cuelinksDeeplink,
+    isCuelinks: true
   };
 }
 
 module.exports = {
   cleanMerchantUrl,
+  buildCuelinksDeeplink,
   convertToCuelinks,
   generateAffiliateLinks
 };

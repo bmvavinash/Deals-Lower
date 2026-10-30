@@ -251,7 +251,7 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
 
     return {
       originalUrl: targetUrl,
-      success: true,
+      success: false,
       status: 'queued',
       queued: true,
       queuedId: newCommandRef.key,
@@ -259,8 +259,11 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
       productCode,
       lowerdealUrl,
       processedOn: 'queue',
+      reason: isDaemonAlive 
+        ? 'Product processing queued in Firebase. Waiting for execution by Local Daemon.'
+        : 'Product processing queued in Firebase. Please ensure Local Daemon is running locally to process it.',
       message: isDaemonAlive 
-        ? 'Product processing queued successfully! Your active Local Daemon is executing it.'
+        ? 'Product processing queued in Firebase. Waiting for execution by Local Daemon.'
         : 'Product processing queued in Firebase. Please ensure Local Daemon is running locally to process it.'
     };
   }
@@ -358,10 +361,11 @@ router.post('/process-product', async (req, res) => {
       const successful = results.filter(r => r.success);
       const failed = results.filter(r => !r.success);
       const firstResult = results[0] || {};
+      const queuedCount = results.filter(r => r.queued || r.status === 'queued').length;
 
       let overallStatus = 'success';
       if (successful.length === 0) {
-        overallStatus = 'error';
+        overallStatus = queuedCount > 0 ? 'queued' : 'error';
       } else if (failed.length > 0) {
         overallStatus = 'partial';
       }
@@ -370,9 +374,9 @@ router.post('/process-product', async (req, res) => {
       if (failed.length > 0) {
         const errorDetails = failed.map(f => {
           const code = f.productCode ? `[${f.productCode}]` : '';
-          return `${code} ${f.error || f.message || 'Failed'}`.trim();
+          return `${code} ${f.error || f.message || f.reason || 'Failed'}`.trim();
         }).join('; ');
-        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed: ${errorDetails}`;
+        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed or queued: ${errorDetails}`;
       }
 
       const responsePayload = {
@@ -381,6 +385,7 @@ router.post('/process-product', async (req, res) => {
         total: results.length,
         successfulCount: successful.length,
         failedCount: failed.length,
+        queuedCount,
         lowerdealUrl: lowerdealUrls[0] || null,
         lowerdealUrls,
         results,
@@ -395,17 +400,20 @@ router.post('/process-product', async (req, res) => {
 
       // Top-level backward compatibility if single URL was passed
       if (results.length === 1) {
+        responsePayload.success = Boolean(firstResult.success && !firstResult.queued);
+        responsePayload.status = firstResult.status || overallStatus;
         responsePayload.productCode = firstResult.productCode;
         responsePayload.data = firstResult.data;
         responsePayload.processedOn = firstResult.processedOn;
         responsePayload.isCuelinks = firstResult.isCuelinks;
-        responsePayload.queued = firstResult.queued;
+        responsePayload.queued = Boolean(firstResult.queued);
         responsePayload.queuedId = firstResult.queuedId;
         responsePayload.isDaemonAlive = firstResult.isDaemonAlive;
         responsePayload.outOfStock = Boolean(firstResult.outOfStock);
         responsePayload.inStock = firstResult.inStock !== undefined ? firstResult.inStock : !firstResult.outOfStock;
         responsePayload.availability = firstResult.availability || (firstResult.outOfStock ? 'OutOfStock' : 'InStock');
-        if (!firstResult.success) {
+        if (!firstResult.success || firstResult.queued) {
+          responsePayload.reason = firstResult.reason || firstResult.error || firstResult.message;
           responsePayload.error = firstResult.error || firstResult.message;
         }
         responsePayload.message = firstResult.message || responsePayload.message;

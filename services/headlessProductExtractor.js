@@ -513,12 +513,13 @@ async function extractProductOnServer(rawUrl, options = {}) {
   }
 
   // --- Strict Validation of Extracted Details ---
-  const isValidTitle = Boolean(title && title.trim().length >= 3 && title !== `Product ${productCode}`);
-  const isValidPhoto = Boolean(photo && typeof photo === 'string' && (photo.startsWith('http://') || photo.startsWith('https://')));
+  const isBlockedTitle = BLOCKED_TITLE_PATTERNS.some(regex => regex.test(title));
+  const isValidTitle = Boolean(title && title.trim().length >= 3 && title !== `Product ${productCode}` && !isBlockedTitle);
+  const isValidPhoto = Boolean(photo && typeof photo === 'string' && (photo.startsWith('http://') || photo.startsWith('https://')) && !photo.includes('no-image') && !photo.includes('placeholder'));
   const isValidPrice = Boolean(price && Number(price) > 0);
 
   const missingFields = [];
-  if (!isValidTitle) missingFields.push('title');
+  if (!isValidTitle) missingFields.push(isBlockedTitle ? `title ('${title}' is a merchant block / error)` : 'title');
   if (!isValidPhoto) missingFields.push('image/photo URL');
   if (!isValidPrice && !isOutOfStock) missingFields.push('price (item is not marked out of stock)');
 
