@@ -29,8 +29,28 @@ const NOISE_LINE_PATTERNS = [
   /educational\s+purposes?\s+only/i,
   /^please\s+(note|maintain|check|follow|dm|reach\s+out|clarify)/i,
   /\b(tonight\s+at|tomorrow\s+at)\b/i,
+  /\bloot\b/i,
+  /\bdeal(s)?\b/i,
+  /\bcoupon(s)?\b/i,
+  /\bdiscount(s)?\b/i,
+  /\bfree\s+delivery\b/i,
+  /\bgifting\b/i,
+  /\bdry\s+fruits?\b/i,
+  /\bkitchen\b/i,
+  /\bpack\s+of\b/i,
+  /\bmax\s+qty\b/i,
+  /\bmax\s+quantity\b/i,
+  /\bbuy\s+(?:fast|now)\b/i,
+  /\blowest\s+price\b/i,
   /https?:\/\//i
 ];
+
+const NON_TICKER_BLACKLIST = new Set([
+  'FAST', 'NOW', 'MAX', 'QUANTITY', 'MAXQUANTITY', 'MAXQTY', 'LOOT', 'DEAL', 'DEALS',
+  'GIFTING', 'DIWALI', 'PACK', 'BUY', 'SELL', 'CALL', 'STOCK', 'SHARE', 'MARKET',
+  'INDEX', 'ALERT', 'NOTE', 'UPDATE', 'CHECK', 'WAIT', 'HOLD', 'EXIT', 'ENTRY',
+  'ZONE', 'RANGE', 'CHART', 'GRAPH', 'TODAY', 'SOON', 'HERE', 'FREE', 'BEST'
+]);
 
 /**
  * Check if a specific single line is noise / conversational filler
@@ -99,13 +119,22 @@ function parseStockMessage(rawText, meta = {}) {
   function flushCurrentItem() {
     if (currentItem.companyName && (currentItem.price || currentItem.action || defaultAction)) {
       const normalized = normalizeSymbol(currentItem.companyName);
+      const symbol = (normalized.symbol || currentItem.companyName.toUpperCase().replace(/[^A-Z0-9]/g, '')).trim();
+      
+      // Reject non-ticker words or deals chatter
+      if (!symbol || symbol.length < 2 || symbol.length > 15 || NON_TICKER_BLACKLIST.has(symbol) || symbol.includes('WHEREWEEXPECT') || symbol.includes('MAXQTY')) {
+        logger.debug(`Rejected non-ticker candidate: "${symbol}"`);
+        currentItem = { companyName: null, action: null, price: null, rating: null, target: null, stopLoss: null, horizon: null, rawLines: [] };
+        return;
+      }
+
       const action = currentItem.action || defaultAction || 'WATCH';
       const price = currentItem.price;
 
       signals.push({
-        id: generateSignalId(normalized.symbol || currentItem.companyName, action, price, meta.timestamp),
+        id: generateSignalId(symbol, action, price, meta.timestamp),
         companyName: currentItem.companyName,
-        symbol: normalized.symbol || currentItem.companyName.toUpperCase().replace(/[^A-Z0-9]/g, ''),
+        symbol: symbol,
         exchange: 'NSE',
         action,
         callType: currentItem.horizon ? currentItem.horizon.toUpperCase() : 'SWING',

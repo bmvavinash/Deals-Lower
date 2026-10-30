@@ -193,6 +193,62 @@ async function saveSignals(signals) {
   return saved;
 }
 
+const CANONICAL_WATCHLIST_BUY_PRICES = {
+  'KMEW': 2877,
+  'STEELCAS': 317,
+  'SUPRIYA': 909,
+  'JASH': 511,
+  'E2E': 630,
+  'NRBBEARING': 483,
+  'MCX': 3040,
+  'MANORAMA': 1737,
+  'RKFORGE': 681,
+  'STLTECH': 555,
+  'WELCORP': 1600,
+  'KUSUMGAR': 589,
+  'TDPOWERSYS': 545,
+  'KSHINTL': 842,
+  'GALAPREC': 1034,
+  'ASTRAMICRO': 1458,
+  'SAREGAMA': 460,
+  'VIYASH': 250,
+  'THYROCARE': 522,
+  'SHILPAMED': 499,
+  'KDDL': 2179,
+  'PWL': 110,
+  'VENUSPIPES': 1311,
+  'SBCL': 486,
+  'SAMHI': 146,
+  'LUMAXTECH': 1477,
+  'GRAVITA': 1537,
+  'NAVINFLUOR': 6485,
+  'SAILIFE': 894,
+  'IMFA': 1324,
+  'GRWRHITECH': 3257,
+  'ACUTAAS': 1644,
+  'ARMANFIN': 1631,
+  'ENTERO': 1229,
+  'CSBBANK': 415,
+  'INTELLECT': 1028,
+  'HBLENGINE': 819,
+  'SANSERA': 1680,
+  'PRIVISCL': 3140,
+  'JAYNECOIND': 68,
+  'AARTIPHARM': 770,
+  'WINDLAS': 787,
+  'PAYTM': 1368,
+  'INTERARCH': 2440
+};
+
+function isBogusTicker(sym) {
+  if (!sym || typeof sym !== 'string') return true;
+  const s = sym.trim().toUpperCase();
+  if (s.length < 2 || s.length > 15 || s.includes(' ')) return true;
+  if (s === 'NA' || s === 'N/A' || s.startsWith('#N/A')) return true;
+  if (s.startsWith('WHEREWEEXPECT') || s.startsWith('MAXQTY') || s === 'FAST' || s === 'NOW' || s === 'MAXQUANTITY') return true;
+  return false;
+}
+
 /**
  * Get all signals with optional filtering
  */
@@ -214,7 +270,17 @@ async function getAllSignals(filters = {}) {
     }
   }
 
-  // Normalize signals: enforce Source of Truth priorities and AARTIPHARM ₹770 price
+  // Filter out any bogus tickers and clean Firebase
+  signalsList = signalsList.filter(s => {
+    if (isBogusTicker(s.symbol)) {
+      if (fb) fb.ref(`stocks/signals/${s.id}`).remove().catch(() => {});
+      delete memoryDB.signals[s.id];
+      return false;
+    }
+    return true;
+  });
+
+  // Normalize signals: enforce Source of Truth priorities and canonical recommended buy prices
   let firebaseUpdates = null;
   signalsList = signalsList.map(s => {
     const prio = s.sourcePriority || getSourcePriority(s.source);
@@ -225,6 +291,26 @@ async function getAllSignals(filters = {}) {
     let statusReason = s.statusReason;
     let modified = false;
 
+    // Google Sheet Watchlist: strictly enforce canonical recommended buy price
+    if (s.source && s.source.includes('Watchlist') && CANONICAL_WATCHLIST_BUY_PRICES[s.symbol]) {
+      const canonicalPrice = CANONICAL_WATCHLIST_BUY_PRICES[s.symbol];
+      if (entryPrice !== canonicalPrice || entryMax !== canonicalPrice) {
+        entryPrice = canonicalPrice;
+        entryMax = canonicalPrice;
+        modified = true;
+        if (s.currentCMP && entryMax) {
+          if (s.currentCMP > entryMax) {
+            status = 'ABOVE_ENTRY';
+            statusReason = `Above recommended buy ceiling (CMP ₹${s.currentCMP} > ₹${entryMax})`;
+          } else {
+            status = 'IN_BUY_RANGE';
+            statusReason = `Currently in buy range (CMP ₹${s.currentCMP} <= ₹${entryMax})`;
+          }
+        }
+      }
+    }
+
+    // Aarti Pharmalabs global rule: strictly ₹770 per user instruction
     if (s.symbol === 'AARTIPHARM') {
       if (entryPrice !== 770 || entryMax !== 770) {
         entryPrice = 770;
@@ -239,8 +325,8 @@ async function getAllSignals(filters = {}) {
 
     if (modified && fb) {
       if (!firebaseUpdates) firebaseUpdates = {};
-      firebaseUpdates[`stocks/signals/${s.id}/entryPrice`] = 770;
-      firebaseUpdates[`stocks/signals/${s.id}/entryMax`] = 770;
+      firebaseUpdates[`stocks/signals/${s.id}/entryPrice`] = entryPrice;
+      firebaseUpdates[`stocks/signals/${s.id}/entryMax`] = entryMax;
       if (status) firebaseUpdates[`stocks/signals/${s.id}/status`] = status;
       if (statusReason) firebaseUpdates[`stocks/signals/${s.id}/statusReason`] = statusReason;
       firebaseUpdates[`stocks/signals/${s.id}/sourcePriority`] = prio;

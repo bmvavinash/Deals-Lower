@@ -132,7 +132,7 @@ async function extractGoogleSheetSignals(options = {}) {
       const cols = parseCSVLine(lines[i]);
       const stockName = cols[1];
       const ticker = cols[3]?.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (!ticker || ticker === 'NA' || ticker === 'N/A' || ticker.length < 2) continue;
+      if (!ticker || ticker.length < 2 || ticker.length > 15 || ticker === 'NA' || ticker === 'N/A' || ticker.includes('WHEREWEEXPECT') || ticker.includes('MAXQTY')) continue;
 
       // Check for buy range: Col 6 is "Updated Buy range", Col 5 is "Avg Price Recommended", Col 11 is previous buy price
       // Note: Col 10 is CMP (Market price) in Google Sheet Watchlist tab - NEVER fall back to Col 10 for buy ceiling!
@@ -189,7 +189,7 @@ async function extractGoogleSheetSignals(options = {}) {
     for (let i = 5; i < lines.length; i++) {
       const cols = parseCSVLine(lines[i]);
       const ticker = cols[1]?.toUpperCase().replace(/[^A-Z0-9]/g, '');
-      if (!ticker || ticker.length < 2) continue;
+      if (!ticker || ticker.length < 2 || ticker.length > 15 || ticker === 'NA' || ticker === 'N/A' || ticker.includes('WHEREWEEXPECT') || ticker.includes('MAXQTY')) continue;
 
       const star = parseInt(cols[2], 10);
       const horizon = cols[4] || '2-3 years';
