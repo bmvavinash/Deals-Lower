@@ -7,8 +7,63 @@ const { getModuleLogger } = require('../logger/logger');
 const logger = getModuleLogger('whatsappLiveExtractor');
 
 /**
+ * Helper to auto-search and open a specific WhatsApp chat/group (e.g. "SOIC Research")
+ */
+async function searchAndSelectChat(waPage, searchQuery) {
+  if (!searchQuery) return false;
+  try {
+    const isTargetAlreadyOpen = await waPage.evaluate((q) => {
+      const headerTitle = document.querySelector('#main header span[dir="auto"]')?.innerText.toLowerCase() || '';
+      return headerTitle.includes(q.toLowerCase());
+    }, searchQuery);
+
+    if (isTargetAlreadyOpen) {
+      logger.info(`Target chat matching "${searchQuery}" is already active in #main.`);
+      return true;
+    }
+
+    logger.info(`Searching for chat matching "${searchQuery}" in WhatsApp...`);
+    const searchFound = await waPage.evaluate((query) => {
+      const input = document.querySelector('input[placeholder="Search or start a new chat"]') ||
+                    document.querySelector('input[aria-label="Search or start a new chat"]') ||
+                    document.querySelector('input[role="textbox"]');
+      if (!input) return false;
+      input.focus();
+      input.value = query;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      return true;
+    }, searchQuery);
+
+    if (searchFound) {
+      await new Promise(r => setTimeout(r, 1500));
+      // Click matching item
+      const clicked = await waPage.evaluate((query) => {
+        const side = document.querySelector('#side') || document.body;
+        const rows = Array.from(side.querySelectorAll('div[role="listitem"], div[role="row"]'));
+        const match = rows.find(r => r.innerText.toLowerCase().includes(query.toLowerCase()));
+        if (match) {
+          match.click();
+          return true;
+        }
+        return false;
+      }, searchQuery);
+
+      if (clicked) {
+        await new Promise(r => setTimeout(r, 2000));
+        logger.info(`Successfully opened chat matching "${searchQuery}".`);
+        return true;
+      }
+    }
+  } catch (err) {
+    logger.warn('Could not auto-search chat in WhatsApp:', { error: err.message });
+  }
+  return false;
+}
+
+/**
  * Connect to active Chrome session on debugger port and extract current chat messages
- * @param {object} options - { port: 9223, limit: 50 }
+ * @param {object} options - { port: 9223, limit: 50, chatQuery: 'SOIC Research' }
  */
 async function extractActiveWhatsAppChat(options = {}) {
   const port = options.port || parseInt(process.env.STOCKS_CHROME_PORT || process.env.CHROME_DEBUGGER_PORT || '9223', 10);
@@ -27,6 +82,10 @@ async function extractActiveWhatsAppChat(options = {}) {
     }
 
     logger.info(`Attached to WhatsApp Web page: "${await waPage.title()}"`);
+
+    // Auto-search and select target group (default: SOIC Research)
+    const targetChat = options.chatQuery || process.env.WHATSAPP_TARGET_CHAT || 'SOIC';
+    await searchAndSelectChat(waPage, targetChat);
 
     // Extract active chat info & messages from #main
     const chatData = await waPage.evaluate(() => {
