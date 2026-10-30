@@ -1132,6 +1132,29 @@ router.get('/test-connection', async (req, res) => {
 });
 
 /**
+ * GET/POST /api/deals/test-abnormal-alert
+ * Trigger abnormal price anomaly detection and dispatch test alert to @notifyavi
+ */
+router.all('/test-abnormal-alert', async (req, res) => {
+  try {
+    const { triggerDummyAlert, checkAndAlertAbnormalPrice } = require('../../../services/abnormalPriceAlertService');
+    let result;
+    if (req.body && (req.body.price || req.body.title)) {
+      result = await checkAndAlertAbnormalPrice(req.body);
+    } else {
+      result = await triggerDummyAlert();
+    }
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    logger.error('Error in test-abnormal-alert endpoint:', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/deals/comparison/:matchId
  * Retrieve products matching the same matchId for price comparison
  */

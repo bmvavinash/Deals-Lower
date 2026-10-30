@@ -568,6 +568,25 @@ async function extractProductOnServer(rawUrl, options = {}) {
 
   // 5. Persist validated product to Firebase Realtime Database
   const todayDate = getformattedDate();
+
+  // Category-aware abnormal price check & Telegram alert to @notifyavi
+  try {
+    const { checkAndAlertAbnormalPrice } = require('./abnormalPriceAlertService');
+    await checkAndAlertAbnormalPrice({
+      productCode,
+      title,
+      price,
+      mrp,
+      discount,
+      categoryGroup: meta?.category || '',
+      storeType: platform,
+      productUrl: resolvedUrl,
+      photo
+    });
+  } catch (alertErr) {
+    logger.warn('Abnormal price alert check error:', { error: alertErr.message });
+  }
+
   const productPayload = {
     productCode,
     title,
