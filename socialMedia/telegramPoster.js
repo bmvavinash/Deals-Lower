@@ -1,74 +1,75 @@
 const { TelegramBotKey } = require("../config/constants");
 
-async function telegram(photo="",chat_id="@dealshubglobal",text="details",token="") {
-  if(token == ""){
+async function telegram(photo = "", chat_id = "@dealshubglobal", text = "details", token = "", thread_id = null) {
+  if (!token) {
     token = TelegramBotKey;
   }
-try{
-    var myHeaders = new Headers();
+
+  // AIR-TIGHT GUARD: Never send Deals to Stocks channels
+  if (chat_id === '@dealsequity' || chat_id === '-1004332585915') {
+    console.error(`[CRITICAL SECURITY BLOCK] Blocked deals poster from sending to Stocks channel: ${chat_id}`);
+    return false;
+  }
+
+  try {
+    const myHeaders = new Headers();
     myHeaders.append("Content-Type", "application/json");
 
-    // console.log("telegram photo is ",photo)
-    // console.log("telegram chat_id is ",chat_id)
-    // console.log("telegram text is ",text)
+    try {
+      if (!photo || photo.trim() === "") {
+        console.log('Telegram deals post without photo to ' + chat_id);
+        const payload = {
+          chat_id: chat_id,
+          text: text
+        };
+        if (thread_id) {
+          payload.message_thread_id = Number(thread_id);
+        }
 
-    let chatid = chat_id
-   
-try{
-    if(photo == ""){
-      console.log('Telegram without photo')
-      var raw = JSON.stringify({
-        chat_id: chat_id,
-        text: text
-      });
-      var requestOptions = {
-        method: "POST",
-        headers: myHeaders,
-        body: raw
-      };
-      await fetch(
-        `https://api.telegram.org/bot${token}/sendMessage`,
-        requestOptions
-      )
-      .then((response) => response.text())
-      .then((result) => {console.log("success",result)
-      console.log('re api 2nd');
-      output = JSON.stringify(result).includes("false");
-      })
-      .catch((error) => console.log("error", error));
+        const requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: JSON.stringify(payload)
+        };
+        const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, requestOptions);
+        const result = await response.json();
+        if (!result.ok) {
+          console.error('Telegram deal send error:', result);
+        }
+        return result.ok;
+      } else {
+        console.log('Telegram deals post with photo to ' + chat_id);
+        const payload = {
+          chat_id: chat_id,
+          photo: photo,
+          caption: text
+        };
+        if (thread_id) {
+          payload.message_thread_id = Number(thread_id);
+        }
 
+        const requestOptions = {
+          method: "POST",
+          headers: myHeaders,
+          body: JSON.stringify(payload)
+        };
+        const response = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, requestOptions);
+        const result = await response.json();
+        if (!result.ok) {
+          console.error('Telegram deal photo send error:', result);
+        }
+        return result.ok;
+      }
+    } catch (e) {
+      console.error('Telegram fetch error:', e.message);
+      return false;
     }
-    else{
-      console.log('Telegram with photo')
-      var raw = JSON.stringify({
-        chat_id: chat_id,
-        photo: photo,
-        caption: text
-      });
-      var requestOptions = {
-        method: "POST",
-        headers: myHeaders,
-        body: raw
-      };
-      await fetch(
-        `https://api.telegram.org/bot${token}/sendPhoto`,
-        requestOptions
-      )
-      .then((response) => response.text())
-      .then((result) => {console.log("success",result)
-      output = JSON.stringify(result).includes("false");
-      })
-      .catch((error) => console.log("error", error));
-    }
+  } catch (e) {
+    console.error('Telegram poster error:', e.message);
+    return false;
   }
-catch(e){
-console.log(e);
-}
-}
-catch(e){console.log(e);}
 }
 
 module.exports = {
   telegram
 };
-// exports.telegram = telegram;

@@ -95,7 +95,7 @@ class NotificationQueueService {
       
       try {
         if (job.channel === 'telegram') {
-            await telegram(job.data.photo, job.data.chatId, job.data.text, job.data.token || "");
+            await telegram(job.data.photo, job.data.chatId, job.data.text, job.data.token || "", job.data.threadId || null);
             success = true;
         } else if (job.channel === 'whatsapp') {
             // NOTE: If WhatsApp login isn't available on the server, 

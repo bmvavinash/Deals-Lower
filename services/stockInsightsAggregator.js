@@ -1,6 +1,5 @@
 const { getAllSignals, saveBestInsights, getBestInsights, getSourcePriority } = require('../database/stocksMultiDB');
 const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
-const { checkAndTriggerSignalNotification } = require('./stockAlertNotificationService');
 const { getModuleLogger } = require('../logger/logger');
 
 const logger = getModuleLogger('stockInsightsAggregator');
@@ -34,13 +33,6 @@ async function generateBestInsights() {
     const quote = await getLiveQuote(sig.symbol);
     const evaluated = evaluateSignalWithCMP(sig, quote) || sig;
     refreshedSignals.push(evaluated);
-
-    // Check if CMP meets requirements and trigger notification asynchronously (non-blocking)
-    if (evaluated.currentCMP) {
-      checkAndTriggerSignalNotification(evaluated).catch(err => {
-        logger.debug('Notification trigger check error:', { error: err.message });
-      });
-    }
   }
 
   const actionableInsights = [];

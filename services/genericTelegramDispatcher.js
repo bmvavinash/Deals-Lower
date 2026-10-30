@@ -13,6 +13,10 @@ let botInstance = null;
 let lastOutboundTime = 0;
 const MIN_DISPATCH_INTERVAL_MS = 1500; // 1.5s between messages to avoid Telegram 429 rate limit
 
+// Strict Channel Identifier sets to prevent cross-domain contamination
+const DEALS_CHANNEL_IDENTIFIERS = ['@dealshubglobal', '@dealshubglobal2', '-1001888310864'];
+const STOCKS_CHANNEL_IDENTIFIERS = ['@dealsequity', '-1004332585915'];
+
 /**
  * Load Telegram topics and channels configuration
  */
@@ -28,20 +32,23 @@ function getTelegramConfig() {
 
   return {
     stocks: {
-      channelId: process.env.STOCKS_TELEGRAM_CHANNEL_ID || '',
+      channelId: process.env.STOCKS_TELEGRAM_CHANNEL_ID || '@dealsequity',
+      chatId: '-1004332585915',
       channelType: 'group_with_topics',
       topics: {
-        high_conviction: process.env.STOCKS_TOPIC_HIGH_CONVICTION || null,
-        buy_trades: process.env.STOCKS_TOPIC_BUYS || null,
-        sell_trades: process.env.STOCKS_TOPIC_SELLS || null,
-        daily_insights: process.env.STOCKS_TOPIC_INSIGHTS || null
+        high_conviction: 2,
+        buy_trades: 3,
+        sell_trades: 4,
+        ingestion: 6,
+        daily_insights: 2
       },
       batching: { enabled: true, maxItemsPerMessage: 10 },
-      alertThresholds: { minRatingForBuyAlert: 3 }
+      alertThresholds: { minRatingForBuyAlert: 3, minDiscountPercent: 2, cooldownHours: 12 }
     },
     deals: {
       channelId: '@dealshubglobal',
-      channelType: 'channel',
+      chatId: '-1001888310864',
+      channelType: 'supergroup_forum',
       topics: { electronics: null, fashion: null, amazon: null, flipkart: null, general: null }
     }
   };
@@ -92,6 +99,7 @@ async function rateLimitWait() {
 
 /**
  * Resolve target chat ID and optional thread/topic ID for domain and category
+ * ENFORCES AIR-TIGHT SEPARATION: Stocks messages can NEVER reach Deals channels
  */
 function resolveDestination(domain = 'stocks', category = null) {
   const config = getTelegramConfig();
@@ -101,10 +109,20 @@ function resolveDestination(domain = 'stocks', category = null) {
     return { targetChatId: null, threadId: null, isConfigured: false };
   }
 
-  // CRITICAL CONSTRAINT: For stocks domain, NEVER use @dealshubglobal
-  let targetChatId = process.env.STOCKS_TELEGRAM_CHANNEL_ID || domainConfig.channelId || null;
-  if (domain === 'stocks' && targetChatId === '@dealshubglobal') {
-    targetChatId = null; // Invalidate any erroneous legacy setting
+  let targetChatId = domain === 'stocks'
+    ? (process.env.STOCKS_TELEGRAM_CHANNEL_ID || domainConfig.channelId || '@dealsequity')
+    : (domainConfig.channelId || '@dealshubglobal');
+
+  // CRITICAL CONSTRAINT 1: For stocks domain, strictly BAN @dealshubglobal
+  if (domain === 'stocks' && DEALS_CHANNEL_IDENTIFIERS.includes(targetChatId)) {
+    logger.error(`[AIR-TIGHT BLOCKED] Attempted to send STOCKS alert to DEALS channel: ${targetChatId}. Re-routing to @dealsequity.`);
+    targetChatId = '@dealsequity';
+  }
+
+  // CRITICAL CONSTRAINT 2: For deals domain, strictly BAN @dealsequity
+  if (domain === 'deals' && STOCKS_CHANNEL_IDENTIFIERS.includes(targetChatId)) {
+    logger.error(`[AIR-TIGHT BLOCKED] Attempted to send DEALS alert to STOCKS channel: ${targetChatId}. Re-routing to @dealshubglobal.`);
+    targetChatId = '@dealshubglobal';
   }
 
   const isConfigured = Boolean(targetChatId && targetChatId.trim().length > 0);
@@ -159,14 +177,14 @@ async function sendSingleAlert(alert, domain = 'stocks') {
 
   if (type === 'EXIT_TRIGGERED' || action.includes('SELL') || action.includes('EXIT')) {
     category = 'sell_trades';
-  } else if (rating >= 4) {
+  } else if (rating >= 4 || alert.isSourceOfTruth) {
     category = 'high_conviction';
   }
 
   const { targetChatId, threadId, isConfigured } = resolveDestination(domain, category);
 
   if (!isConfigured) {
-    logger.info(`[Telegram Notification Pending] Waiting for user to configure new Stocks Telegram Channel. Alert stored in Multi-DB.`);
+    logger.info(`[Telegram Notification Pending] Waiting for valid channel configuration. Alert stored in Multi-DB.`);
     return { success: false, reason: 'WAITING_FOR_CHANNEL_CONFIGURATION' };
   }
 
@@ -177,12 +195,12 @@ async function sendSingleAlert(alert, domain = 'stocks') {
 }
 
 /**
- * Group multiple alerts to eliminate noise and prevent channel muting
- * Groups into:
- * 1. Exits & Targets Reached (Topic: sell_trades)
- * 2. High-Conviction Buys (4★–5★) (Topic: high_conviction)
- * 3. Fresh Buys in Range (3★) (Topic: buy_trades)
- * 4. Speculative / Lower Rating Buys (1★–2★) (Topic: buy_trades)
+ * Group multiple alerts into consolidated digest messages
+ * Eliminates noisy spam and channel muting:
+ * 1. Exits & Targets Reached (Topic: sell_trades) -> Exactly 1 message
+ * 2. High-Conviction Buys (4★–5★ / WhatsApp Source of Truth) (Topic: high_conviction) -> Exactly 1 message
+ * 3. Fresh Buys in Range (3★) (Topic: buy_trades) -> Exactly 1 message
+ * 4. Speculative / Lower Rating Buys (<= 2★) -> BLOCKED from Telegram
  */
 async function dispatchGroupedTradeAlerts(alerts, domain = 'stocks') {
   if (!Array.isArray(alerts) || alerts.length === 0) return { dispatched: 0 };
@@ -193,43 +211,35 @@ async function dispatchGroupedTradeAlerts(alerts, domain = 'stocks') {
     return { dispatched: res.success ? 1 : 0 };
   }
 
-  const config = getTelegramConfig();
-  const minRating = config.stocks?.alertThresholds?.minRatingForBuyAlert || 2;
-
   // 1. Group Exits & Targets
   const exits = alerts.filter(a => 
     a.type === 'EXIT_TRIGGERED' || a.action?.includes('SELL') || a.action?.includes('EXIT')
   );
 
-  // 2. Group High Conviction Buys (4-5★)
+  // 2. Group High Conviction Buys (4-5★ or WhatsApp Source of Truth)
   const highConvictionBuys = alerts.filter(a => 
-    (a.type === 'BUY_ZONE_ENTERED' || a.action === 'BUY') && Number(a.rating || 0) >= 4
+    (a.type === 'BUY_ZONE_ENTERED' || a.action === 'BUY') && (Number(a.rating || 0) >= 4 || a.isSourceOfTruth)
   );
 
   // 3. Group Medium Conviction Buys (3★)
   const mediumConvictionBuys = alerts.filter(a => 
-    (a.type === 'BUY_ZONE_ENTERED' || a.action === 'BUY') && Number(a.rating || 0) === 3
-  );
-
-  // 4. Group Lower Conviction Buys (<= 2★) if meets threshold
-  const lowerConvictionBuys = alerts.filter(a => 
-    (a.type === 'BUY_ZONE_ENTERED' || a.action === 'BUY') && Number(a.rating || 0) < 3 && Number(a.rating || 0) >= minRating
+    (a.type === 'BUY_ZONE_ENTERED' || a.action === 'BUY') && Number(a.rating || 0) === 3 && !a.isSourceOfTruth
   );
 
   let totalDispatched = 0;
 
-  // Dispatch Exits Group
+  // Dispatch Exits Group (At most 1 message to sell_trades)
   if (exits.length > 0) {
     const dest = resolveDestination(domain, 'sell_trades');
     if (dest.isConfigured) {
       let msg = `🎯 *TARGETS & EXIT LEVELS MET (${exits.length} Stocks)*\n`;
       msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      exits.slice(0, 10).forEach(e => {
+      exits.slice(0, 8).forEach(e => {
         msg += `• *${e.symbol}* (${e.companyName || e.symbol})\n`;
         msg += `  Exit Level: ₹${e.level || '-'} | *CMP: ₹${e.currentCMP}* ✅\n`;
         msg += `  Source: _${e.source || 'Advisory'}_\n\n`;
       });
-      if (exits.length > 10) msg += `_...and ${exits.length - 10} more exits._\n`;
+      if (exits.length > 8) msg += `_...and ${exits.length - 8} more exits._\n`;
       msg += `━━━━━━━━━━━━━━━━━━━━━━\n🕒 _${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
 
       const res = await sendRawTelegramMessage(dest.targetChatId, msg, dest.threadId);
@@ -237,19 +247,19 @@ async function dispatchGroupedTradeAlerts(alerts, domain = 'stocks') {
     }
   }
 
-  // Dispatch High Conviction Buys (4-5★)
+  // Dispatch High Conviction Buys (At most 1 message to high_conviction)
   if (highConvictionBuys.length > 0) {
     const dest = resolveDestination(domain, 'high_conviction');
     if (dest.isConfigured) {
-      let msg = `⭐ *HIGH CONVICTION BUY CALLS (4★–5★ In Range)*\n`;
+      let msg = `⭐ *HIGH CONVICTION BUY CALLS (${highConvictionBuys.length} Stocks In Range)*\n`;
       msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      highConvictionBuys.slice(0, 10).forEach(b => {
-        const stars = '⭐'.repeat(Math.min(5, Number(b.rating || 4)));
+      highConvictionBuys.slice(0, 8).forEach(b => {
+        const stars = b.isSourceOfTruth ? '⭐ WhatsApp Source of Truth' : '⭐'.repeat(Math.min(5, Number(b.rating || 4)));
         msg += `• *${b.symbol}* [${stars}]\n`;
         msg += `  Buy Upto: ₹${b.level || '-'} | *CMP: ₹${b.currentCMP}* 🚀\n`;
         msg += `  Source: _${b.source || 'Advisory'}_\n\n`;
       });
-      if (highConvictionBuys.length > 10) msg += `_...and ${highConvictionBuys.length - 10} more calls._\n`;
+      if (highConvictionBuys.length > 8) msg += `_...and ${highConvictionBuys.length - 8} more calls._\n`;
       msg += `━━━━━━━━━━━━━━━━━━━━━━\n🕒 _${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
 
       const res = await sendRawTelegramMessage(dest.targetChatId, msg, dest.threadId);
@@ -257,34 +267,18 @@ async function dispatchGroupedTradeAlerts(alerts, domain = 'stocks') {
     }
   }
 
-  // Dispatch Medium Conviction Buys (3★)
+  // Dispatch Medium Conviction Buys (At most 1 message to buy_trades)
   if (mediumConvictionBuys.length > 0) {
     const dest = resolveDestination(domain, 'buy_trades');
     if (dest.isConfigured) {
       let msg = `🟢 *FRESH BUY OPPORTUNITIES (3★ In Range)*\n`;
       msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      mediumConvictionBuys.slice(0, 10).forEach(b => {
+      mediumConvictionBuys.slice(0, 8).forEach(b => {
         msg += `• *${b.symbol}* (${b.companyName || b.symbol}) [⭐⭐⭐]\n`;
         msg += `  Buy Upto: ₹${b.level || '-'} | *CMP: ₹${b.currentCMP}*\n`;
         msg += `  Source: _${b.source || 'Advisory'}_\n\n`;
       });
-      if (mediumConvictionBuys.length > 10) msg += `_...and ${mediumConvictionBuys.length - 10} more calls._\n`;
-      msg += `━━━━━━━━━━━━━━━━━━━━━━\n🕒 _${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
-
-      const res = await sendRawTelegramMessage(dest.targetChatId, msg, dest.threadId);
-      if (res.success) totalDispatched++;
-    }
-  }
-
-  // Dispatch Lower Conviction Buys (<= 2★)
-  if (lowerConvictionBuys.length > 0) {
-    const dest = resolveDestination(domain, 'buy_trades');
-    if (dest.isConfigured) {
-      let msg = `📊 *SPECULATIVE / ACCUMULATION BUYS (2★ In Range)*\n`;
-      msg += `━━━━━━━━━━━━━━━━━━━━━━\n`;
-      lowerConvictionBuys.slice(0, 10).forEach(b => {
-        msg += `• *${b.symbol}*: Buy Upto ₹${b.level || '-'} | *CMP: ₹${b.currentCMP}* (Source: _${b.source || 'Advisory'}_)\n`;
-      });
+      if (mediumConvictionBuys.length > 8) msg += `_...and ${mediumConvictionBuys.length - 8} more calls._\n`;
       msg += `━━━━━━━━━━━━━━━━━━━━━━\n🕒 _${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
 
       const res = await sendRawTelegramMessage(dest.targetChatId, msg, dest.threadId);
@@ -307,5 +301,7 @@ module.exports = {
   resolveDestination,
   sendSingleAlert,
   dispatchGroupedTradeAlerts,
-  sendRawTelegramMessage
+  sendRawTelegramMessage,
+  DEALS_CHANNEL_IDENTIFIERS,
+  STOCKS_CHANNEL_IDENTIFIERS
 };
