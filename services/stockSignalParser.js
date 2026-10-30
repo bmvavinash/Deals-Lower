@@ -209,7 +209,15 @@ function parseStockMessage(rawText, meta = {}) {
       continue;
     }
 
-    // 2b. Labelled Stock/Company name (e.g. "Stock: Archean Chemical (ARCHEAN)" or "Company: Tata Motors")
+    // 2b. Rating Check (Early check so ratings on previous or subsequent lines attach properly)
+    const ratingMatch = line.match(/(?:reduced\s+to\s+)?(\d+(?:\.\d+)?)\s*star|(?:star\s+)?rating\s*[-:]?\s*(\d+(?:\.\d+)?)/i);
+    if (ratingMatch) {
+      currentItem.rating = parseFloat(ratingMatch[1] || ratingMatch[2]);
+      currentItem.rawLines.push(rawLine);
+      continue;
+    }
+
+    // 2c. Labelled Stock/Company name (e.g. "Stock: Archean Chemical (ARCHEAN)" or "Company: Tata Motors")
     const stockLabelMatch = line.match(/^(?:STOCK|COMPANY|SYMBOL|SCRIP|NAME)\s*[:\-]\s*(.+)$/i);
     if (stockLabelMatch) {
       if (currentItem.companyName && (currentItem.price || currentItem.action)) flushCurrentItem();
@@ -220,7 +228,7 @@ function parseStockMessage(rawText, meta = {}) {
       continue;
     }
 
-    // 2c. Standalone Action: "Action: BUY" or "Call: BUY"
+    // 2d. Standalone Action: "Action: BUY" or "Call: BUY"
     const standaloneActionMatch = line.match(/^(?:ACTION|CALL|RECOMMENDATION)\s*[:\-]\s*(BUY|SELL|ACCUMULATE|EXIT|HOLD|WATCH)\b/i);
     if (standaloneActionMatch) {
       currentItem.action = standaloneActionMatch[1].toUpperCase();
@@ -229,32 +237,29 @@ function parseStockMessage(rawText, meta = {}) {
     }
 
     // 3. Action Check: Sell
-    const sellMatch = line.match(/^sell\s+(?:above|upto|at)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
+    const sellMatch = line.match(/^sell\s+(?:up\s*to|upto|above|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
     if (sellMatch) {
       currentItem.action = currentItem.action || 'SELL';
       currentItem.price = parsePrice(sellMatch[1]);
       currentItem.rawLines.push(rawLine);
-      flushCurrentItem();
       continue;
     }
 
     // 3b. Action Check: Reinitiate / Re-enter
-    const reinitiateMatch = line.match(/^(?:reinitiate|re-initiate|re-enter|re\s+enter)\s+(?:above|upto|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
+    const reinitiateMatch = line.match(/^(?:reinitiate|re-initiate|re-enter|re\s+enter)\s+(?:up\s*to|upto|above|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
     if (reinitiateMatch) {
       currentItem.action = 'REINITIATE';
       currentItem.price = parsePrice(reinitiateMatch[1]);
       currentItem.rawLines.push(rawLine);
-      flushCurrentItem();
       continue;
     }
 
     // 4. Action Check: Buy
-    const buyMatch = line.match(/^buy\s+(?:upto|above|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
+    const buyMatch = line.match(/^buy\s+(?:up\s*to|upto|above|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
     if (buyMatch) {
       currentItem.action = currentItem.action || 'BUY';
       currentItem.price = parsePrice(buyMatch[1]);
       currentItem.rawLines.push(rawLine);
-      flushCurrentItem();
       continue;
     }
 
@@ -299,19 +304,10 @@ function parseStockMessage(rawText, meta = {}) {
     if (aboveMatch) {
       currentItem.price = parsePrice(aboveMatch[1]);
       currentItem.rawLines.push(rawLine);
-      flushCurrentItem();
       continue;
     }
 
-    // 10. Rating Check
-    const ratingMatch = line.match(/(?:reduced\s+to\s+)?(\d+(?:\.\d+)?)\s*star|(?:star\s+)?rating\s*[-:]?\s*(\d+(?:\.\d+)?)/i);
-    if (ratingMatch) {
-      currentItem.rating = parseFloat(ratingMatch[1] || ratingMatch[2]);
-      currentItem.rawLines.push(rawLine);
-      continue;
-    }
-
-    // 11. Horizon Check
+    // 10. Horizon Check
     const horizonMatch = line.match(/^(?:HORIZON|DURATION|TERM|TIMEFRAME)\s*[:\-]?\s*(.+)$/i);
     if (horizonMatch) {
       currentItem.horizon = horizonMatch[1].trim();
@@ -319,12 +315,12 @@ function parseStockMessage(rawText, meta = {}) {
       continue;
     }
 
-    // 12. If companyName is already set and has a price, flush previous item before starting new
-    if (currentItem.companyName && currentItem.price && (line.toLowerCase().startsWith('buy') || line.toLowerCase().startsWith('sell') || COMPANY_TICKER_MAP[line.toLowerCase()])) {
+    // 11. If companyName is already set and has a price (or action), flush previous item before starting new
+    if (currentItem.companyName && (currentItem.price || currentItem.action || currentItem.rating)) {
       flushCurrentItem();
     }
 
-    // 13. Capture company name if line is not pure numbers or noise
+    // 12. Capture company name if line is not pure numbers or noise
     if (!currentItem.companyName) {
       if (!/^\d+$/.test(line) && line.split(' ').length <= 6 && !line.includes(':')) {
         currentItem.companyName = line.replace(/[:\-]+$/, '').trim();
