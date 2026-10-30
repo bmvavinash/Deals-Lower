@@ -15,8 +15,6 @@ const isLocal = typeof window !== 'undefined' && (
 const API_BASE_URL = isLocal ? '/api' : 'https://dealsoptimised.onrender.com/api';
 const FALLBACK_URL = 'https://dealsoptimised.onrender.com/api';
 
-let usingFallback = false;
-
 // Create the primary axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -42,44 +40,29 @@ api.interceptors.request.use((config) => {
     // ignore JSON error
   }
 
-  if (usingFallback && FALLBACK_URL) {
-    config.baseURL = FALLBACK_URL;
-    if (Date.now() - fallbackCheckedAt > FALLBACK_RETRY_MS) {
-      usingFallback = false;
-    }
-  } else if (PRIMARY_URL) {
-    config.baseURL = PRIMARY_URL;
-  }
-
-  // Ensure config.baseURL always ends with /api if it's an absolute url
-  if (config.baseURL && !config.baseURL.startsWith('/') && !config.baseURL.endsWith('/api')) {
-    config.baseURL = ensureApiBase(config.baseURL);
+  if (!config.baseURL) {
+    config.baseURL = API_BASE_URL;
   }
 
   return config;
 });
 
 // ─────────────────────────────────────────────
-// Response interceptor: on network error, switch to fallback and retry once
+// Response interceptor: on network error, retry with fallback Render URL once
 // ─────────────────────────────────────────────
 api.interceptors.response.use(
   (response) => {
     return response;
   },
   async (error) => {
-    const config = error.config as AxiosRequestConfig & { _retried?: boolean };
+    const config = error?.config as (AxiosRequestConfig & { _retried?: boolean }) | undefined;
 
-    // Only attempt fallback if:
-    // 1. We have a fallback URL configured
-    // 2. This is a network/timeout error (not a 4xx/5xx API error)
-    // 3. We haven't already retried this request
-    const isNetworkError = !error.response;
-    if (FALLBACK_URL && isNetworkError && !config._retried) {
+    // Only attempt fallback if config exists, hasn't been retried, and was a network error
+    const isNetworkError = Boolean(error && !error.response);
+    if (config && !config._retried && isNetworkError && FALLBACK_URL && config.baseURL !== FALLBACK_URL) {
       config._retried = true;
-      usingFallback = true;
-      fallbackCheckedAt = Date.now();
       config.baseURL = FALLBACK_URL;
-      console.warn('[API] Primary backend unreachable. Switching to fallback (Render):', FALLBACK_URL);
+      console.warn('[API] Request failed. Retrying with fallback (Render):', FALLBACK_URL);
       return api.request(config);
     }
 
