@@ -312,9 +312,11 @@ async function saveSignals(signals) {
     // Sync to Firebase
     if (fb) {
       try {
-        await fb.ref(`stocks/signals/${id}`).set(record);
+        const cleanRecord = JSON.parse(JSON.stringify(record));
+        await fb.ref(`stocks/signals/${id}`).set(cleanRecord);
         if (record.requiresClarification) {
-          await fb.ref(`stocks/clarifications/${id}`).set(memoryDB.clarifications[id]);
+          const cleanClar = JSON.parse(JSON.stringify(memoryDB.clarifications[id]));
+          await fb.ref(`stocks/clarifications/${id}`).set(cleanClar);
         }
       } catch (fbErr) {
         logger.warn(`Firebase signal write failed for ${id}, kept in local DB`, { error: fbErr.message });
