@@ -490,8 +490,22 @@
 
 .badge-status.triggered { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
 .badge-status.in_buy_range { background: #dcfce7; color: #16a34a; border: 1px solid #86efac; }
+.badge-status.above_entry { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
 .badge-status.monitoring { background: #f1f5f9; color: #475569; }
 .badge-status.active { background: #e0f2fe; color: #0284c7; }
+.badge-status.expired { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; font-weight: 700; }
+.expired-pill {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
 
 .symbol-name-col {
   display: flex;

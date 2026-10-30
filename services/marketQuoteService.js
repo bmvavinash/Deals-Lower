@@ -195,7 +195,11 @@ function evaluateSignalWithCMP(signal, quote) {
   const stopLoss = Number(signal.stopLoss);
 
   if (ltp && entry) {
-    if (action === 'BUY') {
+    if (signal.isExpired || signal.status === 'EXPIRED') {
+      pnlPercent = Number((((ltp - entry) / entry) * 100).toFixed(2));
+      status = 'EXPIRED';
+      statusReason = signal.statusReason || `Buy expired: WhatsApp exit call issued`;
+    } else if (action === 'BUY') {
       pnlPercent = Number((((ltp - entry) / entry) * 100).toFixed(2));
       
       // Target hit check

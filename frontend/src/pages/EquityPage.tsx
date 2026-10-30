@@ -7,7 +7,7 @@ interface StockSignal {
   symbol: string;
   companyName: string;
   exchange: string;
-  action: 'BUY' | 'SELL' | 'PARTIAL_EXIT' | 'COMPLETE_EXIT' | 'WATCH';
+  action: 'BUY' | 'SELL' | 'PARTIAL_EXIT' | 'COMPLETE_EXIT' | 'REINITIATE' | 'WATCH';
   callType: string;
   entryPrice?: number;
   entryMax?: number;
@@ -23,6 +23,8 @@ interface StockSignal {
   timestamp: string;
   requiresClarification?: boolean;
   clarificationReason?: string;
+  isExpired?: boolean;
+  isReinitiated?: boolean;
 }
 
 interface BestInsight {
@@ -41,6 +43,8 @@ interface BestInsight {
   rating?: number | null;
   totalCalls?: number;
   distinctSources?: number;
+  isExpiredBuy?: boolean;
+  expiredReason?: string;
 }
 
 interface ClarificationItem {
@@ -112,7 +116,7 @@ const EquityPage: React.FC = () => {
   const [ratingFilter, setRatingFilter] = useState<'all' | '4plus' | '3plus' | 'sub3'>('all');
   const [horizonFilter, setHorizonFilter] = useState<'all' | 'positional' | 'swing'>('all');
   const [sourceFilter, setSourceFilter] = useState<'all' | 'whatsapp' | 'google_sheets' | 'sheet_watchlist' | 'sheet_stocklist' | 'telegram'>('all');
-  const [cmpStatusFilter, setCmpStatusFilter] = useState<'all' | 'buy_range' | 'target_met' | 'near'>('all');
+  const [cmpStatusFilter, setCmpStatusFilter] = useState<'all' | 'buy_range' | 'target_met' | 'near' | 'expired'>('all');
 
   // Telegram Config Modal state
   const [showTelegramModal, setShowTelegramModal] = useState(false);
@@ -469,9 +473,10 @@ const EquityPage: React.FC = () => {
       if (sourceFilter === 'telegram' && !src.includes('telegram')) return false;
 
       // Sub-filter: CMP Status
-      if (cmpStatusFilter === 'buy_range' && s.status !== 'IN_BUY_RANGE') return false;
+      if (cmpStatusFilter === 'buy_range' && (s.status !== 'IN_BUY_RANGE' || s.isExpired)) return false;
       if (cmpStatusFilter === 'target_met' && s.status !== 'TRIGGERED') return false;
-      if (cmpStatusFilter === 'near' && s.status !== 'NEAR_BUY_RANGE') return false;
+      if (cmpStatusFilter === 'near' && (s.status !== 'NEAR_BUY_RANGE' && s.status !== 'ABOVE_ENTRY')) return false;
+      if (cmpStatusFilter === 'expired' && !s.isExpired && s.status !== 'EXPIRED') return false;
 
       return true;
     })
@@ -516,9 +521,10 @@ const EquityPage: React.FC = () => {
 
   // Derived metrics
   const totalSignals = signals.length;
-  const actionableBuys = signals.filter(s => s.action === 'BUY' && s.status === 'IN_BUY_RANGE').length;
+  const actionableBuys = signals.filter(s => s.action === 'BUY' && s.status === 'IN_BUY_RANGE' && !s.isExpired).length;
   const exitsTriggered = signals.filter(s => s.status === 'TRIGGERED').length;
-  const highConvictionCount = signals.filter(s => Number(s.rating || 0) >= 4).length;
+  const expiredBuys = signals.filter(s => s.isExpired || s.status === 'EXPIRED').length;
+  const highConvictionCount = signals.filter(s => Number(s.rating || 0) >= 4 && !s.isExpired).length;
   const pendingDoubts = clarifications.length;
   const alertCount = notifications.length;
 
@@ -825,6 +831,11 @@ const EquityPage: React.FC = () => {
           <div className="metric-value" style={{ color: '#dc2626' }}>{exitsTriggered}</div>
           <div className="metric-sub">CMP &gt;= Target / Exit level</div>
         </div>
+        <div className="metric-card" style={expiredBuys > 0 ? { border: '1px solid #fca5a5', background: '#fff5f5' } : {}}>
+          <div className="metric-label">⛔ Buys Expired</div>
+          <div className="metric-value" style={{ color: '#be123c' }}>{expiredBuys}</div>
+          <div className="metric-sub">WhatsApp Exit active</div>
+        </div>
       </div>
 
       
@@ -1041,8 +1052,8 @@ const EquityPage: React.FC = () => {
                         {item.companyName}
                       </span>
                     </div>
-                    <span className={`insight-tag ${cardTypeClass}`}>
-                      {actionLabel}
+                    <span className={`insight-tag ${item.isExpiredBuy ? 'exit' : cardTypeClass}`}>
+                      {item.isExpiredBuy ? '⛔ BUY EXPIRED' : actionLabel}
                     </span>
                   </div>
 
@@ -1253,9 +1264,10 @@ const EquityPage: React.FC = () => {
               title="Filter by CMP Target Status"
             >
               <option value="all">🎯 All Statuses</option>
-              <option value="buy_range">🟢 In Buy Range</option>
-              <option value="target_met">🎯 Target Met</option>
-              <option value="near">🟡 Near Range</option>
+              <option value="buy_range">🟢 In Buy Range ({actionableBuys})</option>
+              <option value="target_met">🎯 Target Met ({exitsTriggered})</option>
+              <option value="near">🟡 Near / Above Range</option>
+              <option value="expired">⛔ Expired Buys (WhatsApp Exit) ({expiredBuys})</option>
             </select>
 
             {/* Multi-Sort Dropdown */}
@@ -1442,9 +1454,14 @@ const EquityPage: React.FC = () => {
                       <div className="mobile-card-meta-row">
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
-                            <span className={`badge-status ${sig.status?.toLowerCase() || 'active'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
-                              {sig.statusReason || sig.status}
+                            <span className={`badge-status ${sig.isExpired ? 'expired' : (sig.status?.toLowerCase() || 'active')}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                              {sig.isExpired ? '⛔ BUY EXPIRED' : (sig.statusReason || sig.status)}
                             </span>
+                            {sig.isExpired && (
+                              <span className="expired-pill" title="WhatsApp exit issued. Buy is expired unless reinitiated in WhatsApp.">
+                                🛑 Exit Active
+                              </span>
+                            )}
                             {sig.source?.toLowerCase().includes('whatsapp') ? (
                               <span className="source-of-truth-pill">
                                 🟢 WhatsApp (Source of Truth)
@@ -1515,11 +1532,16 @@ const EquityPage: React.FC = () => {
                       const star = Number(sig.rating || 0);
 
                       return (
-                        <tr key={sig.id}>
+                        <tr key={sig.id} style={sig.isExpired ? { background: '#fff5f5' } : {}}>
                           <td>
-                            <span className={`badge-action ${actionClass}`}>
+                            <span className={`badge-action ${sig.isExpired ? 'expired' : actionClass}`}>
                               {sig.action}
                             </span>
+                            {sig.isExpired && (
+                              <span style={{ display: 'block', fontSize: '10px', color: '#be123c', fontWeight: 700, marginTop: '2px' }}>
+                                ⛔ EXPIRED
+                              </span>
+                            )}
                           </td>
                           <td>
                             <div className="symbol-name-col">
@@ -1564,8 +1586,8 @@ const EquityPage: React.FC = () => {
                             )}
                           </td>
                           <td>
-                            <span className={`badge-status ${statusClass}`}>
-                              {sig.statusReason || sig.status}
+                            <span className={`badge-status ${sig.isExpired ? 'expired' : statusClass}`}>
+                              {sig.isExpired ? '⛔ Buy Expired (WhatsApp Exit)' : (sig.statusReason || sig.status)}
                             </span>
                           </td>
                           <td>

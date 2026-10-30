@@ -98,6 +98,94 @@ async function saveRawMessage(msgData) {
 }
 
 /**
+ * Compute the WhatsApp trade lifecycle state for each symbol:
+ * - hasExit: boolean (true if latest WhatsApp message is SELL, EXIT, COMPLETE_EXIT, PARTIAL_EXIT)
+ * - isExpired: boolean (true if latest WhatsApp message is an exit AND no newer reinitiate/buy message has arrived)
+ * - isReinitiated: boolean (true if a newer WhatsApp BUY / REINITIATE message came after the exit)
+ * - latestExit: { action, price, timestamp, rawText }
+ * - latestReinitiate: { action, price, timestamp, rawText }
+ */
+function getWhatsAppStockStates(signals) {
+  const allSignals = signals || Object.values(memoryDB.signals || {});
+  const waSignals = allSignals.filter(s => 
+    s.source && s.source.toLowerCase().includes('whatsapp') && s.symbol
+  );
+
+  const bySymbol = new Map();
+  waSignals.forEach(s => {
+    const sym = s.symbol.toUpperCase();
+    if (!bySymbol.has(sym)) bySymbol.set(sym, []);
+    bySymbol.get(sym).push(s);
+  });
+
+  const states = new Map();
+
+  for (const [sym, symSignals] of bySymbol.entries()) {
+    // Sort chronologically ascending
+    symSignals.sort((a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0));
+
+    let latestExit = null;
+    let latestReinitiate = null;
+    let latestBuy = null;
+
+    for (const s of symSignals) {
+      const act = (s.action || '').toUpperCase();
+      const isExit = act.includes('SELL') || act.includes('EXIT') || s.isExitCall;
+      const isReinit = act.includes('REINITIATE') || s.isReinitiateCall || /reinitiate|re-initiate|re-enter|fresh\s+buy/i.test(s.rawText || '');
+      const isBuy = act === 'BUY' || isReinit;
+
+      if (isExit) {
+        latestExit = {
+          action: s.action,
+          price: s.entryPrice || s.target1 || null,
+          timestamp: s.timestamp,
+          rawText: s.rawText,
+          id: s.id
+        };
+      } else if (isBuy) {
+        latestBuy = {
+          action: isReinit ? 'REINITIATE' : 'BUY',
+          price: s.entryPrice || s.entryMax || null,
+          timestamp: s.timestamp,
+          rawText: s.rawText,
+          id: s.id
+        };
+        if (latestExit && new Date(s.timestamp) > new Date(latestExit.timestamp)) {
+          latestReinitiate = latestBuy;
+        }
+      }
+    }
+
+    if (latestExit) {
+      const hasReinitAfterExit = latestBuy && new Date(latestBuy.timestamp) > new Date(latestExit.timestamp);
+      states.set(sym, {
+        symbol: sym,
+        hasExit: true,
+        isExpired: !hasReinitAfterExit, // Buy expired unless reinitiated in WhatsApp
+        isReinitiated: Boolean(hasReinitAfterExit),
+        latestExit,
+        latestReinitiate: hasReinitAfterExit ? latestBuy : null,
+        activeAction: hasReinitAfterExit ? latestBuy.action : latestExit.action,
+        activePrice: hasReinitAfterExit ? latestBuy.price : latestExit.price
+      });
+    } else if (latestBuy) {
+      states.set(sym, {
+        symbol: sym,
+        hasExit: false,
+        isExpired: false,
+        isReinitiated: false,
+        latestExit: null,
+        latestReinitiate: null,
+        activeAction: 'BUY',
+        activePrice: latestBuy.price
+      });
+    }
+  }
+
+  return states;
+}
+
+/**
  * Save array of parsed signals
  */
 async function saveSignals(signals) {
@@ -105,16 +193,38 @@ async function saveSignals(signals) {
   const saved = [];
 
   const fb = getFirebaseDB();
+  const waStockStates = getWhatsAppStockStates();
 
   for (const sig of signals) {
     const id = sig.id || `SIG_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
     const priority = sig.sourcePriority || getSourcePriority(sig.source);
     const isSourceOfTruth = priority === 1;
+    const sym = (sig.symbol || '').toUpperCase().trim();
+
+    // Check if incoming signal itself is from WhatsApp
+    const isIncomingWA = isSourceOfTruth || (sig.source && sig.source.toLowerCase().includes('whatsapp'));
+    const isIncomingExit = ['SELL', 'EXIT', 'COMPLETE_EXIT', 'PARTIAL_EXIT'].includes((sig.action || '').toUpperCase()) || sig.isExitCall;
+
+    // If incoming message from WhatsApp is an EXIT, immediately expire ALL existing BUY signals for this symbol
+    if (isIncomingWA && isIncomingExit) {
+      Object.values(memoryDB.signals || {}).forEach(existing => {
+        if (existing.symbol?.toUpperCase() === sym && (existing.action === 'BUY' || existing.action === 'ACCUMULATE')) {
+          existing.isExpired = true;
+          existing.status = 'EXPIRED';
+          existing.statusReason = `Buy expired: WhatsApp exit call issued (${sig.action} @ ₹${sig.entryPrice || sig.target1 || 'market'}) unless reinitiated in WhatsApp`;
+          if (fb) {
+            fb.ref(`stocks/signals/${existing.id}/status`).set('EXPIRED').catch(() => {});
+            fb.ref(`stocks/signals/${existing.id}/statusReason`).set(existing.statusReason).catch(() => {});
+            fb.ref(`stocks/signals/${existing.id}/isExpired`).set(true).catch(() => {});
+          }
+        }
+      });
+    }
 
     // Check if a WhatsApp (Source of Truth) signal already exists for this symbol
     const existingSignals = Object.values(memoryDB.signals || {});
     const existingWhatsAppSignal = existingSignals.find(s => 
-      s.symbol?.toUpperCase() === sig.symbol?.toUpperCase() && 
+      s.symbol?.toUpperCase() === sym && 
       (s.isSourceOfTruth || getSourcePriority(s.source) === 1)
     );
 
@@ -144,9 +254,28 @@ async function saveSignals(signals) {
       }
     }
 
+    // Determine WhatsApp Expiry state
+    const currentWAState = waStockStates.get(sym);
+    let isExpired = Boolean(sig.isExpired);
+    let isReinitiated = Boolean(sig.isReinitiated);
+    let status = sig.status;
+    let statusReason = sig.statusReason;
+
+    if (currentWAState) {
+      if (currentWAState.isExpired && (sig.action === 'BUY' || sig.action === 'ACCUMULATE')) {
+        isExpired = true;
+        status = 'EXPIRED';
+        statusReason = `Buy expired: WhatsApp exit call issued (${currentWAState.latestExit.action} @ ₹${currentWAState.latestExit.price || 'market'}) unless reinitiated in WhatsApp`;
+      } else if (currentWAState.isReinitiated) {
+        isExpired = false;
+        isReinitiated = true;
+      }
+    }
+
     const record = {
       ...sig,
       id,
+      symbol: sym,
       sourcePriority: priority,
       isSourceOfTruth,
       sourceLabel: isSourceOfTruth ? 'WhatsApp (Source of Truth)' : (priority === 2 ? 'Google Sheet (Secondary)' : 'Telegram'),
@@ -155,6 +284,10 @@ async function saveSignals(signals) {
       action: finalAction,
       target1: finalTarget1,
       stopLoss: finalStopLoss,
+      status: status || 'ACTIVE',
+      statusReason: statusReason || null,
+      isExpired,
+      isReinitiated,
       updatedAt: new Date().toISOString()
     };
 
@@ -280,20 +413,54 @@ async function getAllSignals(filters = {}) {
     return true;
   });
 
-  // Normalize signals: enforce Source of Truth priorities and canonical recommended buy prices
+  // Compute real-time WhatsApp state per symbol (Exit vs. Reinitiate)
+  const waStockStates = getWhatsAppStockStates(signalsList);
+
+  // Normalize signals: enforce Source of Truth priorities, WhatsApp exit expiry, and canonical recommended buy prices
   let firebaseUpdates = null;
   signalsList = signalsList.map(s => {
     const prio = s.sourcePriority || getSourcePriority(s.source);
     const isTruth = prio === 1;
+    const sym = (s.symbol || '').toUpperCase().trim();
     let entryPrice = s.entryPrice;
     let entryMax = s.entryMax;
     let status = s.status;
     let statusReason = s.statusReason;
+    let isExpired = Boolean(s.isExpired);
+    let isReinitiated = Boolean(s.isReinitiated);
     let modified = false;
 
-    // Google Sheet Watchlist: strictly enforce canonical recommended buy price
-    if (s.source && s.source.includes('Watchlist') && CANONICAL_WATCHLIST_BUY_PRICES[s.symbol]) {
-      const canonicalPrice = CANONICAL_WATCHLIST_BUY_PRICES[s.symbol];
+    // 1. Check WhatsApp Exit / Reinitiate state for this symbol
+    const waState = waStockStates.get(sym);
+    if (waState) {
+      if (waState.isExpired) {
+        // Once WhatsApp issues an exit, ALL BUY calls for this stock are expired unless reinitiated in WhatsApp
+        if (s.action === 'BUY' || s.action === 'ACCUMULATE') {
+          if (!isExpired || status !== 'EXPIRED') {
+            isExpired = true;
+            status = 'EXPIRED';
+            statusReason = `Buy expired: WhatsApp exit call issued (${waState.latestExit.action} @ ₹${waState.latestExit.price || 'market'}) unless reinitiated in WhatsApp`;
+            modified = true;
+          }
+        }
+      } else if (waState.isReinitiated) {
+        if (isExpired) {
+          isExpired = false;
+          isReinitiated = true;
+          modified = true;
+          if (s.currentCMP && entryMax) {
+            status = s.currentCMP <= entryMax ? 'IN_BUY_RANGE' : 'ABOVE_ENTRY';
+            statusReason = s.currentCMP <= entryMax 
+              ? `In buy range after WhatsApp reinitiation (CMP ₹${s.currentCMP} <= ₹${entryMax})`
+              : `Above buy ceiling after WhatsApp reinitiation (CMP ₹${s.currentCMP} > ₹${entryMax})`;
+          }
+        }
+      }
+    }
+
+    // 2. Google Sheet Watchlist: strictly enforce canonical recommended buy price (if not expired)
+    if (!isExpired && s.source && s.source.includes('Watchlist') && CANONICAL_WATCHLIST_BUY_PRICES[sym]) {
+      const canonicalPrice = CANONICAL_WATCHLIST_BUY_PRICES[sym];
       if (entryPrice !== canonicalPrice || entryMax !== canonicalPrice) {
         entryPrice = canonicalPrice;
         entryMax = canonicalPrice;
@@ -310,8 +477,8 @@ async function getAllSignals(filters = {}) {
       }
     }
 
-    // Aarti Pharmalabs global rule: strictly ₹770 per user instruction
-    if (s.symbol === 'AARTIPHARM') {
+    // 3. Aarti Pharmalabs global rule: strictly ₹770 per user instruction
+    if (sym === 'AARTIPHARM' && !isExpired) {
       if (entryPrice !== 770 || entryMax !== 770) {
         entryPrice = 770;
         entryMax = 770;
@@ -331,16 +498,21 @@ async function getAllSignals(filters = {}) {
       if (statusReason) firebaseUpdates[`stocks/signals/${s.id}/statusReason`] = statusReason;
       firebaseUpdates[`stocks/signals/${s.id}/sourcePriority`] = prio;
       firebaseUpdates[`stocks/signals/${s.id}/isSourceOfTruth`] = isTruth;
+      firebaseUpdates[`stocks/signals/${s.id}/isExpired`] = isExpired;
+      firebaseUpdates[`stocks/signals/${s.id}/isReinitiated`] = isReinitiated;
     }
 
     return {
       ...s,
+      symbol: sym,
       sourcePriority: prio,
       isSourceOfTruth: isTruth,
       entryPrice: entryPrice ?? null,
       entryMax: entryMax ?? null,
       status: status || 'ACTIVE',
-      statusReason: statusReason || null
+      statusReason: statusReason || null,
+      isExpired,
+      isReinitiated
     };
   });
 
@@ -555,5 +727,6 @@ module.exports = {
   getNotifications,
   persistLocalDB,
   getFirebaseDB,
+  getWhatsAppStockStates,
   memoryDB
 };
