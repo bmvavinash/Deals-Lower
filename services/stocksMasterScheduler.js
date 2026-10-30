@@ -1,4 +1,18 @@
-const cron = require('node-cron');
+let cron;
+try {
+  cron = require('node-cron');
+} catch {
+  // Graceful fallback to setInterval if node-cron is not directly in path
+  cron = {
+    schedule: (expr, fn) => {
+      let ms = 60000;
+      const match = expr.match(/^\*\/(\d+)/);
+      if (match) ms = parseInt(match[1], 10) * 60000;
+      const timer = setInterval(fn, ms);
+      return { stop: () => clearInterval(timer) };
+    }
+  };
+}
 const { extractActiveWhatsAppChat } = require('./whatsappLiveExtractor');
 const { extractGoogleSheetSignals } = require('./googleSheetLiveExtractor');
 const { refreshQuotesNow } = require('./marketQuoteRefresher');
