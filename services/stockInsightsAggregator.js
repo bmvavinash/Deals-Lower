@@ -1,4 +1,4 @@
-const { getAllSignals, saveBestInsights, getBestInsights } = require('../database/stocksMultiDB');
+const { getAllSignals, saveBestInsights, getBestInsights, getSourcePriority } = require('../database/stocksMultiDB');
 const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
 const { checkAndTriggerSignalNotification } = require('./stockAlertNotificationService');
 const { getModuleLogger } = require('../logger/logger');
@@ -82,6 +82,7 @@ async function generateBestInsights() {
     const discountPercent = buyUpto && sig.currentCMP 
       ? Number((((buyUpto - sig.currentCMP) / buyUpto) * 100).toFixed(1))
       : 0;
+    const isWA = sig.sourcePriority === 1 || getSourcePriority(sig.source) === 1;
 
     actionableInsights.push({
       type: 'BUY_OPPORTUNITY',
@@ -96,18 +97,29 @@ async function generateBestInsights() {
       rating: sig.rating,
       reason: `CMP ₹${sig.currentCMP} is trading at a ${discountPercent}% discount (Buy upto ₹${buyUpto})`,
       source: sig.source,
-      priority: sig.rating && sig.rating >= 2 ? 1 : 2,
+      sourcePriority: sig.sourcePriority || getSourcePriority(sig.source),
+      isSourceOfTruth: isWA,
+      sourceOfTruth: isWA ? 'WhatsApp' : null,
+      priority: isWA ? 1 : (sig.rating && sig.rating >= 4 ? 2 : 3),
       signal: sig
     });
   }
 
-  // 3. Multi-Source Consensus Analysis
+  // 3. Multi-Source Consensus Analysis (WhatsApp = 1st Priority Source of Truth)
   for (const [sym, groupSignals] of symbolMap.entries()) {
+    // Sort group signals so WhatsApp (1st Priority) is always first
+    groupSignals.sort((a, b) => {
+      const prioA = a.sourcePriority || getSourcePriority(a.source);
+      const prioB = b.sourcePriority || getSourcePriority(b.source);
+      return prioA - prioB;
+    });
+
     const buyCalls = groupSignals.filter(s => s.action === 'BUY');
     const sellCalls = groupSignals.filter(s => s.action?.includes('SELL') || s.action?.includes('EXIT'));
 
     const distinctSources = new Set(groupSignals.map(s => s.source)).size;
-    const signalWithPrice = groupSignals.find(s => s.entryPrice || s.entryMax || s.entryMin || s.target1) || groupSignals[0];
+    const waSignal = groupSignals.find(s => (s.sourcePriority === 1 || getSourcePriority(s.source) === 1));
+    const signalWithPrice = waSignal || groupSignals.find(s => s.entryPrice || s.entryMax || s.entryMin || s.target1) || groupSignals[0];
     const signalWithCMP = groupSignals.find(s => s.currentCMP) || groupSignals[0];
     const dominantAction = buyCalls.length >= sellCalls.length ? 'BUY' : 'SELL';
     const targetLevel = Number(signalWithPrice.entryPrice || signalWithPrice.entryMax || signalWithPrice.entryMin || signalWithPrice.target1 || 0);
@@ -130,6 +142,11 @@ async function generateBestInsights() {
         consensusReason += ` • Target Level: ₹${targetLevel}`;
       }
 
+      const hasBoth = waSignal && groupSignals.some(s => getSourcePriority(s.source) === 2);
+      const sourceLabel = hasBoth
+        ? 'WhatsApp (Source of Truth) • Cross-referenced with Google Sheet'
+        : (distinctSources > 1 ? `Consensus (${distinctSources} sources)` : signalWithPrice.source);
+
       actionableInsights.push({
         type: 'CONSENSUS',
         symbol: sym,
@@ -145,9 +162,11 @@ async function generateBestInsights() {
         reason: consensusReason,
         summary: consensusReason,
         rating: signalWithPrice.rating || null,
-        source: distinctSources > 1 ? `Consensus (${distinctSources} sources)` : signalWithPrice.source,
+        source: sourceLabel,
+        isSourceOfTruth: Boolean(waSignal),
+        sourceOfTruth: waSignal ? 'WhatsApp' : null,
         signals: groupSignals,
-        priority: 3
+        priority: waSignal ? 1 : 3
       });
     }
   }
@@ -156,8 +175,13 @@ async function generateBestInsights() {
   const seenSymbols = new Set();
   const dedupedInsights = [];
 
-  // Sort by priority (1 is highest)
-  actionableInsights.sort((a, b) => a.priority - b.priority);
+  // Sort by Source of Truth first (WhatsApp priority 1), then by priority
+  actionableInsights.sort((a, b) => {
+    const truthA = a.isSourceOfTruth ? 1 : 0;
+    const truthB = b.isSourceOfTruth ? 1 : 0;
+    if (truthB !== truthA) return truthB - truthA;
+    return a.priority - b.priority;
+  });
 
   for (const item of actionableInsights) {
     const key = item.symbol;

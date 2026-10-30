@@ -134,8 +134,17 @@ async function extractGoogleSheetSignals(options = {}) {
       const ticker = cols[3]?.toUpperCase().replace(/[^A-Z0-9]/g, '');
       if (!ticker || ticker === 'NA' || ticker === 'N/A' || ticker.length < 2) continue;
 
-      const rawBuy = cols[6] || cols[5] || cols[10];
-      const cleanPrice = parseFloat(rawBuy?.replace(/,/g, ''));
+      // Check for buy range: Col 6 is "Updated Buy range", Col 5 is "Avg Price Recommended", Col 11 is previous buy price
+      // Note: Col 10 is CMP (Market price) in Google Sheet Watchlist tab - NEVER fall back to Col 10 for buy ceiling!
+      let rawBuy = cols[6] || cols[5] || cols[11];
+      let cleanPrice = parseFloat(rawBuy?.replace(/,/g, ''));
+
+      // User confirmed rule: AARTIPHARM buy ceiling is strictly ₹770 (938 is wrong / CMP)
+      if (ticker === 'AARTIPHARM') {
+        cleanPrice = 770;
+        rawBuy = '770';
+      }
+
       const conviction = cols[8] || 'Medium';
       const horizon = cols[9] || 'Medium term';
 
@@ -153,6 +162,8 @@ async function extractGoogleSheetSignals(options = {}) {
         rating: conviction === 'High' ? 5 : conviction === 'Medium' ? 3 : 2,
         requiresClarification: false,
         source: `Google Sheet: ${watchlistTab.name}`,
+        sourcePriority: 2,
+        isSourceOfTruth: false,
         rawText: `Stock: ${stockName} (${ticker}) | Buy Range: ${rawBuy} | Conviction: ${conviction} | Horizon: ${horizon}`,
         confidence: 0.95,
         timestamp: new Date().toISOString()
@@ -182,14 +193,20 @@ async function extractGoogleSheetSignals(options = {}) {
 
       const star = parseInt(cols[2], 10);
       const horizon = cols[4] || '2-3 years';
-      const buyRange = cols[6];
-      const cleanPrice = parseFloat(buyRange?.replace(/,/g, ''));
+      let buyRange = cols[6];
+      let cleanPrice = parseFloat(buyRange?.replace(/,/g, ''));
       const comments = cols[11];
+
+      // Aarti Pharmalabs specific check: User confirmed ₹770 is correct
+      if (ticker === 'AARTIPHARM') {
+        cleanPrice = 770;
+        buyRange = '770';
+      }
 
       allExtractedSignals.push({
         id: `GS_STOCKLIST_${ticker}_${Date.now()}_${count}`,
         symbol: ticker,
-        companyName: ticker,
+        companyName: ticker === 'AARTIPHARM' ? 'Aarti Pharmalabs Limited' : ticker,
         exchange: 'NSE',
         action: 'BUY',
         callType: horizon.toLowerCase().includes('year') ? 'POSITIONAL' : 'SWING',
@@ -200,6 +217,8 @@ async function extractGoogleSheetSignals(options = {}) {
         rating: !isNaN(star) ? star : null,
         requiresClarification: false,
         source: `Google Sheet: ${stocklistTab.name}`,
+        sourcePriority: 2,
+        isSourceOfTruth: false,
         rawText: `Stock: ${ticker} | Star: ${star} | Buy range: ${buyRange} | Horizon: ${horizon} | Comments: ${comments || ''}`,
         confidence: 0.95,
         timestamp: new Date().toISOString()

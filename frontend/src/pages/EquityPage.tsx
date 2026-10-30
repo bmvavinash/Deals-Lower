@@ -111,7 +111,7 @@ const EquityPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('rating_desc');
   const [ratingFilter, setRatingFilter] = useState<'all' | '4plus' | '3plus' | 'sub3'>('all');
   const [horizonFilter, setHorizonFilter] = useState<'all' | 'positional' | 'swing'>('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'sheet_watchlist' | 'sheet_stocklist' | 'whatsapp'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'whatsapp' | 'google_sheets' | 'sheet_watchlist' | 'sheet_stocklist' | 'telegram'>('all');
   const [cmpStatusFilter, setCmpStatusFilter] = useState<'all' | 'buy_range' | 'target_met' | 'near'>('all');
 
   // Telegram Config Modal state
@@ -462,9 +462,11 @@ const EquityPage: React.FC = () => {
 
       // Sub-filter: Source
       const src = s.source?.toLowerCase() || '';
+      if (sourceFilter === 'whatsapp' && !src.includes('whatsapp')) return false;
+      if (sourceFilter === 'google_sheets' && !src.includes('sheet')) return false;
       if (sourceFilter === 'sheet_watchlist' && !src.includes('watchlist')) return false;
       if (sourceFilter === 'sheet_stocklist' && !src.includes('stock list')) return false;
-      if (sourceFilter === 'whatsapp' && !src.includes('whatsapp')) return false;
+      if (sourceFilter === 'telegram' && !src.includes('telegram')) return false;
 
       // Sub-filter: CMP Status
       if (cmpStatusFilter === 'buy_range' && s.status !== 'IN_BUY_RANGE') return false;
@@ -474,6 +476,19 @@ const EquityPage: React.FC = () => {
       return true;
     })
     .sort((a, b) => {
+      if (sortBy === 'source_priority') {
+        const getRank = (sourceStr?: string) => {
+          const str = (sourceStr || '').toLowerCase();
+          if (str.includes('whatsapp')) return 1;
+          if (str.includes('sheet')) return 2;
+          if (str.includes('telegram')) return 3;
+          return 4;
+        };
+        const rankA = (a as any).sourcePriority || getRank(a.source);
+        const rankB = (b as any).sourcePriority || getRank(b.source);
+        if (rankA !== rankB) return rankA - rankB;
+        return (Number(b.rating || 0)) - (Number(a.rating || 0));
+      }
       if (sortBy === 'rating_desc') {
         return (Number(b.rating || 0)) - (Number(a.rating || 0));
       }
@@ -1069,7 +1084,15 @@ const EquityPage: React.FC = () => {
                   </div>
 
                   <div className="insight-footer-meta">
-                    <span>Source: {item.source || 'Advisory'}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                      {item.source?.toLowerCase().includes('whatsapp') ? (
+                        <span className="source-of-truth-pill" style={{ padding: '2px 6px', fontSize: '10px' }}>
+                          🟢 WhatsApp (Source of Truth)
+                        </span>
+                      ) : (
+                        <span>Source: {item.source || 'Advisory'}</span>
+                      )}
+                    </span>
                     {item.type === 'ACTIONABLE_EXIT' && <span style={{ color: '#f87171', fontWeight: 600 }}>🚨 Exit Alert Sent</span>}
                     {item.type === 'BUY_OPPORTUNITY' && <span style={{ color: '#4ade80', fontWeight: 600 }}>🚀 In Buy Range</span>}
                   </div>
@@ -1207,17 +1230,19 @@ const EquityPage: React.FC = () => {
               <option value="swing">⚡ Short Term</option>
             </select>
 
-            {/* Source Dropdown */}
+            {/* Source Dropdown with Source of Truth Hierarchy */}
             <select 
               value={sourceFilter} 
               onChange={(e) => setSourceFilter(e.target.value as any)}
               className="filter-select"
-              title="Filter by Advisory Source"
+              title="Filter by Advisory Source (WhatsApp = 1st Priority / Source of Truth)"
             >
-              <option value="all">📂 All Sources</option>
+              <option value="all">📂 All Advisory Sources</option>
+              <option value="whatsapp">🟢 1st Priority: WhatsApp (Source of Truth)</option>
+              <option value="google_sheets">📄 2nd Priority: Google Sheets (All)</option>
               <option value="sheet_watchlist">📄 GS: Watchlist</option>
               <option value="sheet_stocklist">📋 GS: Stock list</option>
-              <option value="whatsapp">💬 WhatsApp</option>
+              <option value="telegram">✈️ 3rd Priority: Telegram Ingestion</option>
             </select>
 
             {/* CMP Status Dropdown */}
@@ -1241,6 +1266,7 @@ const EquityPage: React.FC = () => {
               style={{ fontWeight: 700, borderColor: '#93c5fd' }}
               title="Sort Signals"
             >
+              <option value="source_priority">🛡️ Source of Truth (WhatsApp ➔ GS)</option>
               <option value="rating_desc">⭐ Rating (5★ → 1★)</option>
               <option value="discount_desc">📉 Highest Discount %</option>
               <option value="day_change_desc">📈 Top Gainers</option>
@@ -1415,11 +1441,22 @@ const EquityPage: React.FC = () => {
 
                       <div className="mobile-card-meta-row">
                         <div>
-                          <span className={`badge-status ${sig.status?.toLowerCase() || 'active'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
-                            {sig.statusReason || sig.status}
-                          </span>
-                          <span style={{ marginLeft: '8px', fontSize: '11px', color: '#64748b' }}>
-                            {sig.source} • {sig.callType || 'General'}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                            <span className={`badge-status ${sig.status?.toLowerCase() || 'active'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                              {sig.statusReason || sig.status}
+                            </span>
+                            {sig.source?.toLowerCase().includes('whatsapp') ? (
+                              <span className="source-of-truth-pill">
+                                🟢 WhatsApp (Source of Truth)
+                              </span>
+                            ) : (
+                              <span className="source-secondary-pill">
+                                📄 {sig.source}
+                              </span>
+                            )}
+                          </div>
+                          <span style={{ fontSize: '11px', color: '#64748b' }}>
+                            {sig.callType || 'General'}
                           </span>
                         </div>
                         <div>
@@ -1533,7 +1570,15 @@ const EquityPage: React.FC = () => {
                           </td>
                           <td>
                             <div style={{ fontSize: '12px', color: '#4b5563', lineHeight: 1.3 }}>
-                              <strong>{sig.source}</strong>
+                              {sig.source?.toLowerCase().includes('whatsapp') ? (
+                                <div className="source-of-truth-pill" style={{ display: 'inline-flex', marginBottom: '4px' }}>
+                                  🟢 WhatsApp (Source of Truth)
+                                </div>
+                              ) : (
+                                <div className="source-secondary-pill" style={{ display: 'inline-flex', marginBottom: '4px' }}>
+                                  📄 {sig.source}
+                                </div>
+                              )}
                               <div style={{ color: '#6b7280', fontSize: '11px' }}>
                                 {sig.callType || 'General'}
                               </div>
