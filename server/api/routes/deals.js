@@ -37,6 +37,42 @@ const TELEGRAM_LOCK_FILE = path.join(__dirname, '../../../.telegram-bot.lock');
 let searchIndexCache = {};
 let isCacheLoaded = false;
 
+// Regex for blocked titles (access denied, bot verification, error pages)
+const BLOCKED_TITLE_REGEX = /^(access denied|oops!|something went wrong|robot check|page not found|blocked|challenge|403 forbidden|404 not found|amazon\.in)/i;
+
+/**
+ * Validates that a deal has a valid, non-placeholder image
+ */
+function hasValidDealImage(deal) {
+  if (!deal) return false;
+  let photo = deal.photo || deal.image || deal.img || '';
+  if (Array.isArray(photo) && photo.length > 0) photo = photo[0] || '';
+  if (!photo && Array.isArray(deal.images) && deal.images.length > 0) photo = deal.images[0] || '';
+  if (typeof photo !== 'string') return false;
+  photo = photo.trim();
+  return /^(https?:)?\/\//i.test(photo) && 
+         !photo.includes('no-image') && 
+         !photo.includes('placeholder') && 
+         !photo.startsWith('data:image');
+}
+
+/**
+ * Validates that a deal is eligible to be displayed across the platform
+ * Requires:
+ * 1. Valid title (not empty, not blocked/bot error)
+ * 2. Valid image URL (strictly required in all places)
+ * 3. Price present or marked out of stock
+ */
+function isValidDealForDisplay(deal) {
+  if (!deal) return false;
+  const title = (deal.title || deal.shortText || deal.productText || '').trim();
+  if (!title || title.length < 3) return false;
+  if (BLOCKED_TITLE_REGEX.test(title)) return false;
+  if (!hasValidDealImage(deal)) return false;
+  if (!deal.price && !deal.outOfStock && !deal.isOutOfStock) return false;
+  return true;
+}
+
 function initSearchIndexCache() {
   logger.info('🧠 [CACHE] Initializing in-memory search index cache...');
   const ref = productDealsDB.searchIndexRef;
@@ -1302,16 +1338,11 @@ router.get('/', async (req, res, next) => {
       }
     }
     
-    // Convert to array and filter out completely empty items
+    // Convert to array and filter for display eligibility (valid title, valid image, valid price/stock)
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
       productCode: key,
       ...value
-    })).filter(deal => {
-      const hasAnyTitle = (deal.title && deal.title.trim() !== '') || 
-                          (deal.shortText && deal.shortText.trim() !== '') || 
-                          (deal.productText && deal.productText.trim() !== '');
-      return hasAnyTitle && deal.price;
-    });
+    })).filter(isValidDealForDisplay);
 
     // Filter by platform if specified
     if (platform) {
@@ -1706,7 +1737,7 @@ router.get('/search', async (req, res, next) => {
     };
     
     const fullDeals = await Promise.all(paginatedKeys.map(fetchDeal));
-    const validDeals = fullDeals.filter(d => d !== null);
+    const validDeals = fullDeals.filter(isValidDealForDisplay);
 
     res.json({
       success: true,
@@ -1749,10 +1780,14 @@ router.get('/sale/:saleName', async (req, res, next) => {
 
     let products = [];
     if (dealsSnap.exists()) {
-      Object.values(dealsSnap.val()).forEach(p => products.push(p));
+      Object.values(dealsSnap.val()).forEach(p => {
+        if (isValidDealForDisplay(p)) products.push(p);
+      });
     }
     if (staticSnap.exists()) {
-      Object.values(staticSnap.val()).forEach(p => products.push(p));
+      Object.values(staticSnap.val()).forEach(p => {
+        if (isValidDealForDisplay(p)) products.push(p);
+      });
     }
 
     // Sort descending by datetime if available
@@ -1836,10 +1871,10 @@ router.get('/:productCode', async (req, res, next) => {
       productKey = result?.key;
     }
 
-    if (!product) {
+    if (!product || !isValidDealForDisplay(product)) {
       return res.status(404).json({
         success: false,
-        error: 'Product not found',
+        error: !product ? 'Product not found' : 'Product unavailable or missing valid image',
         productCode
       });
     }

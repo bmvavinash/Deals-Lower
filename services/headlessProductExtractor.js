@@ -16,18 +16,19 @@ const logger = getModuleLogger('headless-product-extractor');
 
 // Known bot challenges, firewall blocks, or error titles that indicate extraction failure
 const BLOCKED_TITLE_PATTERNS = [
-  /^Access Denied/i,
-  /^Oops!\s*Something went wrong/i,
-  /^Robot Check/i,
-  /^Page Not Found/i,
-  /^403 Forbidden/i,
-  /^404 Not Found/i,
+  /Access Denied/i,
+  /Oops!\s*Something went wrong/i,
+  /Robot Check/i,
+  /Page Not Found/i,
+  /403 Forbidden/i,
+  /404 Not Found/i,
   /Attention Required!\s*\|\s*Cloudflare/i,
   /Just a moment\.\.\./i,
   /Security Verification/i,
   /^Blocked/i,
   /Challenge/i,
-  /Online Shopping India\s*\|\s*Buy Mobiles/i
+  /Online Shopping India\s*\|\s*Buy Mobiles/i,
+  /^Amazon\.in\s*$/i
 ];
 
 /**
@@ -299,6 +300,30 @@ async function extractProductOnServer(rawUrl, options = {}) {
             '';
   }
 
+  // Amazon high-res dynamic image fallback
+  if (!photo && platform === 'amazon') {
+    const dynamicImg = $('#landingImage, #main-image, img[data-a-dynamic-image]').first();
+    const dynamicAttr = dynamicImg.attr('data-a-dynamic-image');
+    if (dynamicAttr) {
+      try {
+        const parsed = JSON.parse(dynamicAttr);
+        const urls = Object.keys(parsed);
+        if (urls.length > 0) photo = urls[0];
+      } catch (_) {}
+    }
+    if (!photo) {
+      photo = dynamicImg.attr('data-old-hires') || dynamicImg.attr('src') || '';
+    }
+  }
+
+  // Filter out invalid/empty/data:image photos
+  if (typeof photo === 'string') {
+    photo = photo.trim();
+    if (photo.startsWith('data:image') || photo.includes('transparent-pixel') || photo.includes('no-image')) {
+      photo = '';
+    }
+  }
+
   // Extract Brand
   let brand = productJson.brand?.name || 
               productJson.brand || 
@@ -352,31 +377,60 @@ async function extractProductOnServer(rawUrl, options = {}) {
   let discount = '';
 
   if (platform === 'amazon') {
-    // Current Selling Price
-    const priceRaw = $(
-      '#corePriceDisplay_desktop_feature_div .priceToPay span.a-offscreen, ' +
-      '#corePriceDisplay_mobile_feature_div .a-offscreen, ' +
-      '.priceToPay span.a-offscreen, ' +
-      'span.a-price:not(.a-text-price):not(.basisPrice) span.a-offscreen, ' +
-      'span.a-price.aok-align-center span.a-offscreen, ' +
-      '#apex_desktop .priceToPay span.a-offscreen, ' +
-      '#priceblock_ourprice, ' +
-      '#priceblock_dealprice'
-    ).first().text().trim();
-    price = cleanPrice(priceRaw);
+    // Current Selling Price - Check offscreen spans with actual text, or a-price-whole inside priceToPay, or apex accessibility label
+    const priceCandidates = [
+      $('#corePriceDisplay_desktop_feature_div .priceToPay span.a-offscreen'),
+      $('#apex-pricetopay-accessibility-label'),
+      $('#corePriceDisplay_desktop_feature_div .priceToPay .a-price-whole'),
+      $('.priceToPay .a-price-whole'),
+      $('#corePriceDisplay_mobile_feature_div .priceToPay .a-price-whole'),
+      $('#corePriceDisplay_mobile_feature_div .a-price-whole'),
+      $('.priceToPay span.a-offscreen'),
+      $('#apex_desktop .priceToPay span.a-offscreen'),
+      $('#apex_desktop .priceToPay .a-price-whole'),
+      $('span.a-price:not(.a-text-price):not(.basisPrice) span.a-offscreen'),
+      $('span.a-price:not(.a-text-price):not(.basisPrice) .a-price-whole'),
+      $('span.a-price.aok-align-center span.a-offscreen'),
+      $('#priceblock_ourprice'),
+      $('#priceblock_dealprice')
+    ];
 
-    // MRP (List price)
-    const mrpRaw = $(
-      '#corePriceDisplay_desktop_feature_div .a-text-price span.a-offscreen, ' +
-      'span.a-price.a-text-price[data-a-strike="true"] span.a-offscreen, ' +
-      'span.a-text-strike, ' +
-      'span.basisPrice span.a-offscreen, ' +
-      '#corePrice_desktop .a-text-price span.a-offscreen'
-    ).first().text().trim();
-    mrp = cleanPrice(mrpRaw);
+    for (const cand of priceCandidates) {
+      if (cand && cand.length > 0) {
+        const text = cand.first().text().trim();
+        const parsed = cleanPrice(text);
+        if (parsed && Number(parsed) > 0) {
+          price = parsed;
+          break;
+        }
+      }
+    }
+
+    // MRP (List price / strike price)
+    const mrpCandidates = [
+      $('#corePriceDisplay_desktop_feature_div .a-text-price span.a-offscreen'),
+      $('#corePriceDisplay_mobile_feature_div .a-text-price span.a-offscreen'),
+      $('span.a-price.a-text-price[data-a-strike="true"] span.a-offscreen'),
+      $('span.a-price.a-text-price[data-a-strike="true"] .a-price-whole'),
+      $('span.a-text-strike'),
+      $('span.basisPrice span.a-offscreen'),
+      $('#corePrice_desktop .a-text-price span.a-offscreen'),
+      $('#corePriceDisplay_mobile_feature_div span.a-offscreen')
+    ];
+
+    for (const cand of mrpCandidates) {
+      if (cand && cand.length > 0) {
+        const text = cand.first().text().trim();
+        const parsed = cleanPrice(text);
+        if (parsed && Number(parsed) > 0 && (!price || Number(parsed) >= Number(price))) {
+          mrp = parsed;
+          break;
+        }
+      }
+    }
 
     // Savings percentage
-    const discRaw = $('#corePriceDisplay_desktop_feature_div .savingsPercentage, .savingsPercentage').first().text().trim();
+    const discRaw = $('#corePriceDisplay_desktop_feature_div .savingsPercentage, #corePriceDisplay_mobile_feature_div .savingsPercentage, .savingsPercentage').first().text().trim();
     if (discRaw) {
       discount = discRaw.replace(/[^\d%]/g, '');
     }

@@ -20,11 +20,12 @@ jobs:
         run: |
           echo "Pinging DealsOptimised on Render to prevent hibernation..."
           RESPONSE=$(curl -s -S -L \
-            --connect-timeout 25 \
+            --connect-timeout 35 \
             --max-time 60 \
             --retry 3 \
             --retry-delay 10 \
-            -H "User-Agent: GitHubActions-KeepAlive/1.0" \
+            -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+            -H "Accept: application/json" \
             "https://dealsoptimised.onrender.com/health")
           echo "Response: $RESPONSE"
 
@@ -33,5 +34,8 @@ jobs:
             echo "✅ DealsOptimised Render backend is active and healthy."
           else
             echo "⚠️ Health check returned non-standard payload, pinging /api/health fallback..."
-            curl -s -S -L --connect-timeout 20 --max-time 45 "https://dealsoptimised.onrender.com/api/health"
+            curl -s -S -L --connect-timeout 30 --max-time 45 \
+              -H "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" \
+              -H "Accept: application/json" \
+              "https://dealsoptimised.onrender.com/api/health"
           fi
