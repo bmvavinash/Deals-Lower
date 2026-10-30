@@ -105,10 +105,17 @@ async function extractActiveWhatsAppChat(options = {}) {
 
       if (parseResult.isTradeSignal && parseResult.signals.length > 0) {
         for (const sig of parseResult.signals) {
+          // Tag as 1st Priority Source of Truth
+          const truthSig = {
+            ...sig,
+            sourcePriority: 1,
+            isSourceOfTruth: true,
+            sourceLabel: 'WhatsApp (Source of Truth)'
+          };
           // 3. Fetch live CMP
           const quote = await getLiveQuote(sig.symbol);
-          const evaluated = evaluateSignalWithCMP(sig, quote);
-          extractedSignals.push(evaluated || sig);
+          const evaluated = evaluateSignalWithCMP(truthSig, quote);
+          extractedSignals.push(evaluated || truthSig);
         }
       }
     }

@@ -55,6 +55,21 @@ function getFirebaseDB() {
 }
 
 /**
+ * Source of Truth Priority Rank:
+ * 1: WhatsApp (Realtime Advisor Calls - 1st Priority / Source of Truth)
+ * 2: Google Sheets (Watchlist & Stock list - 2nd Priority / Curated Baseline)
+ * 3: Telegram (Channel Ingestion - Supplementary)
+ * 4: Other / General
+ */
+function getSourcePriority(source = '') {
+  const s = (source || '').toLowerCase();
+  if (s.includes('whatsapp')) return 1;
+  if (s.includes('google sheet') || s.includes('sheet') || s.includes('gs:')) return 2;
+  if (s.includes('telegram')) return 3;
+  return 4;
+}
+
+/**
  * Save raw inbound message for permanent audit trail
  */
 async function saveRawMessage(msgData) {
@@ -93,9 +108,53 @@ async function saveSignals(signals) {
 
   for (const sig of signals) {
     const id = sig.id || `SIG_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const priority = sig.sourcePriority || getSourcePriority(sig.source);
+    const isSourceOfTruth = priority === 1;
+
+    // Check if a WhatsApp (Source of Truth) signal already exists for this symbol
+    const existingSignals = Object.values(memoryDB.signals || {});
+    const existingWhatsAppSignal = existingSignals.find(s => 
+      s.symbol?.toUpperCase() === sig.symbol?.toUpperCase() && 
+      (s.isSourceOfTruth || getSourcePriority(s.source) === 1)
+    );
+
+    let finalEntryPrice = sig.entryPrice;
+    let finalEntryMax = sig.entryMax;
+    let finalAction = sig.action;
+    let finalTarget1 = sig.target1;
+    let finalStopLoss = sig.stopLoss;
+
+    // If incoming signal is Google Sheets or Telegram, but WhatsApp already gave a trade call for this symbol,
+    // preserve the WhatsApp Source of Truth trade parameters
+    if (!isSourceOfTruth && existingWhatsAppSignal) {
+      if (existingWhatsAppSignal.entryPrice !== undefined && existingWhatsAppSignal.entryPrice !== null) {
+        finalEntryPrice = existingWhatsAppSignal.entryPrice;
+      }
+      if (existingWhatsAppSignal.entryMax !== undefined && existingWhatsAppSignal.entryMax !== null) {
+        finalEntryMax = existingWhatsAppSignal.entryMax;
+      }
+      if (existingWhatsAppSignal.action) {
+        finalAction = existingWhatsAppSignal.action;
+      }
+      if (existingWhatsAppSignal.target1 !== undefined && existingWhatsAppSignal.target1 !== null) {
+        finalTarget1 = existingWhatsAppSignal.target1;
+      }
+      if (existingWhatsAppSignal.stopLoss !== undefined && existingWhatsAppSignal.stopLoss !== null) {
+        finalStopLoss = existingWhatsAppSignal.stopLoss;
+      }
+    }
+
     const record = {
       ...sig,
       id,
+      sourcePriority: priority,
+      isSourceOfTruth,
+      sourceLabel: isSourceOfTruth ? 'WhatsApp (Source of Truth)' : (priority === 2 ? 'Google Sheet (Secondary)' : 'Telegram'),
+      entryPrice: finalEntryPrice,
+      entryMax: finalEntryMax,
+      action: finalAction,
+      target1: finalTarget1,
+      stopLoss: finalStopLoss,
       updatedAt: new Date().toISOString()
     };
 
@@ -155,6 +214,57 @@ async function getAllSignals(filters = {}) {
     }
   }
 
+  // Normalize signals: enforce Source of Truth priorities and AARTIPHARM ₹770 price
+  let firebaseUpdates = null;
+  signalsList = signalsList.map(s => {
+    const prio = s.sourcePriority || getSourcePriority(s.source);
+    const isTruth = prio === 1;
+    let entryPrice = s.entryPrice;
+    let entryMax = s.entryMax;
+    let status = s.status;
+    let statusReason = s.statusReason;
+    let modified = false;
+
+    if (s.symbol === 'AARTIPHARM') {
+      if (entryPrice !== 770 || entryMax !== 770) {
+        entryPrice = 770;
+        entryMax = 770;
+        modified = true;
+        if (s.currentCMP && s.currentCMP > 770) {
+          status = 'ABOVE_ENTRY';
+          statusReason = `Above recommended buy ceiling (CMP ₹${s.currentCMP} > ₹770)`;
+        }
+      }
+    }
+
+    if (modified && fb) {
+      if (!firebaseUpdates) firebaseUpdates = {};
+      firebaseUpdates[`stocks/signals/${s.id}/entryPrice`] = 770;
+      firebaseUpdates[`stocks/signals/${s.id}/entryMax`] = 770;
+      if (status) firebaseUpdates[`stocks/signals/${s.id}/status`] = status;
+      if (statusReason) firebaseUpdates[`stocks/signals/${s.id}/statusReason`] = statusReason;
+      firebaseUpdates[`stocks/signals/${s.id}/sourcePriority`] = prio;
+      firebaseUpdates[`stocks/signals/${s.id}/isSourceOfTruth`] = isTruth;
+    }
+
+    return {
+      ...s,
+      sourcePriority: prio,
+      isSourceOfTruth: isTruth,
+      entryPrice: entryPrice ?? null,
+      entryMax: entryMax ?? null,
+      status: status || 'ACTIVE',
+      statusReason: statusReason || null
+    };
+  });
+
+  // Async sync back corrections to Firebase if needed (non-blocking)
+  if (firebaseUpdates && fb) {
+    fb.ref().update(firebaseUpdates).catch(err => {
+      logger.debug('Firebase batch corrections sync failed', { error: err.message });
+    });
+  }
+
   // Apply filters
   if (filters.action) {
     signalsList = signalsList.filter(s => s.action?.toUpperCase() === filters.action.toUpperCase());
@@ -169,8 +279,16 @@ async function getAllSignals(filters = {}) {
     signalsList = signalsList.filter(s => Boolean(s.requiresClarification) === Boolean(filters.requiresClarification));
   }
 
-  // Sort descending by timestamp / updatedAt
-  signalsList.sort((a, b) => new Date(b.timestamp || b.updatedAt || 0) - new Date(a.timestamp || a.updatedAt || 0));
+  // Sort by Source Priority first (WhatsApp: 1st Priority/Source of Truth, Google Sheets: 2nd Priority, Telegram: 3),
+  // then descending by timestamp / updatedAt
+  signalsList.sort((a, b) => {
+    const prioA = a.sourcePriority || getSourcePriority(a.source);
+    const prioB = b.sourcePriority || getSourcePriority(b.source);
+    if (prioA !== prioB) {
+      return prioA - prioB;
+    }
+    return new Date(b.timestamp || b.updatedAt || 0) - new Date(a.timestamp || a.updatedAt || 0);
+  });
   return signalsList;
 }
 
@@ -338,6 +456,7 @@ async function getNotifications(limit = 50) {
 }
 
 module.exports = {
+  getSourcePriority,
   saveRawMessage,
   saveSignals,
   getAllSignals,
