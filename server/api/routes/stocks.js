@@ -49,13 +49,7 @@ router.get('/equity/signals', async (req, res, next) => {
           const quote = await getLiveQuote(sig.symbol);
           const evaluated = evaluateSignalWithCMP(sig, quote) || sig;
 
-          // Check if CMP meets requirements and trigger notification
-          if (evaluated.currentCMP) {
-            checkAndTriggerSignalNotification(evaluated).catch(err => {
-              logger.debug('Notification trigger error:', { error: err.message });
-            });
-          }
-
+          // Pure read-only endpoint: alerts are evaluated exclusively by scheduled CMP refresher
           return evaluated;
         } catch (e) {
           return sig;

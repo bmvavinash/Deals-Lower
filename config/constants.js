@@ -72,7 +72,7 @@ const POSTING_TYPES_CONFIG = {
     DB: 'DB1',
     // DB: 'DB1Backup',
     postTo: {
-      telegram: false,
+      telegram: true, // RE-ENABLED: Post live deals to Lowerdeal Live Deals (@dealshubglobal)
       whatsapp: false, // DISABLED FOR TESTING
       // whatsapp: true,
       facebook: false  // DISABLED FOR TESTING

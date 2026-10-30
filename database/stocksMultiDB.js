@@ -713,6 +713,26 @@ async function getNotifications(limit = 50) {
   return (memoryDB.notifications || []).slice(0, limit);
 }
 
+/**
+ * Persistent Alert Cooldowns (survives process restarts & deployments)
+ * Default 12 hours cooldown per symbol_condition to eliminate notification noise
+ */
+function isAlertOnCooldown(cooldownKey, cooldownMs = 12 * 60 * 60 * 1000) {
+  if (!memoryDB.alertCooldowns) {
+    memoryDB.alertCooldowns = {};
+  }
+  const lastSent = memoryDB.alertCooldowns[cooldownKey] || 0;
+  return (Date.now() - lastSent) < cooldownMs;
+}
+
+function recordAlertSent(cooldownKey) {
+  if (!memoryDB.alertCooldowns) {
+    memoryDB.alertCooldowns = {};
+  }
+  memoryDB.alertCooldowns[cooldownKey] = Date.now();
+  persistLocalDB();
+}
+
 module.exports = {
   getSourcePriority,
   saveRawMessage,
@@ -725,6 +745,8 @@ module.exports = {
   getBestInsights,
   saveNotification,
   getNotifications,
+  isAlertOnCooldown,
+  recordAlertSent,
   persistLocalDB,
   getFirebaseDB,
   getWhatsAppStockStates,

@@ -1,12 +1,11 @@
 const { getModuleLogger } = require('../logger/logger');
-const { saveNotification, getNotifications } = require('../database/stocksMultiDB');
+const { saveNotification, getNotifications, isAlertOnCooldown, recordAlertSent } = require('../database/stocksMultiDB');
 const { sendSingleAlert, dispatchGroupedTradeAlerts } = require('./genericTelegramDispatcher');
 
 const logger = getModuleLogger('stockAlertNotificationService');
 
-// Notification cooldown cache: symbol_condition -> timestamp
-const notificationHistory = new Map();
-const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown per stock condition to avoid spam
+// 12-hour persistent cooldown per stock condition to eliminate spam
+const COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 /**
  * Check a signal against CMP and construct an alert record if conditions are met
@@ -14,15 +13,16 @@ const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour cooldown per stock condition to av
  * @param {object} options - { sendImmediately: boolean }
  * @returns {object|null} Notification object if condition met, null otherwise
  */
-async function checkAndTriggerSignalNotification(signal, options = { sendImmediately: true }) {
+async function checkAndTriggerSignalNotification(signal, options = { sendImmediately: false }) {
   if (!signal || !signal.currentCMP || !signal.symbol) {
     return null;
   }
 
   const symbol = signal.symbol.toUpperCase();
-  const cmp = signal.currentCMP;
+  const cmp = Number(signal.currentCMP);
   const action = (signal.action || '').toUpperCase();
   const status = signal.status;
+  const isExpired = signal.isExpired === true || status === 'EXPIRED';
 
   let shouldNotify = false;
   let notificationType = null;
@@ -45,19 +45,26 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
     }
   }
 
-  // Condition 2: Buy Zone Entered (BUY) - Suppressed if Buy is Expired by WhatsApp exit
-  if (!shouldNotify && !signal.isExpired && status !== 'EXPIRED' && (status === 'IN_BUY_RANGE' || action === 'BUY')) {
-    const buyCeiling = Number(signal.entryMax || signal.entryPrice);
-    if (buyCeiling && cmp <= buyCeiling) {
-      const discount = (((buyCeiling - cmp) / buyCeiling) * 100).toFixed(1);
-      shouldNotify = true;
-      notificationType = 'BUY_ZONE_ENTERED';
-      alertTitle = `BUY OPPORTUNITY IN RANGE: ${symbol}`;
-      alertMessage = `*${symbol}* (${signal.companyName || symbol}) is currently within buying range!\n` +
-        `• Buy Ceiling: ₹${buyCeiling}\n` +
-        `• *Current Live CMP*: ₹${cmp} (${discount}% discount) 🚀\n` +
-        (signal.rating ? `• ⭐ Star Rating: ${signal.rating}\n` : '') +
-        `• Source: _${signal.source || 'Advisory'}_`;
+  // Condition 2: Buy Zone Entered (BUY)
+  // Strict quality filter: Must NOT be expired, must be 3★+ or WhatsApp Source of Truth,
+  // and CMP must be at least 2% below buy ceiling to prevent marginal false alarms
+  if (!shouldNotify && !isExpired && (status === 'IN_BUY_RANGE' || action === 'BUY')) {
+    const rating = Number(signal.rating || 0);
+    const isHighOrMediumConviction = rating >= 3 || signal.isSourceOfTruth;
+
+    if (isHighOrMediumConviction) {
+      const buyCeiling = Number(signal.entryMax || signal.entryPrice);
+      if (buyCeiling && cmp <= (buyCeiling * 0.98)) {
+        const discount = (((buyCeiling - cmp) / buyCeiling) * 100).toFixed(1);
+        shouldNotify = true;
+        notificationType = 'BUY_ZONE_ENTERED';
+        alertTitle = `BUY OPPORTUNITY IN RANGE: ${symbol}`;
+        alertMessage = `*${symbol}* (${signal.companyName || symbol}) is currently within buying range!\n` +
+          `• Buy Ceiling: ₹${buyCeiling}\n` +
+          `• *Current Live CMP*: ₹${cmp} (${discount}% discount) 🚀\n` +
+          (signal.rating ? `• ⭐ Star Rating: ${signal.rating}\n` : '') +
+          `• Source: _${signal.source || 'Advisory'}_`;
+      }
     }
   }
 
@@ -86,16 +93,15 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
     return null;
   }
 
-  // Check cooldown to avoid duplicate spam per stock symbol
+  // Persistent Cooldown Check: Survives server restarts and redeployments
   const cooldownKey = `${symbol}_${notificationType}`;
-  const lastSent = notificationHistory.get(cooldownKey) || 0;
-  if (Date.now() - lastSent < COOLDOWN_MS) {
-    logger.debug(`Notification for ${cooldownKey} suppressed by cooldown.`);
+  if (isAlertOnCooldown(cooldownKey, COOLDOWN_MS)) {
+    logger.debug(`Notification for ${cooldownKey} suppressed by 12h persistent cooldown.`);
     return null;
   }
 
-  // Set cooldown timestamp IMMEDIATELY to prevent asynchronous loop race conditions
-  notificationHistory.set(cooldownKey, Date.now());
+  // Lock cooldown immediately to prevent concurrent triggers
+  recordAlertSent(cooldownKey);
 
   // Construct Notification Record
   const notificationRecord = {
@@ -117,7 +123,7 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
 
   logger.info(`🚨 [STOCK ALERT] Condition met for ${symbol}: ${notificationType} (CMP: ₹${cmp})`);
 
-  // 1. Dispatch Telegram Alert immediately if requested (e.g. single real-time stream message)
+  // Dispatch individual immediate alert only if specifically forced (not used during batch scans)
   if (options.sendImmediately) {
     try {
       const res = await sendSingleAlert(notificationRecord, 'stocks');
@@ -127,40 +133,45 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
     }
   }
 
-  // 2. Persist in Multi-DB
+  // Persist in Multi-DB
   await saveNotification(notificationRecord);
 
   return notificationRecord;
 }
 
 /**
- * Scan all signals against latest CMP, evaluate triggers, and dispatch batched grouped notifications
- * if multiple alerts fire at once (eliminates notification noise and avoids Telegram 429)
+ * Scan all signals against latest CMP, evaluate triggers, and dispatch consolidated batched notifications
+ * Eliminates notification noise and avoids Telegram 429 rate limits
  */
 async function evaluateAndDispatchBatch(signals, domain = 'stocks') {
   if (!Array.isArray(signals) || signals.length === 0) return { triggeredCount: 0, dispatchedBatches: 0 };
 
-  const triggered = [];
+  const triggeredMap = new Map();
 
   for (const sig of signals) {
     try {
-      // Evaluate without sending individual messages immediately
+      // Evaluate with sendImmediately: false to prevent spamming individual messages
       const notif = await checkAndTriggerSignalNotification(sig, { sendImmediately: false });
       if (notif) {
-        triggered.push(notif);
+        // Deduplicate per symbol so 1 stock doesn't produce multiple duplicate rows
+        const key = `${notif.symbol}_${notif.type}`;
+        if (!triggeredMap.has(key)) {
+          triggeredMap.set(key, notif);
+        }
       }
     } catch (e) {
       logger.warn(`Error evaluating alert for ${sig.symbol}:`, { error: e.message });
     }
   }
 
+  const triggered = Array.from(triggeredMap.values());
   if (triggered.length === 0) {
     return { triggeredCount: 0, dispatchedBatches: 0 };
   }
 
-  logger.info(`Batch evaluation generated ${triggered.length} alerts. Dispatching via generic grouped dispatcher...`);
+  logger.info(`Batch evaluation generated ${triggered.length} unique alerts. Dispatching via consolidated grouped dispatcher...`);
 
-  // Dispatch grouped by priority (4-5★, 3★, Exits)
+  // Dispatch grouped into at most ONE message per topic (Exits, High Conviction, 3★ Buys)
   const dispatchRes = await dispatchGroupedTradeAlerts(triggered, domain);
 
   return {
@@ -171,11 +182,10 @@ async function evaluateAndDispatchBatch(signals, domain = 'stocks') {
 }
 
 /**
- * Scan all signals against latest CMP and evaluate notifications (legacy wrapper)
+ * Scan all signals against latest CMP and evaluate notifications
  */
 async function evaluateAllSignalAlerts(signals) {
-  const result = await evaluateAndDispatchBatch(signals, 'stocks');
-  return result;
+  return await evaluateAndDispatchBatch(signals, 'stocks');
 }
 
 async function getTriggeredNotifications(limit = 50) {
@@ -187,5 +197,5 @@ module.exports = {
   evaluateAndDispatchBatch,
   evaluateAllSignalAlerts,
   getTriggeredNotifications,
-  notificationHistory
+  COOLDOWN_MS
 };

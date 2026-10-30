@@ -33,11 +33,11 @@ const pendingQuestionMap = new Map();
  * Initialize and start Telegram Ingestion Listener / Poller
  */
 function startTelegramIngestion(token = null) {
-  const botToken = token || process.env.STOCKS_TELEGRAM_BOT_TOKEN || constants.TelegramBotKey;
+  const botToken = token || process.env.STOCKS_TELEGRAM_BOT_TOKEN;
 
-  if (!botToken) {
-    logger.warn('No Telegram bot token found. Telegram Ingestion listener skipped.');
-    return { success: false, reason: 'NO_TOKEN' };
+  if (!botToken || botToken === constants.TelegramBotKey) {
+    logger.info('Telegram Trade Ingestion: Polling skipped on shared deals bot token to prevent 409 Conflict with Lowerdeal Live Deals.');
+    return { success: false, reason: 'SHARED_DEALS_BOT_TOKEN_SKIP_POLL' };
   }
 
   if (botInstance && isPolling) {

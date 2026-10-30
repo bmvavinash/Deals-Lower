@@ -17,12 +17,14 @@
     },
     "alertThresholds": {
       "minRatingForBuyAlert": 3,
-      "minDiscountPercent": 5
+      "minDiscountPercent": 2,
+      "cooldownHours": 12
     }
   },
   "deals": {
     "channelId": "@dealshubglobal",
-    "channelType": "channel",
+    "chatId": "-1001888310864",
+    "channelType": "supergroup_forum",
     "topics": {
       "electronics": null,
       "fashion": null,

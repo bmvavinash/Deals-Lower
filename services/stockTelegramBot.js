@@ -242,9 +242,9 @@ async function sendTelegramAlert(text, chatId = null) {
   const botToken = process.env.STOCKS_TELEGRAM_BOT_TOKEN || constants.TelegramBotKey;
   const targetChatId = chatId || process.env.STOCKS_TELEGRAM_CHANNEL_ID || null;
 
-  // CRITICAL: Under no circumstances send stock alerts to @dealshubglobal
-  if (!botToken || !text || !targetChatId || targetChatId === '@dealshubglobal') {
-    logger.debug('sendTelegramAlert skipped: No valid stock target chat ID configured.');
+  // CRITICAL: Under no circumstances send stock alerts to @dealshubglobal or deals channels
+  if (!botToken || !text || !targetChatId || ['@dealshubglobal', '@dealshubglobal2', '-1001888310864'].includes(targetChatId)) {
+    logger.debug('sendTelegramAlert skipped: Target chat is a deals channel or missing.');
     return false;
   }
 
