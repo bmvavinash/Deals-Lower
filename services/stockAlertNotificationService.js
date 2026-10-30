@@ -45,8 +45,8 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
     }
   }
 
-  // Condition 2: Buy Zone Entered (BUY)
-  if (!shouldNotify && (status === 'IN_BUY_RANGE' || action === 'BUY')) {
+  // Condition 2: Buy Zone Entered (BUY) - Suppressed if Buy is Expired by WhatsApp exit
+  if (!shouldNotify && !signal.isExpired && status !== 'EXPIRED' && (status === 'IN_BUY_RANGE' || action === 'BUY')) {
     const buyCeiling = Number(signal.entryMax || signal.entryPrice);
     if (buyCeiling && cmp <= buyCeiling) {
       const discount = (((buyCeiling - cmp) / buyCeiling) * 100).toFixed(1);

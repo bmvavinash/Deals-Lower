@@ -73,9 +73,12 @@ async function generateBestInsights() {
     });
   }
 
-  // 2. Fresh Buy Opportunities in Range (Priority 2)
+  // 2. Fresh Buy Opportunities in Range (Priority 2) - EXCLUDES EXPIRED BUYS
   const buyOpportunities = refreshedSignals.filter(s => 
-    s.action === 'BUY' && (s.status === 'IN_BUY_RANGE' || (s.entryMax && s.currentCMP && s.currentCMP <= s.entryMax))
+    s.action === 'BUY' && 
+    !s.isExpired && 
+    s.status !== 'EXPIRED' && 
+    (s.status === 'IN_BUY_RANGE' || (s.entryMax && s.currentCMP && s.currentCMP <= s.entryMax))
   );
   for (const sig of buyOpportunities) {
     const buyUpto = Number(sig.entryMax || sig.entryPrice);
@@ -114,32 +117,61 @@ async function generateBestInsights() {
       return prioA - prioB;
     });
 
-    const buyCalls = groupSignals.filter(s => s.action === 'BUY');
+    const activeBuyCalls = groupSignals.filter(s => s.action === 'BUY' && !s.isExpired && s.status !== 'EXPIRED');
     const sellCalls = groupSignals.filter(s => s.action?.includes('SELL') || s.action?.includes('EXIT'));
+
+    // Check if WhatsApp (1st Priority Source of Truth) issued an exit call for this symbol
+    const waExitSignal = groupSignals.find(s => 
+      (s.sourcePriority === 1 || getSourcePriority(s.source) === 1) &&
+      (s.action?.includes('SELL') || s.action?.includes('EXIT') || s.isExitCall)
+    );
+    const waReinitSignal = groupSignals.find(s => 
+      (s.sourcePriority === 1 || getSourcePriority(s.source) === 1) &&
+      (s.action === 'REINITIATE' || s.isReinitiateCall)
+    );
+    const isExitActive = waExitSignal && (!waReinitSignal || new Date(waExitSignal.timestamp) > new Date(waReinitSignal.timestamp));
 
     const distinctSources = new Set(groupSignals.map(s => s.source)).size;
     const waSignal = groupSignals.find(s => (s.sourcePriority === 1 || getSourcePriority(s.source) === 1));
-    const signalWithPrice = waSignal || groupSignals.find(s => s.entryPrice || s.entryMax || s.entryMin || s.target1) || groupSignals[0];
+    const signalWithPrice = (isExitActive ? waExitSignal : (waSignal || groupSignals.find(s => s.entryPrice || s.entryMax || s.entryMin || s.target1))) || groupSignals[0];
     const signalWithCMP = groupSignals.find(s => s.currentCMP) || groupSignals[0];
-    const dominantAction = buyCalls.length >= sellCalls.length ? 'BUY' : 'SELL';
+
+    // If WhatsApp exit is active, dominant action is strictly SELL/EXIT regardless of Google Sheet buy rows!
+    const dominantAction = isExitActive 
+      ? (waExitSignal.action || 'SELL') 
+      : (activeBuyCalls.length >= sellCalls.length ? 'BUY' : 'SELL');
+
     const targetLevel = Number(signalWithPrice.entryPrice || signalWithPrice.entryMax || signalWithPrice.entryMin || signalWithPrice.target1 || 0);
     const currentCMP = signalWithCMP.currentCMP || null;
     const dayChangePercent = signalWithCMP.dayChangePercent !== undefined ? signalWithCMP.dayChangePercent : null;
 
     if (groupSignals.length > 1) {
-      let consensusReason = `${groupSignals.length} calls agreeing on ${dominantAction} (${distinctSources} source)`;
-      if (currentCMP && targetLevel) {
-        if (dominantAction === 'SELL' && currentCMP >= targetLevel) {
-          const gain = (((currentCMP - targetLevel) / targetLevel) * 100).toFixed(1);
-          consensusReason += ` • Target Met (+${gain}% above ₹${targetLevel})`;
-        } else if (dominantAction === 'BUY' && currentCMP <= targetLevel) {
-          const disc = (((targetLevel - currentCMP) / targetLevel) * 100).toFixed(1);
-          consensusReason += ` • In Buy Zone (${disc}% discount, Buy upto ₹${targetLevel})`;
-        } else {
+      let consensusReason = '';
+      if (isExitActive) {
+        consensusReason = `WhatsApp Exit Call Active (${waExitSignal.action} @ ₹${targetLevel || 'market'}). Buy call is EXPIRED unless reinitiated in WhatsApp.`;
+        if (currentCMP && targetLevel) {
+          if (currentCMP >= targetLevel) {
+            const gain = (((currentCMP - targetLevel) / targetLevel) * 100).toFixed(1);
+            consensusReason += ` • Target Met (+${gain}% above ₹${targetLevel})`;
+          } else {
+            consensusReason += ` • Current CMP ₹${currentCMP}`;
+          }
+        }
+      } else {
+        consensusReason = `${groupSignals.length} calls agreeing on ${dominantAction} (${distinctSources} source)`;
+        if (currentCMP && targetLevel) {
+          if (dominantAction === 'SELL' && currentCMP >= targetLevel) {
+            const gain = (((currentCMP - targetLevel) / targetLevel) * 100).toFixed(1);
+            consensusReason += ` • Target Met (+${gain}% above ₹${targetLevel})`;
+          } else if (dominantAction === 'BUY' && currentCMP <= targetLevel) {
+            const disc = (((targetLevel - currentCMP) / targetLevel) * 100).toFixed(1);
+            consensusReason += ` • In Buy Zone (${disc}% discount, Buy upto ₹${targetLevel})`;
+          } else {
+            consensusReason += ` • Target Level: ₹${targetLevel}`;
+          }
+        } else if (targetLevel) {
           consensusReason += ` • Target Level: ₹${targetLevel}`;
         }
-      } else if (targetLevel) {
-        consensusReason += ` • Target Level: ₹${targetLevel}`;
       }
 
       const hasBoth = waSignal && groupSignals.some(s => getSourcePriority(s.source) === 2);
@@ -165,6 +197,8 @@ async function generateBestInsights() {
         source: sourceLabel,
         isSourceOfTruth: Boolean(waSignal),
         sourceOfTruth: waSignal ? 'WhatsApp' : null,
+        isExpiredBuy: Boolean(isExitActive),
+        expiredReason: isExitActive ? `Buy expired due to WhatsApp ${waExitSignal.action} call` : null,
         signals: groupSignals,
         priority: waSignal ? 1 : 3
       });

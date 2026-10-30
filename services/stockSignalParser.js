@@ -130,6 +130,9 @@ function parseStockMessage(rawText, meta = {}) {
 
       const action = currentItem.action || defaultAction || 'WATCH';
       const price = currentItem.price;
+      const rawText = currentItem.rawLines.join('\n');
+      const isExitCall = ['SELL', 'EXIT', 'COMPLETE_EXIT', 'PARTIAL_EXIT'].includes(action);
+      const isReinitiateCall = action === 'REINITIATE' || /reinitiate|re-initiate|re-enter|fresh\s+buy/i.test(rawText);
 
       signals.push({
         id: generateSignalId(symbol, action, price, meta.timestamp),
@@ -139,17 +142,19 @@ function parseStockMessage(rawText, meta = {}) {
         action,
         callType: currentItem.horizon ? currentItem.horizon.toUpperCase() : 'SWING',
         entryPrice: price,
-        entryMin: action === 'BUY' ? null : price,
-        entryMax: action === 'BUY' ? price : null,
-        target1: currentItem.target || (action === 'SELL' ? price : null),
+        entryMin: (action === 'BUY' || action === 'REINITIATE') ? null : price,
+        entryMax: (action === 'BUY' || action === 'REINITIATE') ? price : null,
+        target1: currentItem.target || (isExitCall ? price : null),
         stopLoss: currentItem.stopLoss || null,
         rating: currentItem.rating,
+        isExitCall,
+        isReinitiateCall,
         requiresClarification: !normalized.isMapped,
         clarificationReason: !normalized.isMapped ? `Unconfirmed ticker mapping for "${currentItem.companyName}"` : null,
         source: meta.source || 'WhatsApp',
         sender: meta.sender || 'Unknown',
         timestamp: meta.timestamp || new Date().toISOString(),
-        rawText: currentItem.rawLines.join('\n'),
+        rawText,
         confidence: normalized.isMapped ? 0.95 : 0.70
       });
     }
@@ -192,6 +197,11 @@ function parseStockMessage(rawText, meta = {}) {
       currentItem.rawLines.push(rawLine);
       continue;
     }
+    if (/^(?:reinitiate|re-initiate|re-enter|re\s+enter|fresh\s+buy|buy\s+again):?$/i.test(line)) {
+      if (currentItem.companyName && (currentItem.price || currentItem.action)) flushCurrentItem();
+      defaultAction = 'REINITIATE';
+      continue;
+    }
 
     // 2. Discard individual noise lines (conversational chatter, subscription talk, ads, webinar invites)
     if (isNoiseLine(line)) {
@@ -223,6 +233,16 @@ function parseStockMessage(rawText, meta = {}) {
     if (sellMatch) {
       currentItem.action = currentItem.action || 'SELL';
       currentItem.price = parsePrice(sellMatch[1]);
+      currentItem.rawLines.push(rawLine);
+      flushCurrentItem();
+      continue;
+    }
+
+    // 3b. Action Check: Reinitiate / Re-enter
+    const reinitiateMatch = line.match(/^(?:reinitiate|re-initiate|re-enter|re\s+enter)\s+(?:above|upto|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
+    if (reinitiateMatch) {
+      currentItem.action = 'REINITIATE';
+      currentItem.price = parsePrice(reinitiateMatch[1]);
       currentItem.rawLines.push(rawLine);
       flushCurrentItem();
       continue;
