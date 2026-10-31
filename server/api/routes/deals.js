@@ -5,13 +5,20 @@ const path = require('path');
 const router = express.Router();
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
 const { notificationTrackingDB } = require('../../../database/firebaseDB/notificationTrackingDB');
-const { runBulkUpdateAll } = require('../../../scripts/bulkUpdateAllPlatforms');
+// Lazy-load runBulkUpdateAll to prevent loading batchProductExtractor/puppeteer on server boot
+let _runBulkUpdateAll = null;
+function runBulkUpdateAll() {
+  if (!_runBulkUpdateAll) {
+    _runBulkUpdateAll = require('../../../scripts/bulkUpdateAllPlatforms').runBulkUpdateAll;
+  }
+  return _runBulkUpdateAll(...arguments);
+}
 const { getModuleLogger } = require('../../../logger/logger');
 const cacheService = require('../../../services/cacheService');
 const { getformattedDate, getISTTimestamp, getCode } = require('../../../utils/commonUtils');
 const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
-const { Builder } = require('selenium-webdriver');
-const chrome = require('selenium-webdriver/chrome');
+// selenium Builder removed (unused)
+// selenium chrome removed (unused)
 // require('chromedriver');
 // scheduler lazy-loaded on demand
 const { productStatus } = require('../../../config/const');
@@ -19,12 +26,18 @@ const constants = require('../../../config/constants');
 const { getAccessToken } = require('../../../database/getAccessToken');
 const { firebaseget } = require('../../../database/firebaseget');
 const { firebasepost } = require('../../../database/firebasepost');
-const handleProductProcessingModule = require('../../../dataSources/handleProductProcessing');
-const processProduct = handleProductProcessingModule.processProduct || (async (driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl) => {
-  // Fallback: use getProductDetails directly if processProduct is not exported
-  const { getProductDetails } = require('../../../scheduler');
-  return await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl);
-});
+// Lazy-load processProduct to prevent loading scheduler & puppeteer on boot
+let _processProduct = null;
+async function processProduct() {
+  if (!_processProduct) {
+    const handleProductProcessingModule = require('../../../dataSources/handleProductProcessing');
+    _processProduct = handleProductProcessingModule.processProduct || (async (driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl) => {
+      const { getProductDetails } = require('../../../scheduler');
+      return await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl);
+    });
+  }
+  return await _processProduct(...arguments);
+}
 const { executionTracker } = require('../../../services/executionTracker');
 const { spawn } = require('child_process');
 const net = require('net');
@@ -113,7 +126,14 @@ function isProcessRunning(pid) {
 }
 
 let globalDriver = null;
-const { createChromeDriver } = require('../../../utils/seleniumDriver');
+// Lazy-loaded seleniumDriver
+let _createChromeDriver = null;
+function createChromeDriver() {
+  if (!_createChromeDriver) {
+    _createChromeDriver = require('../../../utils/seleniumDriver').createChromeDriver;
+  }
+  return _createChromeDriver(...arguments);
+}
 
 async function getOrCreateDriver() {
   if (process.env.RENDER) {
