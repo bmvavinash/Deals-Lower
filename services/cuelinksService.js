@@ -55,7 +55,7 @@ function cleanMerchantUrl(url) {
  */
 function buildCuelinksDeeplink(productUrl) {
   if (!productUrl || typeof productUrl !== 'string') return '';
-  const cid = (process.env.CUELINKS_CID || process.env.REACT_APP_CUELINKS_CID || '214534').trim();
+  const cid = (process.env.CUELINKS_CID || process.env.REACT_APP_CUELINKS_CID || '176755').trim();
   const cleanUrl = cleanMerchantUrl(productUrl);
   return `https://linksredirect.com/?cid=${cid}&source=linkkit&url=${encodeURIComponent(cleanUrl)}`;
 }
