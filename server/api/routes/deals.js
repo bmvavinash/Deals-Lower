@@ -199,30 +199,19 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
         message: serverResult.message || `Product [${pCode}] processed successfully on server!`
       };
     } else if (serverResult && (!serverResult.success || serverResult.status === 'error')) {
-      return {
-        originalUrl: targetUrl,
-        success: false,
-        status: 'error',
-        productCode: serverResult.productCode || null,
-        platform: serverResult.platform || 'unknown',
-        outOfStock: Boolean(serverResult.outOfStock),
-        error: serverResult.error || serverResult.message || 'Unable to get product details from merchant.',
-        message: serverResult.message || serverResult.error || 'Unable to get product details from merchant.'
-      };
+      logger.warn('Server headless extraction was unable to get product details, falling back to Local Daemon check', { 
+        url: targetUrl, 
+        error: serverResult.error || serverResult.message 
+      });
     }
   } catch (extractErr) {
-    logger.warn('Server headless extraction failed', { url: targetUrl, error: extractErr.message });
-    return {
-      originalUrl: targetUrl,
-      success: false,
-      status: 'error',
-      productCode: null,
-      error: `Server extraction failed: ${extractErr.message}`,
-      message: `Unable to extract product details: ${extractErr.message}`
-    };
+    logger.warn('Server headless extraction failed with error, falling back to Local Daemon check', { 
+      url: targetUrl, 
+      error: extractErr.message 
+    });
   }
 
-  // 2. Fallback to Firebase Queue if server extraction yielded insufficient data
+  // 2. Fallback to Firebase Queue if server extraction was unable or failed
   let isDaemonAlive = false;
   let detectedPlatform = null;
   let productCode = null;
@@ -254,7 +243,7 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     const newCommandRef = queueRef.push();
     
     const safeUrl = targetUrl.replace(/"/g, '\\"');
-    const safeSaleName = saleName ? `"${safeSaleName.replace(/"/g, '\\"')}"` : 'null';
+    const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
     const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
 
     await newCommandRef.set({
@@ -269,10 +258,40 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
 
     const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
 
+    // If localDaemon is active, optionally wait briefly (up to 8 seconds) to see if it finishes processing
+    if (isDaemonAlive) {
+      const waitStart = Date.now();
+      let daemonResult = null;
+      while (Date.now() - waitStart < 8000) {
+        await new Promise(res => setTimeout(res, 1000));
+        const cmdSnap = await newCommandRef.once('value');
+        const cmdVal = cmdSnap.val();
+        if (cmdVal && (cmdVal.status === 'completed' || cmdVal.status === 'success')) {
+          daemonResult = cmdVal;
+          break;
+        }
+        if (cmdVal && cmdVal.status === 'failed') {
+          break;
+        }
+      }
+
+      if (daemonResult) {
+        return {
+          originalUrl: targetUrl,
+          success: true,
+          status: 'success',
+          processedOn: 'localDaemon',
+          productCode,
+          lowerdealUrl,
+          message: `Product [${productCode || 'deal'}] processed successfully via Local Daemon!`
+        };
+      }
+    }
+
     return {
       originalUrl: targetUrl,
-      success: false,
-      status: 'queued',
+      success: isDaemonAlive,
+      status: isDaemonAlive ? 'queued' : 'error',
       queued: true,
       queuedId: newCommandRef.key,
       isDaemonAlive,
@@ -280,11 +299,11 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
       lowerdealUrl,
       processedOn: 'queue',
       reason: isDaemonAlive 
-        ? 'Product processing queued in Firebase. Waiting for execution by Local Daemon.'
-        : 'Product processing queued in Firebase. Please ensure Local Daemon is running locally to process it.',
+        ? 'Server extraction was unable to extract product. Task queued and dispatched to active Local Daemon.'
+        : 'Server extraction failed and Local Daemon is offline. Please start local daemon to process.',
       message: isDaemonAlive 
-        ? 'Product processing queued in Firebase. Waiting for execution by Local Daemon.'
-        : 'Product processing queued in Firebase. Please ensure Local Daemon is running locally to process it.'
+        ? 'Product processing queued in Firebase. Processing by Local Daemon in progress.'
+        : 'Unable to process on server and Local Daemon is currently offline.'
     };
   }
 

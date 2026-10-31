@@ -194,6 +194,76 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
       diff.updatedatetime = nowMs;
       diff.updatedAt = nowIso;
 
+      // Check for price changes: Price Increase (Missed Deal) vs Price Drop
+      const oldPrice = parseFloat(String(existingProductData.price || existingProductData.dealPrice || '').replace(/[^0-9.]/g, '')) || 0;
+      const newPrice = parseFloat(String(updatedData.price || '').replace(/[^0-9.]/g, '')) || 0;
+
+      if (oldPrice > 0 && newPrice > 0 && Math.abs(oldPrice - newPrice) >= 1) {
+        if (newPrice > oldPrice) {
+          // Price Increased -> Missed Deal
+          diff.isMissedDeal = true;
+          diff.isExpired = true;
+          diff.dealStatus = 'missed';
+          diff.previousPrice = oldPrice;
+          diff.dealPrice = existingProductData.dealPrice || oldPrice;
+          diff.currentPrice = newPrice;
+          diff.missedSavings = Math.round(newPrice - oldPrice);
+          diff.isPriceDrop = false;
+
+          logger.info('Detected price increase - marked as Missed Deal', {
+            productCode,
+            oldPrice,
+            newPrice,
+            missedSavings: diff.missedSavings
+          });
+
+          const tgChatId = existingProductData.telegramChatId || (existingProductData.telegramMessageId ? '@dealshubglobal' : null);
+          const tgMsgId = existingProductData.telegramMessageId;
+          if (tgChatId && tgMsgId) {
+            try {
+              const { sendTelegramUpdateAlert } = require('../../socialMedia/telegramPoster');
+              const alertMsg = `⚠️ MISSED DEAL / PRICE INCREASED\n\n${existingProductData.title || updatedData.title || 'Product'}\n\nDeal Price Was: ₹${oldPrice}\nCurrent Price: ₹${newPrice}\nYou missed saving: ₹${diff.missedSavings}\n\nLive Link: https://lowerdeal.com/p/${productCode}`;
+              sendTelegramUpdateAlert(tgChatId, alertMsg, '', tgMsgId).catch(tgErr => {
+                logger.warn('Failed to dispatch Telegram missed deal alert', { error: tgErr.message });
+              });
+            } catch (tgReqErr) {
+              logger.warn('Error loading telegramPoster for alert', { error: tgReqErr.message });
+            }
+          }
+        } else if (newPrice < oldPrice) {
+          // Price Decreased -> Price Drop
+          diff.isPriceDrop = true;
+          diff.isMissedDeal = false;
+          diff.isExpired = false;
+          diff.dealStatus = 'active';
+          diff.previousPrice = oldPrice;
+          diff.currentPrice = newPrice;
+          diff.price = newPrice;
+          diff.priceDropAmount = Math.round(oldPrice - newPrice);
+
+          logger.info('Detected price drop - marked as Price Drop', {
+            productCode,
+            oldPrice,
+            newPrice,
+            priceDropAmount: diff.priceDropAmount
+          });
+
+          const tgChatId = existingProductData.telegramChatId || (existingProductData.telegramMessageId ? '@dealshubglobal' : null);
+          const tgMsgId = existingProductData.telegramMessageId;
+          if (tgChatId && tgMsgId) {
+            try {
+              const { sendTelegramUpdateAlert } = require('../../socialMedia/telegramPoster');
+              const alertMsg = `🔥 PRICE DROP ALERT!\n\n${existingProductData.title || updatedData.title || 'Product'}\n\nEarlier Price: ₹${oldPrice}\nNew Deal Price: ₹${newPrice}\nPrice Drop: ₹${diff.priceDropAmount} OFF!\n\nGrab it here: https://lowerdeal.com/p/${productCode}`;
+              sendTelegramUpdateAlert(tgChatId, alertMsg, '', tgMsgId).catch(tgErr => {
+                logger.warn('Failed to dispatch Telegram price drop alert', { error: tgErr.message });
+              });
+            } catch (tgReqErr) {
+              logger.warn('Error loading telegramPoster for alert', { error: tgReqErr.message });
+            }
+          }
+        }
+      }
+
       // Ensure fields like createdAt, productId, productCode are preserved
       diff.createdAt = existingProductData.createdAt;
       diff.productId = existingProductData.productId;

@@ -456,6 +456,40 @@ class ProductDealsDB {
 						normalized[field] = product[field];
 					}
 				}
+
+				if (!isNewRecord && existingProduct) {
+					const oldPrice = parseFloat(String(existingProduct.price || existingProduct.dealPrice || '').replace(/[^0-9.]/g, '')) || 0;
+					const newPrice = parseFloat(String(normalized.price || '').replace(/[^0-9.]/g, '')) || 0;
+
+					if (oldPrice > 0 && newPrice > 0 && Math.abs(oldPrice - newPrice) >= 1) {
+						if (newPrice > oldPrice) {
+							normalized.isMissedDeal = true;
+							normalized.isExpired = true;
+							normalized.dealStatus = 'missed';
+							normalized.previousPrice = oldPrice;
+							normalized.dealPrice = existingProduct.dealPrice || oldPrice;
+							normalized.currentPrice = newPrice;
+							normalized.missedSavings = Math.round(newPrice - oldPrice);
+							normalized.isPriceDrop = false;
+						} else if (newPrice < oldPrice) {
+							normalized.isPriceDrop = true;
+							normalized.isMissedDeal = false;
+							normalized.isExpired = false;
+							normalized.dealStatus = 'active';
+							normalized.previousPrice = oldPrice;
+							normalized.currentPrice = newPrice;
+							normalized.price = newPrice;
+							normalized.priceDropAmount = Math.round(oldPrice - newPrice);
+						}
+					} else {
+						if (existingProduct.isMissedDeal) normalized.isMissedDeal = existingProduct.isMissedDeal;
+						if (existingProduct.isPriceDrop) normalized.isPriceDrop = existingProduct.isPriceDrop;
+						if (existingProduct.previousPrice) normalized.previousPrice = existingProduct.previousPrice;
+						if (existingProduct.missedSavings) normalized.missedSavings = existingProduct.missedSavings;
+						if (existingProduct.priceDropAmount) normalized.priceDropAmount = existingProduct.priceDropAmount;
+						if (existingProduct.dealPrice) normalized.dealPrice = existingProduct.dealPrice;
+					}
+				}
 				
 				updates[safeKey] = normalized;
 				
