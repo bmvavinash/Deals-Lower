@@ -1,7 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
-const getGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
+// Lazy-loaded getGoogleSheetRecommendations to prevent blocking server boot
+let _cachedGoogleSheetRecommendations = null;
+function getGoogleSheetRecommendations() {
+  if (!_cachedGoogleSheetRecommendations) {
+    _cachedGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
+  }
+  return _cachedGoogleSheetRecommendations(...arguments);
+}
 const { getAllSignals, updateSignal, getPendingClarifications, resolveClarification, saveSignals } = require('../../../database/stocksMultiDB');
 const { getLiveQuote, evaluateSignalWithCMP } = require('../../../services/marketQuoteService');
 const { parseStockMessage } = require('../../../services/stockSignalParser');

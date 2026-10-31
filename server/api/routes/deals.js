@@ -13,7 +13,7 @@ const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
 const { Builder } = require('selenium-webdriver');
 const chrome = require('selenium-webdriver/chrome');
 // require('chromedriver');
-const { getProductDetails } = require('../../../scheduler');
+// scheduler lazy-loaded on demand
 const { productStatus } = require('../../../config/const');
 const constants = require('../../../config/constants');
 const { getAccessToken } = require('../../../database/getAccessToken');
