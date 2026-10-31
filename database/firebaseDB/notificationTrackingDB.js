@@ -67,7 +67,7 @@ class NotificationTrackingDB {
    * @param {string} error - Error message if failed
    * @returns {Promise<boolean>}
    */
-  async trackNotification(productCode, platform, success, dealType = 'productDeal', error = null) {
+  async trackNotification(productCode, platform, success, dealType = 'productDeal', error = null, extraData = {}) {
     try {
       if (!productCode || !platform) {
         logger.warn('trackNotification called with missing productCode or platform');
@@ -85,7 +85,8 @@ class NotificationTrackingDB {
         sent: true,
         timestamp: now,
         success: success,
-        error: error || null
+        error: error || null,
+        ...extraData
       });
 
       const updateData = {

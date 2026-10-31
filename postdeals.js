@@ -88,16 +88,21 @@ async function postDeals(driver, product, link, shortUrl, username) {
         if (constantsData.postTo.telegram) {
             let telegramSuccess = false;
             let telegramError = null;
+            let telegramRes = null;
             
             if (product?.photo != "") {
                 try {
                     if (username && username.includes("dealsglobalhub")) {
-                        await telegram(product?.photo, telegramId, text);
-                        telegramSuccess = true;
+                        telegramRes = await telegram(product?.photo, telegramId, text);
+                        telegramSuccess = telegramRes?.success || false;
+                        if (!telegramSuccess) telegramError = telegramRes?.error;
+
                     } else if (user && user.telegramId && user.telegramToken) {
                         // await telegram(product?.photo,telegramId,text)
-                        await telegram(product?.photo, user.telegramId, text, user.telegramToken);
-                        telegramSuccess = true;
+                        telegramRes = await telegram(product?.photo, user.telegramId, text, user.telegramToken);
+                        telegramSuccess = telegramRes?.success || false;
+                        if (!telegramSuccess) telegramError = telegramRes?.error;
+
                     } else {
                         console.log('User not found or missing Telegram credentials; skipping telegram post.');
                         telegramError = 'Missing credentials';
@@ -111,8 +116,10 @@ async function postDeals(driver, product, link, shortUrl, username) {
             }
             else if (!isPhotoRequired) {
                 try {
-                    await telegram(product?.photo, telegramId, text);
-                    telegramSuccess = true;
+                    telegramRes = await telegram(product?.photo, telegramId, text);
+                    telegramSuccess = telegramRes?.success || false;
+                    if (!telegramSuccess) telegramError = telegramRes?.error;
+
                 } catch (error) {
                     telegramError = error.message;
                 }
@@ -124,7 +131,38 @@ async function postDeals(driver, product, link, shortUrl, username) {
             // Track notification if tracking available
             if (productCode && notificationTrackingDB) {
                 try {
-                    await notificationTrackingDB.trackNotification(productCode, 'telegram', telegramSuccess, dealType, telegramError);
+                    if (telegramRes && telegramRes.success && telegramRes.messageId) {
+                        product.telegramMessageId = telegramRes.messageId;
+                        product.telegramChatId = telegramRes.chatId || telegramId;
+                        product.isPhoto = telegramRes.isPhoto;
+
+                        try {
+                            const { productDealsDB } = require('./database/firebaseDB/productDealsDB');
+                            if (productCode) {
+                                await productDealsDB.updateProductDeal(productCode, {
+                                    telegramMessageId: telegramRes.messageId,
+                                    telegramChatId: telegramRes.chatId || telegramId,
+                                    telegramPostedAt: new Date().toISOString(),
+                                    isPhoto: telegramRes.isPhoto
+                                }, isExcellent ? 'deals' : 'productdeals');
+                            }
+                        } catch (dbErr) {
+                            console.error('Failed to update product with telegram message info:', dbErr.message);
+                        }
+                    }
+
+                    await notificationTrackingDB.trackNotification(
+                        productCode, 
+                        'telegram', 
+                        telegramSuccess, 
+                        dealType, 
+                        telegramError,
+                        telegramRes && telegramRes.messageId ? {
+                            messageId: telegramRes.messageId,
+                            chatId: telegramRes.chatId || telegramId,
+                            isPhoto: telegramRes.isPhoto
+                        } : {}
+                    );
                 } catch (trackError) {
                     // Silent fail for tracking
                 }

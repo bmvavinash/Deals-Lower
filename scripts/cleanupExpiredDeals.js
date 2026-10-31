@@ -47,7 +47,12 @@ async function cleanupExpiredDealsAndBanners() {
         const expiry = Number(product.dealExpiresAt);
         // Wipe deal if expiry is in the past
         if (expiry && expiry <= now) {
-          logger.info(`Wiping expired deal from productdeals: ${key} (Expired at ${new Date(expiry).toISOString()})`);
+          try {
+            const { expireDeal } = require('../services/dealExpirationService');
+            await expireDeal({ ...product, productCode: product.productCode || key }, { reason: 'timer_expired' });
+          } catch (expErr) {
+            logger.warn(`Failed to expire deal for ${key}: ${expErr.message}`);
+          }
           
           const updates = {
             isDeal: false,
@@ -75,7 +80,13 @@ async function cleanupExpiredDealsAndBanners() {
     for (const [key, deal] of Object.entries(hotDeals)) {
       const expiry = Number(deal.dealExpiresAt);
       if (expiry && expiry <= now) {
-        logger.info(`Deleting expired hot deal: ${key}`);
+        logger.info(`Handling expired hot deal: ${key}`);
+        try {
+          const { expireDeal } = require('../services/dealExpirationService');
+          await expireDeal({ ...deal, productCode: deal.productCode || key }, { reason: 'timer_expired' });
+        } catch (expErr) {
+          logger.warn(`Failed to expire hot deal for ${key}: ${expErr.message}`);
+        }
         await dealsRef.child(key).remove();
         hotDealsDeleted++;
       }
