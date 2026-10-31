@@ -13,8 +13,22 @@ const { getAllSignals, updateSignal, getPendingClarifications, resolveClarificat
 const { getLiveQuote, evaluateSignalWithCMP } = require('../../../services/marketQuoteService');
 const { parseStockMessage } = require('../../../services/stockSignalParser');
 const { generateBestInsights } = require('../../../services/stockInsightsAggregator');
-const { extractActiveWhatsAppChat } = require('../../../services/whatsappLiveExtractor');
-const { extractGoogleSheetSignals } = require('../../../services/googleSheetLiveExtractor');
+// Lazy-load WhatsApp & Google Sheet live scrapers to avoid importing puppeteer on server boot
+let _extractActiveWhatsAppChat = null;
+function extractActiveWhatsAppChat() {
+  if (!_extractActiveWhatsAppChat) {
+    _extractActiveWhatsAppChat = require('../../../services/whatsappLiveExtractor').extractActiveWhatsAppChat;
+  }
+  return _extractActiveWhatsAppChat(...arguments);
+}
+
+let _extractGoogleSheetSignals = null;
+function extractGoogleSheetSignals() {
+  if (!_extractGoogleSheetSignals) {
+    _extractGoogleSheetSignals = require('../../../services/googleSheetLiveExtractor').extractGoogleSheetSignals;
+  }
+  return _extractGoogleSheetSignals(...arguments);
+}
 const { 
   checkAndTriggerSignalNotification, 
   evaluateAllSignalAlerts, 

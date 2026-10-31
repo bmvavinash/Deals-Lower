@@ -12,7 +12,14 @@ try {
 const express = require('express');
 const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
-const { scrape91Mobile } = require('../../../scripts/scrape91Mobile');
+// Lazy-load scrape91Mobile to prevent importing selenium-webdriver on server boot
+let _scrape91Mobile = null;
+function scrape91Mobile() {
+  if (!_scrape91Mobile) {
+    _scrape91Mobile = require('../../../scripts/scrape91Mobile').scrape91Mobile;
+  }
+  return _scrape91Mobile(...arguments);
+}
 const {
   getNews,
   getReviews,

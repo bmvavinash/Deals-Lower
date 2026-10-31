@@ -7,7 +7,14 @@ const {
   updateLastBulkRun,
   updatePlatformState
 } = require('../../../database/firebaseDB/schedulerStateDB');
-const { runBulkUpdateAll } = require('../../../scripts/bulkUpdateAllPlatforms');
+// Lazy-load runBulkUpdateAll to prevent importing batchProductExtractor/puppeteer on server boot
+let _runBulkUpdateAll = null;
+function runBulkUpdateAll() {
+  if (!_runBulkUpdateAll) {
+    _runBulkUpdateAll = require('../../../scripts/bulkUpdateAllPlatforms').runBulkUpdateAll;
+  }
+  return _runBulkUpdateAll(...arguments);
+}
 
 const logger = getModuleLogger('scheduler-api');
 
