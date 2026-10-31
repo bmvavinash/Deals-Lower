@@ -2,7 +2,10 @@ const express = require('express');
 const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
 const { 
+  isValidExtrapeUrl,
+  verifyExtrapeUrl,
   cleanMerchantUrl, 
+  buildCuelinksDeeplink,
   convertToCuelinks, 
   generateAffiliateLinks 
 } = require('../../../services/cuelinksService');
@@ -24,6 +27,107 @@ router.get('/status', (req, res) => {
     mode: 'Cuelinks v3 REST API',
     endpoint: 'https://developers.cuelinks.com/pub_api/v3/links/convert'
   });
+});
+
+/**
+ * GET /api/cuelinks/validate-extrape
+ * Checks whether an ExtraPe shortlink is structurally valid and active.
+ * If invalid or broken, automatically generates the Cuelinks fallback deeplink so no leads go untracked.
+ * Query params:
+ *   url: ExtraPe shortlink to validate (e.g. https://extp.in/abc123)
+ *   merchantUrl: Optional clean merchant product page URL (e.g. Flipkart) for fallback generation
+ *   checkLive: 'true' (default) to perform live HTTP resolution, 'false' for format only
+ */
+router.get('/validate-extrape', async (req, res) => {
+  try {
+    const rawUrl = (req.query.url || req.query.link || '').trim();
+    const merchantUrl = (req.query.merchantUrl || req.query.targetUrl || '').trim();
+    const checkLive = req.query.checkLive !== 'false';
+
+    if (!rawUrl) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required query parameter: url'
+      });
+    }
+
+    const isStructuralValid = isValidExtrapeUrl(rawUrl);
+    let liveResult = { valid: isStructuralValid, status: isStructuralValid ? 'structural_valid' : 'invalid_format' };
+
+    if (isStructuralValid && checkLive) {
+      liveResult = await verifyExtrapeUrl(rawUrl, 3500);
+    }
+
+    const fallbackCuelinks = merchantUrl ? buildCuelinksDeeplink(merchantUrl) : '';
+
+    return res.json({
+      success: true,
+      url: rawUrl,
+      isValid: liveResult.valid,
+      isExtrape: isStructuralValid,
+      status: liveResult.status,
+      destination: liveResult.destination || null,
+      reason: liveResult.reason || null,
+      fallbackCuelinks: fallbackCuelinks || null,
+      activeUrl: liveResult.valid ? rawUrl : (fallbackCuelinks || rawUrl)
+    });
+  } catch (error) {
+    logger.error('Error in GET /api/cuelinks/validate-extrape', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
+ * POST /api/cuelinks/validate-extrape
+ * Batch validation of ExtraPe shortlinks with auto-fallback to Cuelinks
+ */
+router.post('/validate-extrape', async (req, res) => {
+  try {
+    const { links, checkLive = true } = req.body;
+    if (!Array.isArray(links) || links.length === 0) {
+      return res.status(400).json({ success: false, error: 'links must be a non-empty array' });
+    }
+
+    const results = await Promise.all(
+      links.map(async (item) => {
+        const itemUrl = typeof item === 'string' ? item : item?.url;
+        const merchantUrl = typeof item === 'object' ? item?.merchantUrl : '';
+
+        if (!itemUrl || typeof itemUrl !== 'string') {
+          return { url: itemUrl, isValid: false, reason: 'Invalid or missing URL' };
+        }
+
+        const isStructural = isValidExtrapeUrl(itemUrl);
+        let liveResult = { valid: isStructural, status: isStructural ? 'structural_valid' : 'invalid_format' };
+        if (isStructural && checkLive) {
+          liveResult = await verifyExtrapeUrl(itemUrl, 3500);
+        }
+
+        const fallback = merchantUrl ? buildCuelinksDeeplink(merchantUrl) : '';
+
+        return {
+          url: itemUrl,
+          isValid: liveResult.valid,
+          isExtrape: isStructural,
+          status: liveResult.status,
+          destination: liveResult.destination || null,
+          reason: liveResult.reason || null,
+          fallbackCuelinks: fallback || null,
+          activeUrl: liveResult.valid ? itemUrl : (fallback || itemUrl)
+        };
+      })
+    );
+
+    return res.json({
+      success: true,
+      count: results.length,
+      validCount: results.filter(r => r.isValid).length,
+      results
+    });
+  } catch (error) {
+    logger.error('Error in POST /api/cuelinks/validate-extrape', { error: error.message });
+    return res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 /**
@@ -55,6 +159,7 @@ router.get('/convert', async (req, res) => {
       cleanUrl: cleanUrl,
       affiliateUrl: result.avinashbmv,
       isCuelinks: result.isCuelinks,
+      hasValidExtrape: result.hasValidExtrape,
       platform: platform || 'auto',
       subid: subid
     });
@@ -81,6 +186,11 @@ router.get('/redirect', async (req, res) => {
       return res.status(400).send('Missing required parameter: url');
     }
 
+    // If already a valid ExtraPe shortlink, redirect immediately
+    if (isValidExtrapeUrl(rawUrl)) {
+      return res.redirect(302, rawUrl);
+    }
+
     const cleanUrl = cleanMerchantUrl(rawUrl);
     const cuelinksUrl = await convertToCuelinks(cleanUrl, subid);
 
@@ -97,10 +207,6 @@ router.get('/redirect', async (req, res) => {
 /**
  * POST /api/cuelinks/convert
  * Single or batch affiliate link generation
- * 
- * Body options:
- * Single: { "url": "https://...", "platform": "flipkart", "subid": "web" }
- * Batch:  { "urls": ["https://...", "https://..."], "subid": "batch" }
  */
 router.post('/convert', async (req, res) => {
   try {
@@ -131,6 +237,7 @@ router.post('/convert', async (req, res) => {
             cleanUrl: clean,
             affiliateUrl: aff.avinashbmv,
             isCuelinks: aff.isCuelinks,
+            hasValidExtrape: aff.hasValidExtrape,
             platform: itemPlatform || 'auto'
           };
         })
@@ -160,6 +267,7 @@ router.post('/convert', async (req, res) => {
       cleanUrl: clean,
       affiliateUrl: result.avinashbmv,
       isCuelinks: result.isCuelinks,
+      hasValidExtrape: result.hasValidExtrape,
       platform: platform || 'auto',
       subid
     });

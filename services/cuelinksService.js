@@ -8,6 +8,119 @@ const { getModuleLogger } = require('../logger/logger');
 const logger = getModuleLogger('cuelinks-service');
 
 /**
+ * Rigorously validates whether a URL is a valid ExtraPe shortlink.
+ * ExtraPe shortlinks use specific domains: extp.in, extrape.com, extrapay.com, extrapay.in, fkrt.co, myntr.in, ajiio.co
+ * and must contain an alphanumeric short-code path (disallowing homepages, login, converter, or empty paths).
+ * @param {string} url - URL to validate
+ * @returns {boolean} - True if valid ExtraPe shortlink
+ */
+function isValidExtrapeUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) return false;
+  if (trimmed.includes(' ') || trimmed.includes('undefined') || trimmed.includes('null') || trimmed.includes('[object')) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    const host = parsed.hostname.toLowerCase().replace(/^www\./, '');
+    const validHosts = [
+      'extp.in',
+      'extrape.com',
+      'extrapay.com',
+      'extrapay.in',
+      'fkrt.co',
+      'myntr.in',
+      'ajiio.co'
+    ];
+
+    const isKnownHost = validHosts.includes(host) || host.endsWith('.extp.in') || host.endsWith('.extrape.com');
+    if (!isKnownHost) return false;
+
+    const pathname = parsed.pathname.trim();
+    const invalidPaths = ['', '/', '/login', '/link-converter', '/register', '/home', '/dashboard', '/converter', '/about', '/contact', '/privacy', '/terms'];
+    if (invalidPaths.includes(pathname.toLowerCase())) return false;
+
+    // Path must have at least 2 characters after slash (e.g. /ab, /DUL8, /x9Z1)
+    if (pathname.length < 3) return false;
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Actively tests whether an ExtraPe shortlink resolves and redirects properly.
+ * @param {string} url - ExtraPe shortlink to test
+ * @param {number} [timeoutMs=4000] - Timeout in milliseconds
+ * @returns {Promise<{ valid: boolean, status: number|string, destination?: string, reason?: string }>}
+ */
+async function verifyExtrapeUrl(url, timeoutMs = 4000) {
+  if (!isValidExtrapeUrl(url)) {
+    return { valid: false, status: 'invalid_format', reason: 'URL failed structural validation' };
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
+
+    clearTimeout(timeoutId);
+
+    const status = res.status;
+    const location = res.headers.get('location') || '';
+
+    // ExtraPe shortlinks return a 301, 302, 307, or 308 redirect to destination merchant
+    if ([301, 302, 303, 307, 308].includes(status)) {
+      if (location.includes('/login') || location.includes('/error') || location.endsWith('extrape.com/') || location === '/' || location.includes('/404')) {
+        return {
+          valid: false,
+          status,
+          destination: location,
+          reason: 'Redirects to error or login page (session/campaign expired)'
+        };
+      }
+      return {
+        valid: true,
+        status,
+        destination: location
+      };
+    }
+
+    if (status === 200) {
+      return { valid: true, status };
+    }
+
+    if (status === 404 || status === 410 || status >= 500) {
+      return {
+        valid: false,
+        status,
+        reason: `HTTP ${status} response from shortlink endpoint`
+      };
+    }
+
+    return { valid: true, status };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    logger.warn('Active ExtraPe link verification timeout or network error', { url, error: err.message });
+    // Keep structural validity on timeout so transient network glitches don't drop active links
+    return {
+      valid: true,
+      status: 'timeout_assumed_valid',
+      reason: err.message
+    };
+  }
+}
+
+/**
  * Cleans malformed or wrapped merchant URLs
  * @param {string} url 
  * @returns {string}
@@ -16,8 +129,8 @@ function cleanMerchantUrl(url) {
   if (!url || typeof url !== 'string') return '';
   let cleaned = url.replace(/^@+/, '').trim();
 
-  // If already a Cuelinks shortlink (e.g. fkrt.clnk.in/..., cuelinks.com/...), keep as is
-  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(cleaned) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(cleaned)) {
+  // If already a Cuelinks shortlink or valid ExtraPe shortlink, keep as is
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(cleaned) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(cleaned) || isValidExtrapeUrl(cleaned)) {
     return cleaned;
   }
 
@@ -72,8 +185,8 @@ function buildCuelinksDeeplink(productUrl) {
   if (!productUrl || typeof productUrl !== 'string') return '';
   const trimmed = productUrl.trim();
 
-  // If already a Cuelinks shortlink (e.g. https://fkrt.clnk.in/DUL8)
-  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(trimmed) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(trimmed)) {
+  // If already a Cuelinks shortlink or valid ExtraPe shortlink
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(trimmed) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(trimmed) || isValidExtrapeUrl(trimmed)) {
     return trimmed;
   }
 
@@ -86,7 +199,7 @@ function buildCuelinksDeeplink(productUrl) {
   }
 
   const cleanUrl = cleanMerchantUrl(productUrl);
-  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(cleanUrl) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(cleanUrl)) {
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(cleanUrl) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(cleanUrl) || isValidExtrapeUrl(cleanUrl)) {
     return cleanUrl;
   }
 
@@ -103,8 +216,8 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
   if (!originalUrl || typeof originalUrl !== 'string') return null;
   const trimmed = originalUrl.trim();
 
-  // If already a Cuelinks shortlink
-  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(trimmed) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(trimmed)) {
+  // If already a Cuelinks shortlink or valid ExtraPe shortlink
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(trimmed) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(trimmed) || isValidExtrapeUrl(trimmed)) {
     return trimmed;
   }
 
@@ -156,13 +269,14 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
  * 1. For Amazon: Direct Amazon affiliate URL with tag (dealshubglo0c-21):
  *    https://www.amazon.in/dp/<ASIN>?tag=dealshubglo0c-21
  * 2. For non-Amazon (Flipkart, Myntra, Ajio, etc.):
- *    Cuelinks deeplink applied to affiliateUrl and links (avinashbmv, avinashbmvINR):
- *    https://linksredirect.com/?cid=176755&publisher_referral_url=https%3A%2F%2Flowerdeal.com&source=linkkit&url=<encodeURIComponent(productUrl)>
+ *    - Priority 1: ExtraPe shortlink in avinashbmv if valid (validated for real shortlink domain & slug).
+ *    - Priority 2 / Fallback: Standard Cuelinks deeplink (CID 176755 + publisher_referral_url=https://lowerdeal.com)
+ *    If ExtraPe is missing, expired, or invalid, Cuelinks is assigned so NO LEADS GO UNTRACKED.
  * @param {string} targetUrl - Merchant product URL
  * @param {string} platform - Store platform (amazon, flipkart, myntra, ajio, etc.)
  * @param {string} [productCode] - Optional platform product code
- * @param {string} [existingExtrape] - Optional existing ExtraPe shortlink to preserve if requested
- * @returns {Promise<{ avinashbmv: string, avinashbmvINR: string, affiliateUrl: string, isCuelinks: boolean }>}
+ * @param {string} [existingExtrape] - Optional existing ExtraPe shortlink to validate and preserve
+ * @returns {Promise<{ avinashbmv: string, avinashbmvINR: string, affiliateUrl: string, isCuelinks: boolean, hasValidExtrape: boolean }>}
  */
 async function generateAffiliateLinks(targetUrl, platform = '', productCode = '', existingExtrape = '') {
   const cleanUrl = cleanMerchantUrl(targetUrl);
@@ -188,34 +302,38 @@ async function generateAffiliateLinks(targetUrl, platform = '', productCode = ''
       avinashbmv: amazonUrl,
       avinashbmvINR: cleanUrl,
       affiliateUrl: amazonUrl,
-      isCuelinks: false
+      isCuelinks: false,
+      hasValidExtrape: false
     };
   }
 
   // --- Non-Amazon platforms (Flipkart, Myntra, Ajio, Croma, etc.) ---
-  // If existingExtrape is provided, preserve ExtraPe for avinashbmv
-  if (existingExtrape && typeof existingExtrape === 'string' && (existingExtrape.includes('extrape') || existingExtrape.includes('extrapay'))) {
-    const cuelinksDeeplink = buildCuelinksDeeplink(cleanUrl);
+  const cuelinksDeeplink = buildCuelinksDeeplink(cleanUrl);
+
+  // If existingExtrape is provided, rigorously validate that it is a genuine ExtraPe shortlink
+  if (existingExtrape && typeof existingExtrape === 'string' && isValidExtrapeUrl(existingExtrape)) {
     return {
-      avinashbmv: existingExtrape,
+      avinashbmv: existingExtrape.trim(),
       avinashbmvINR: cuelinksDeeplink,
       affiliateUrl: cuelinksDeeplink,
-      isCuelinks: true
+      isCuelinks: true,
+      hasValidExtrape: true
     };
   }
 
-  // Generate standardized Cuelinks deeplink preserving full query params (like ?pid=)
-  const cuelinksDeeplink = buildCuelinksDeeplink(cleanUrl);
-
+  // If ExtraPe is missing or invalid, both primary and backup slots use Cuelinks -> ZERO LEADS GO UNTRACKED
   return {
     avinashbmv: cuelinksDeeplink,
     avinashbmvINR: cuelinksDeeplink,
     affiliateUrl: cuelinksDeeplink,
-    isCuelinks: true
+    isCuelinks: true,
+    hasValidExtrape: false
   };
 }
 
 module.exports = {
+  isValidExtrapeUrl,
+  verifyExtrapeUrl,
   cleanMerchantUrl,
   buildCuelinksDeeplink,
   convertToCuelinks,

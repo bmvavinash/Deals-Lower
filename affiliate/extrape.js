@@ -186,7 +186,17 @@ async function getExtrapeUrl(driver, url, timeout = 30000) {
         console.warn("[extrape] Unexpected error:", outerError.message);
     }
 
-    return updatedLink || '';
+    try {
+        const { isValidExtrapeUrl } = require('../services/cuelinksService');
+        if (updatedLink && isValidExtrapeUrl(updatedLink)) {
+            return updatedLink.trim();
+        }
+        if (updatedLink) {
+            console.warn('[extrape] Generated link failed validation (not a valid shortlink):', updatedLink);
+        }
+    } catch (e) {}
+
+    return '';
 }
 
 module.exports = {
