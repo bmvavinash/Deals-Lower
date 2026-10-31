@@ -16,6 +16,11 @@ function cleanMerchantUrl(url) {
   if (!url || typeof url !== 'string') return '';
   let cleaned = url.replace(/^@+/, '').trim();
 
+  // If already a Cuelinks shortlink (e.g. fkrt.clnk.in/..., cuelinks.com/...), keep as is
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(cleaned) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(cleaned)) {
+    return cleaned;
+  }
+
   // Unwrap INRDeals wrapper if already present
   const inrdealsPattern = /^https?:\/\/(?:www\.)?inrdeals\.com\/(?:[a-zA-Z0-9_-]+\/)?(.*)$/i;
   const match = cleaned.match(inrdealsPattern);
@@ -30,17 +35,27 @@ function cleanMerchantUrl(url) {
     }
   }
 
-  // Unwrap legacy linksredirect wrappers if nested
-  const linksredirectPattern = /^https?:\/\/linksredirect\.com\/.*[?&]url=([^&]+)/i;
-  const lrMatch = cleaned.match(linksredirectPattern);
-  if (lrMatch) {
+  // Unwrap legacy linksredirect wrappers if nested or obsolete
+  if (cleaned.includes('linksredirect.com')) {
     try {
-      const decoded = decodeURIComponent(lrMatch[1]);
-      if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-        return cleanMerchantUrl(decoded);
+      const parsed = new URL(cleaned);
+      const target = parsed.searchParams.get('url');
+      if (target && (target.startsWith('http://') || target.startsWith('https://'))) {
+        return cleanMerchantUrl(target);
       }
     } catch {
-      // ignore
+      const linksredirectPattern = /^https?:\/\/(?:www\.)?linksredirect\.com\/.*[?&]url=([^&]+)/i;
+      const lrMatch = cleaned.match(linksredirectPattern);
+      if (lrMatch) {
+        try {
+          const decoded = decodeURIComponent(lrMatch[1]);
+          if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+            return cleanMerchantUrl(decoded);
+          }
+        } catch {
+          // ignore
+        }
+      }
     }
   }
 
@@ -49,33 +64,57 @@ function cleanMerchantUrl(url) {
 
 /**
  * Generates the standardized Cuelinks deeplink wrapper for non-Amazon links
- * Format: https://linksredirect.com/?cid=<CUELINKS_CID>&source=linkkit&url=<encodeURIComponent(productUrl)>
+ * Format: https://linksredirect.com/?cid=<CUELINKS_CID>&publisher_referral_url=https%3A%2F%2Flowerdeal.com&source=linkkit&url=<encodeURIComponent(productUrl)>
  * @param {string} productUrl - Clean merchant product page URL (preserves query params like ?pid=)
  * @returns {string}
  */
 function buildCuelinksDeeplink(productUrl) {
   if (!productUrl || typeof productUrl !== 'string') return '';
+  const trimmed = productUrl.trim();
+
+  // If already a Cuelinks shortlink (e.g. https://fkrt.clnk.in/DUL8)
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(trimmed) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(trimmed)) {
+    return trimmed;
+  }
+
   const cid = (process.env.CUELINKS_CID || process.env.REACT_APP_CUELINKS_CID || '176755').trim();
+  const publisherReferralUrl = encodeURIComponent('https://lowerdeal.com');
+
+  // If already an up-to-date linksredirect link with CID and publisher_referral_url
+  if (trimmed.includes('linksredirect.com') && trimmed.includes(`cid=${cid}`) && trimmed.includes('publisher_referral_url=')) {
+    return trimmed;
+  }
+
   const cleanUrl = cleanMerchantUrl(productUrl);
-  return `https://linksredirect.com/?cid=${cid}&source=linkkit&url=${encodeURIComponent(cleanUrl)}`;
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(cleanUrl) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(cleanUrl)) {
+    return cleanUrl;
+  }
+
+  return `https://linksredirect.com/?cid=${cid}&publisher_referral_url=${publisherReferralUrl}&source=linkkit&url=${encodeURIComponent(cleanUrl)}`;
 }
 
 /**
  * Converts a merchant URL into a Cuelinks shortened affiliate link via REST API
  * @param {string} originalUrl - Target merchant URL
  * @param {string} [subId='server_api'] - SubID for conversion tracking
- * @returns {Promise<string|null>} - Short Cuelinks URL or null on failure
+ * @returns {Promise<string|null>} - Short Cuelinks URL or fallback deeplink
  */
 async function convertToCuelinks(originalUrl, subId = 'server_api') {
   if (!originalUrl || typeof originalUrl !== 'string') return null;
+  const trimmed = originalUrl.trim();
 
-  const apiKey = process.env.CUELINKS_API_KEY || process.env.REACT_APP_CUELINKS_API_KEY;
-  if (!apiKey || apiKey === 'YOUR_CUELINKS_API_KEY_HERE') {
-    // If no API key configured, use the direct deeplink redirect format
-    return buildCuelinksDeeplink(originalUrl);
+  // If already a Cuelinks shortlink
+  if (/^https?:\/\/(?:[a-zA-Z0-9_-]+\.)?clnk\.in\//i.test(trimmed) || /^https?:\/\/(?:www\.)?cuelinks\.com\//i.test(trimmed)) {
+    return trimmed;
   }
 
-  const cleanUrl = cleanMerchantUrl(originalUrl);
+  const apiKey = (process.env.CUELINKS_API_KEY || process.env.REACT_APP_CUELINKS_API_KEY || '').trim();
+  if (!apiKey || apiKey === 'YOUR_CUELINKS_API_KEY_HERE') {
+    // If no API key configured, use the direct deeplink redirect format
+    return buildCuelinksDeeplink(trimmed);
+  }
+
+  const cleanUrl = cleanMerchantUrl(trimmed);
 
   try {
     const response = await fetch('https://developers.cuelinks.com/pub_api/v3/links/convert', {
@@ -118,7 +157,7 @@ async function convertToCuelinks(originalUrl, subId = 'server_api') {
  *    https://www.amazon.in/dp/<ASIN>?tag=dealshubglo0c-21
  * 2. For non-Amazon (Flipkart, Myntra, Ajio, etc.):
  *    Cuelinks deeplink applied to affiliateUrl and links (avinashbmv, avinashbmvINR):
- *    https://linksredirect.com/?cid=<CUELINKS_CID>&source=linkkit&url=<encodeURIComponent(productUrl)>
+ *    https://linksredirect.com/?cid=176755&publisher_referral_url=https%3A%2F%2Flowerdeal.com&source=linkkit&url=<encodeURIComponent(productUrl)>
  * @param {string} targetUrl - Merchant product URL
  * @param {string} platform - Store platform (amazon, flipkart, myntra, ajio, etc.)
  * @param {string} [productCode] - Optional platform product code
@@ -154,6 +193,17 @@ async function generateAffiliateLinks(targetUrl, platform = '', productCode = ''
   }
 
   // --- Non-Amazon platforms (Flipkart, Myntra, Ajio, Croma, etc.) ---
+  // If existingExtrape is provided, preserve ExtraPe for avinashbmv
+  if (existingExtrape && typeof existingExtrape === 'string' && (existingExtrape.includes('extrape') || existingExtrape.includes('extrapay'))) {
+    const cuelinksDeeplink = buildCuelinksDeeplink(cleanUrl);
+    return {
+      avinashbmv: existingExtrape,
+      avinashbmvINR: cuelinksDeeplink,
+      affiliateUrl: cuelinksDeeplink,
+      isCuelinks: true
+    };
+  }
+
   // Generate standardized Cuelinks deeplink preserving full query params (like ?pid=)
   const cuelinksDeeplink = buildCuelinksDeeplink(cleanUrl);
 
