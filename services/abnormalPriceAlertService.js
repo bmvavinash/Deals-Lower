@@ -306,8 +306,19 @@ function formatTelegramAlertMessage(product, analysis) {
   const title = (product.title || product.productText || 'Product').substring(0, 100);
   const code = product.productCode || product.id || 'N/A';
   const store = product.storeType || product.store || 'Online Store';
-  const url = product.productUrl || product.url || `https://lowerdeal.com/p/${code}`;
+  const storeUrl = product.affiliateUrl || product.productUrl || product.url || '';
+  const cleanCode = (code && code.includes('_DUMMY')) ? 'B0C3D6WTJX' : code;
+  const lowerdealUrl = product.lowerdealUrl || (cleanCode && cleanCode !== 'N/A' ? `https://lowerdeal.com/p/${cleanCode}` : '');
   const severityEmoji = analysis.severity === 'CRITICAL' ? '🚨🚨🚨' : '⚠️';
+
+  let linksSection = '';
+  if (lowerdealUrl && storeUrl && lowerdealUrl !== storeUrl) {
+    linksSection = `🌐 *LowerDeal:* ${lowerdealUrl}\n🛒 *Store:* ${storeUrl}`;
+  } else if (lowerdealUrl) {
+    linksSection = `🌐 *LowerDeal:* ${lowerdealUrl}`;
+  } else if (storeUrl) {
+    linksSection = `🔗 *Link:* ${storeUrl}`;
+  }
 
   return `${severityEmoji} *ABNORMAL PRICE ALERT* ${severityEmoji}
 ━━━━━━━━━━━━━━━━━━━━━━
@@ -324,7 +335,7 @@ function formatTelegramAlertMessage(product, analysis) {
 🔍 *Anomaly Reason:*
 ${analysis.reason}
 
-🔗 *Link:* ${url}
+${linksSection}
 ━━━━━━━━━━━━━━━━━━━━━━
 _LowerDeal Anomaly Protection Engine_`;
 }
@@ -431,6 +442,7 @@ async function checkAndAlertAbnormalPrice(product, options = {}) {
         rule: analysis.rule,
         reason: analysis.reason,
         severity: analysis.severity,
+        lowerdealUrl: product.lowerdealUrl || (product.productCode ? `https://lowerdeal.com/p/${product.productCode}` : ''),
         url: product.productUrl || product.url || '',
         telegramStatus: alertResult.delivered ? 'delivered' : 'failed',
         telegramError: alertResult.error || null,
@@ -465,6 +477,7 @@ async function triggerDummyAlert() {
     discount: '70%',
     categoryGroup: 'Mobiles',
     storeType: 'Amazon',
+    lowerdealUrl: 'https://lowerdeal.com/p/B0C3D6WTJX',
     photo: 'https://m.media-amazon.com/images/I/71657TiFeHL._SX679_.jpg',
     productUrl: 'https://www.amazon.in/dp/B0C3D6WTJX?tag=dealshubglo0c-21'
   };
