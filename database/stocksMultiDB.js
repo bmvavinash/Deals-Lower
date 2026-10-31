@@ -362,8 +362,38 @@ async function getAllSignals(filters = {}) {
       const snap = await fb.ref('stocks/signals').once('value');
       const val = snap.val();
       if (val) {
-        memoryDB.signals = val;
-        signalsList = Object.values(val);
+        // Detect legacy duplicate keys or timestamped keys in Firebase
+        const rawList = Object.values(val);
+        const hasLegacyDuplicates = rawList.length > 85 || Object.keys(val).some(k => k.match(/_\d{10,}/));
+        if (hasLegacyDuplicates) {
+          logger.info(`Deduplicating ${rawList.length} Firebase signals to deterministic canonical IDs...`);
+          const canonicalMap = {};
+          // Sort chronologically ascending so newer updates take precedence
+          rawList.sort((a, b) => new Date(a.timestamp || a.date || a.updatedAt || 0) - new Date(b.timestamp || b.date || b.updatedAt || 0));
+          rawList.forEach(s => {
+            const sym = (s.symbol || '').toUpperCase().trim();
+            if (isBogusTicker(sym)) return;
+            if ((s.source || '').includes('Deals Global') || /loot|flipkart|amazon|combo\s+pack|\bmrp\s*:/i.test(s.rawText || '')) return;
+            const detId = getDeterministicSignalId(s);
+            canonicalMap[detId] = {
+              ...(canonicalMap[detId] || {}),
+              ...s,
+              id: detId,
+              symbol: sym
+            };
+          });
+          memoryDB.signals = canonicalMap;
+          signalsList = Object.values(canonicalMap);
+          persistLocalDB();
+          // Overwrite Firebase with clean canonical map
+          fb.ref('stocks/signals').set(canonicalMap).catch(err => {
+            logger.warn('Failed to overwrite Firebase with deduplicated signals', { error: err.message });
+          });
+          logger.info(`Successfully purged duplicates from Firebase. Reduced from ${rawList.length} to ${signalsList.length} signals.`);
+        } else {
+          memoryDB.signals = val;
+          signalsList = Object.values(val);
+        }
       }
     } catch (fbErr) {
       logger.warn('Could not read from Firebase, returning local cache', { error: fbErr.message });
@@ -425,6 +455,19 @@ async function getAllSignals(filters = {}) {
       }
     }
 
+    // Restore true Google Sheet Watchlist prices from rawText if not AARTIPHARM
+    if (s.source?.includes('Watchlist') && s.rawText && sym !== 'AARTIPHARM') {
+      const m = s.rawText.match(/Buy Range:\s*([\d,]+(?:\.\d+)?)/i);
+      if (m) {
+        const truePrice = parseFloat(m[1].replace(/,/g, ''));
+        if (!isNaN(truePrice) && truePrice > 0 && truePrice !== entryPrice) {
+          entryPrice = truePrice;
+          entryMax = truePrice;
+          modified = true;
+        }
+      }
+    }
+
     // 2. Aarti Pharmalabs global rule: strictly ₹770 per user instruction
     if (sym === 'AARTIPHARM' && !isExpired) {
       if (entryPrice !== 770 || entryMax !== 770) {
@@ -438,10 +481,16 @@ async function getAllSignals(filters = {}) {
       }
     }
 
+    let pnlPercent = s.pnlPercent;
+    if (s.currentCMP && entryPrice && entryPrice > 0) {
+      pnlPercent = parseFloat((((s.currentCMP - entryPrice) / entryPrice) * 100).toFixed(2));
+    }
+
     if (modified && fb) {
       if (!firebaseUpdates) firebaseUpdates = {};
       firebaseUpdates[`stocks/signals/${s.id}/entryPrice`] = entryPrice;
       firebaseUpdates[`stocks/signals/${s.id}/entryMax`] = entryMax;
+      if (pnlPercent !== undefined) firebaseUpdates[`stocks/signals/${s.id}/pnlPercent`] = pnlPercent;
       if (status) firebaseUpdates[`stocks/signals/${s.id}/status`] = status;
       if (statusReason) firebaseUpdates[`stocks/signals/${s.id}/statusReason`] = statusReason;
       firebaseUpdates[`stocks/signals/${s.id}/sourcePriority`] = prio;
@@ -459,6 +508,7 @@ async function getAllSignals(filters = {}) {
       entryMax: entryMax ?? null,
       status: status || 'ACTIVE',
       statusReason: statusReason || null,
+      pnlPercent,
       isExpired,
       isReinitiated
     };
