@@ -186,7 +186,24 @@ function getWhatsAppStockStates(signals) {
 }
 
 /**
- * Save array of parsed signals
+ * Deterministic Signal ID generator: guarantees exactly 1 record per stock per source.
+ * - WhatsApp: WA_SOIC_${symbol}
+ * - Google Sheet Watchlist: GS_WATCHLIST_${symbol}
+ * - Google Sheet Stock list: GS_STOCKLIST_${symbol}
+ * - Telegram: TG_${symbol}
+ */
+function getDeterministicSignalId(sig) {
+  const sym = (sig.symbol || '').toUpperCase().trim();
+  const src = (sig.source || '').toLowerCase();
+  if (src.includes('whatsapp')) return `WA_SOIC_${sym}`;
+  if (src.includes('watchlist')) return `GS_WATCHLIST_${sym}`;
+  if (src.includes('stock list')) return `GS_STOCKLIST_${sym}`;
+  if (src.includes('telegram')) return `TG_${sym}`;
+  return `STOCK_${sym}`;
+}
+
+/**
+ * Save array of parsed signals (UPSERT - updates existing rather than recreating)
  */
 async function saveSignals(signals) {
   if (!Array.isArray(signals) || signals.length === 0) return [];
@@ -196,10 +213,14 @@ async function saveSignals(signals) {
   const waStockStates = getWhatsAppStockStates();
 
   for (const sig of signals) {
-    const id = sig.id || `SIG_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    if (!sig.symbol) continue;
+    const sym = (sig.symbol || '').toUpperCase().trim();
+    if (isBogusTicker(sym)) continue;
+    if ((sig.source || '').includes('Deals Global') || /loot|flipkart|amazon|combo\s+pack|\bmrp\s*:/i.test(sig.rawText || '')) continue;
+
+    const id = getDeterministicSignalId(sig);
     const priority = sig.sourcePriority || getSourcePriority(sig.source);
     const isSourceOfTruth = priority === 1;
-    const sym = (sig.symbol || '').toUpperCase().trim();
 
     // Check if incoming signal itself is from WhatsApp
     const isIncomingWA = isSourceOfTruth || (sig.source && sig.source.toLowerCase().includes('whatsapp'));
@@ -221,37 +242,16 @@ async function saveSignals(signals) {
       });
     }
 
-    // Check if a WhatsApp (Source of Truth) signal already exists for this symbol
-    const existingSignals = Object.values(memoryDB.signals || {});
-    const existingWhatsAppSignal = existingSignals.find(s => 
-      s.symbol?.toUpperCase() === sym && 
-      (s.isSourceOfTruth || getSourcePriority(s.source) === 1)
-    );
-
     let finalEntryPrice = sig.entryPrice;
     let finalEntryMax = sig.entryMax;
-    let finalAction = sig.action;
+    let finalAction = sig.action || 'BUY';
     let finalTarget1 = sig.target1;
     let finalStopLoss = sig.stopLoss;
 
-    // If incoming signal is Google Sheets or Telegram, but WhatsApp already gave a trade call for this symbol,
-    // preserve the WhatsApp Source of Truth trade parameters
-    if (!isSourceOfTruth && existingWhatsAppSignal) {
-      if (existingWhatsAppSignal.entryPrice !== undefined && existingWhatsAppSignal.entryPrice !== null) {
-        finalEntryPrice = existingWhatsAppSignal.entryPrice;
-      }
-      if (existingWhatsAppSignal.entryMax !== undefined && existingWhatsAppSignal.entryMax !== null) {
-        finalEntryMax = existingWhatsAppSignal.entryMax;
-      }
-      if (existingWhatsAppSignal.action) {
-        finalAction = existingWhatsAppSignal.action;
-      }
-      if (existingWhatsAppSignal.target1 !== undefined && existingWhatsAppSignal.target1 !== null) {
-        finalTarget1 = existingWhatsAppSignal.target1;
-      }
-      if (existingWhatsAppSignal.stopLoss !== undefined && existingWhatsAppSignal.stopLoss !== null) {
-        finalStopLoss = existingWhatsAppSignal.stopLoss;
-      }
+    // Aarti Pharmalabs user rule: strictly ₹770 recommended buy ceiling
+    if (sym === 'AARTIPHARM') {
+      finalEntryPrice = 770;
+      finalEntryMax = 770;
     }
 
     // Determine WhatsApp Expiry state
@@ -262,7 +262,7 @@ async function saveSignals(signals) {
     let statusReason = sig.statusReason;
 
     if (currentWAState) {
-      if (currentWAState.isExpired && (sig.action === 'BUY' || sig.action === 'ACCUMULATE')) {
+      if (currentWAState.isExpired && (finalAction === 'BUY' || finalAction === 'ACCUMULATE') && !isIncomingWA) {
         isExpired = true;
         status = 'EXPIRED';
         statusReason = `Buy expired: WhatsApp exit call issued (${currentWAState.latestExit.action} @ ₹${currentWAState.latestExit.price || 'market'}) unless reinitiated in WhatsApp`;
@@ -272,26 +272,38 @@ async function saveSignals(signals) {
       }
     }
 
+    // UPSERT: If record already exists under this deterministic ID, update it rather than recreating it
+    const existing = memoryDB.signals[id];
     const record = {
+      ...(existing || {}),
       ...sig,
       id,
       symbol: sym,
       sourcePriority: priority,
       isSourceOfTruth,
       sourceLabel: isSourceOfTruth ? 'WhatsApp (Source of Truth)' : (priority === 2 ? 'Google Sheet (Secondary)' : 'Telegram'),
-      entryPrice: finalEntryPrice,
-      entryMax: finalEntryMax,
-      action: finalAction,
-      target1: finalTarget1,
-      stopLoss: finalStopLoss,
-      status: status || 'ACTIVE',
-      statusReason: statusReason || null,
+      entryPrice: finalEntryPrice !== undefined && finalEntryPrice !== null ? finalEntryPrice : (existing ? existing.entryPrice : null),
+      entryMax: finalEntryMax !== undefined && finalEntryMax !== null ? finalEntryMax : (existing ? existing.entryMax : null),
+      action: finalAction || (existing ? existing.action : 'BUY'),
+      target1: finalTarget1 !== undefined && finalTarget1 !== null ? finalTarget1 : (existing ? existing.target1 : null),
+      stopLoss: finalStopLoss !== undefined && finalStopLoss !== null ? finalStopLoss : (existing ? existing.stopLoss : null),
+      rating: sig.rating !== null && sig.rating !== undefined ? sig.rating : (existing ? existing.rating : null),
+      status: status || (existing ? existing.status : 'ACTIVE'),
+      statusReason: statusReason || (existing ? existing.statusReason : null),
       isExpired,
       isReinitiated,
+      currentCMP: sig.currentCMP || (existing ? existing.currentCMP : null),
+      dayChangePercent: sig.dayChangePercent !== undefined && sig.dayChangePercent !== null ? sig.dayChangePercent : (existing ? existing.dayChangePercent : null),
+      pnlPercent: sig.pnlPercent !== undefined && sig.pnlPercent !== null ? sig.pnlPercent : (existing ? existing.pnlPercent : null),
+      target1Distance: sig.target1Distance !== undefined && sig.target1Distance !== null ? sig.target1Distance : (existing ? existing.target1Distance : null),
+      stopLossDistance: sig.stopLossDistance !== undefined && sig.stopLossDistance !== null ? sig.stopLossDistance : (existing ? existing.stopLossDistance : null),
+      riskRewardRatio: sig.riskRewardRatio !== undefined && sig.riskRewardRatio !== null ? sig.riskRewardRatio : (existing ? existing.riskRewardRatio : null),
+      cmpUpdatedAt: sig.cmpUpdatedAt || (existing ? existing.cmpUpdatedAt : null),
+      rawText: sig.rawText || (existing ? existing.rawText : ''),
       updatedAt: new Date().toISOString()
     };
 
-    // In-memory
+    // In-memory single record
     memoryDB.signals[id] = record;
     saved.push(record);
 
@@ -313,10 +325,10 @@ async function saveSignals(signals) {
     if (fb) {
       try {
         const cleanRecord = JSON.parse(JSON.stringify(record));
-        await fb.ref(`stocks/signals/${id}`).set(cleanRecord);
+        fb.ref(`stocks/signals/${id}`).set(cleanRecord).catch(() => {});
         if (record.requiresClarification) {
           const cleanClar = JSON.parse(JSON.stringify(memoryDB.clarifications[id]));
-          await fb.ref(`stocks/clarifications/${id}`).set(cleanClar);
+          fb.ref(`stocks/clarifications/${id}`).set(cleanClar).catch(() => {});
         }
       } catch (fbErr) {
         logger.warn(`Firebase signal write failed for ${id}, kept in local DB`, { error: fbErr.message });
@@ -327,53 +339,6 @@ async function saveSignals(signals) {
   persistLocalDB();
   return saved;
 }
-
-const CANONICAL_WATCHLIST_BUY_PRICES = {
-  'KMEW': 2877,
-  'STEELCAS': 317,
-  'SUPRIYA': 909,
-  'JASH': 511,
-  'E2E': 630,
-  'NRBBEARING': 483,
-  'MCX': 3040,
-  'MANORAMA': 1737,
-  'RKFORGE': 681,
-  'STLTECH': 555,
-  'WELCORP': 1600,
-  'KUSUMGAR': 589,
-  'TDPOWERSYS': 545,
-  'KSHINTL': 842,
-  'GALAPREC': 1034,
-  'ASTRAMICRO': 1458,
-  'SAREGAMA': 460,
-  'VIYASH': 250,
-  'THYROCARE': 522,
-  'SHILPAMED': 499,
-  'KDDL': 2179,
-  'PWL': 110,
-  'VENUSPIPES': 1311,
-  'SBCL': 486,
-  'SAMHI': 146,
-  'LUMAXTECH': 1477,
-  'GRAVITA': 1537,
-  'NAVINFLUOR': 6485,
-  'SAILIFE': 894,
-  'IMFA': 1324,
-  'GRWRHITECH': 3257,
-  'ACUTAAS': 1644,
-  'ARMANFIN': 1631,
-  'ENTERO': 1229,
-  'CSBBANK': 415,
-  'INTELLECT': 1028,
-  'HBLENGINE': 819,
-  'SANSERA': 1680,
-  'PRIVISCL': 3140,
-  'JAYNECOIND': 68,
-  'AARTIPHARM': 770,
-  'WINDLAS': 787,
-  'PAYTM': 1368,
-  'INTERARCH': 2440
-};
 
 function isBogusTicker(sym) {
   if (!sym || typeof sym !== 'string') return true;
@@ -460,26 +425,7 @@ async function getAllSignals(filters = {}) {
       }
     }
 
-    // 2. Google Sheet Watchlist: strictly enforce canonical recommended buy price (if not expired)
-    if (!isExpired && s.source && s.source.includes('Watchlist') && CANONICAL_WATCHLIST_BUY_PRICES[sym]) {
-      const canonicalPrice = CANONICAL_WATCHLIST_BUY_PRICES[sym];
-      if (entryPrice !== canonicalPrice || entryMax !== canonicalPrice) {
-        entryPrice = canonicalPrice;
-        entryMax = canonicalPrice;
-        modified = true;
-        if (s.currentCMP && entryMax) {
-          if (s.currentCMP > entryMax) {
-            status = 'ABOVE_ENTRY';
-            statusReason = `Above recommended buy ceiling (CMP ₹${s.currentCMP} > ₹${entryMax})`;
-          } else {
-            status = 'IN_BUY_RANGE';
-            statusReason = `Currently in buy range (CMP ₹${s.currentCMP} <= ₹${entryMax})`;
-          }
-        }
-      }
-    }
-
-    // 3. Aarti Pharmalabs global rule: strictly ₹770 per user instruction
+    // 2. Aarti Pharmalabs global rule: strictly ₹770 per user instruction
     if (sym === 'AARTIPHARM' && !isExpired) {
       if (entryPrice !== 770 || entryMax !== 770) {
         entryPrice = 770;
@@ -518,6 +464,72 @@ async function getAllSignals(filters = {}) {
     };
   });
 
+  // Group by symbol to provide multi-source view (WhatsApp, Google Sheet Watchlist, Google Sheet Stock list, etc.)
+  const bySymbolMap = new Map();
+  signalsList.forEach(s => {
+    const sym = (s.symbol || '').toUpperCase().trim();
+    if (!bySymbolMap.has(sym)) bySymbolMap.set(sym, []);
+    bySymbolMap.get(sym).push(s);
+  });
+
+  const consolidatedList = [];
+  bySymbolMap.forEach((group, sym) => {
+    const hasMultipleSources = group.length > 1;
+
+    const sourcesBreakdown = group.map(sib => {
+      const isWA = sib.isSourceOfTruth || (sib.source && sib.source.toLowerCase().includes('whatsapp'));
+      return {
+        id: sib.id,
+        symbol: sym,
+        source: sib.source,
+        sourceLabel: isWA ? 'WhatsApp (Source of Truth)' : (sib.source?.includes('Watchlist') ? 'Google Sheet: Watchlist' : sib.source?.includes('Stock list') ? 'Google Sheet: Stock list' : sib.sourceLabel || sib.source),
+        sourceType: isWA ? 'whatsapp' : (sib.source?.toLowerCase().includes('sheet') ? 'google_sheet' : 'telegram'),
+        action: sib.action,
+        price: sib.entryPrice || sib.entryMax || sib.target1,
+        rating: sib.rating,
+        status: sib.status,
+        statusReason: sib.statusReason,
+        isExpired: Boolean(sib.isExpired),
+        isSourceOfTruth: Boolean(isWA),
+        timestamp: sib.timestamp || sib.updatedAt,
+        sender: sib.sender,
+        rawText: sib.rawText
+      };
+    });
+
+    // Sort: WhatsApp (1st Priority Source of Truth) is always index 0
+    sourcesBreakdown.sort((a, b) => (b.isSourceOfTruth ? 1 : 0) - (a.isSourceOfTruth ? 1 : 0));
+
+    const waCall = sourcesBreakdown.find(x => x.isSourceOfTruth);
+    let finalVerdict = null;
+    if (hasMultipleSources) {
+      if (waCall) {
+        if (waCall.isExpired || ['SELL', 'EXIT', 'COMPLETE_EXIT', 'PARTIAL_EXIT'].includes(waCall.action)) {
+          finalVerdict = `WhatsApp is the Final Source of Truth: Exit call active (${waCall.action} @ ₹${waCall.price || 'market'}). Google Sheet buy call is EXPIRED.`;
+        } else {
+          finalVerdict = `WhatsApp is the Final Source of Truth: Active Buy call (${waCall.action} upto ₹${waCall.price}).`;
+        }
+      } else {
+        finalVerdict = `Consensus across ${group.length} advisory sources.`;
+      }
+    }
+
+    // Select primary representation: WhatsApp is 1st Priority Source of Truth, else Watchlist, else highest rated
+    const primarySignal = group.find(s => s.isSourceOfTruth || s.source?.toLowerCase().includes('whatsapp'))
+      || group.find(s => s.source?.toLowerCase().includes('watchlist'))
+      || group[0];
+
+    consolidatedList.push({
+      ...primarySignal,
+      hasMultipleSources,
+      sourcesBreakdown,
+      sourceOfTruth: waCall ? 'WhatsApp' : null,
+      finalVerdict
+    });
+  });
+
+  signalsList = filters.raw ? signalsList : consolidatedList;
+
   // Async sync back corrections to Firebase if needed (non-blocking)
   if (firebaseUpdates && fb) {
     fb.ref().update(firebaseUpdates).catch(err => {
@@ -530,7 +542,15 @@ async function getAllSignals(filters = {}) {
     signalsList = signalsList.filter(s => s.action?.toUpperCase() === filters.action.toUpperCase());
   }
   if (filters.source) {
-    signalsList = signalsList.filter(s => s.source?.toLowerCase().includes(filters.source.toLowerCase()));
+    const srcLower = filters.source.toLowerCase();
+    if (srcLower === 'multi_source' || srcLower === 'multi') {
+      signalsList = signalsList.filter(s => s.hasMultipleSources);
+    } else {
+      signalsList = signalsList.filter(s => 
+        s.source?.toLowerCase().includes(srcLower) || 
+        s.sourcesBreakdown?.some(sb => sb.sourceLabel?.toLowerCase().includes(srcLower) || sb.sourceType?.toLowerCase().includes(srcLower))
+      );
+    }
   }
   if (filters.status) {
     signalsList = signalsList.filter(s => s.status?.toUpperCase() === filters.status.toUpperCase());

@@ -61,6 +61,10 @@ async function generateBestInsights() {
       source: sig.source,
       rating: sig.rating,
       priority: 1,
+      hasMultipleSources: Boolean(sig.hasMultipleSources),
+      sourcesBreakdown: sig.sourcesBreakdown || [],
+      sourceOfTruth: sig.sourceOfTruth || null,
+      finalVerdict: sig.finalVerdict || null,
       signal: sig
     });
   }
@@ -94,8 +98,11 @@ async function generateBestInsights() {
       source: sig.source,
       sourcePriority: sig.sourcePriority || getSourcePriority(sig.source),
       isSourceOfTruth: isWA,
-      sourceOfTruth: isWA ? 'WhatsApp' : null,
+      sourceOfTruth: isWA ? 'WhatsApp' : sig.sourceOfTruth || null,
       priority: isWA ? 1 : (sig.rating && sig.rating >= 4 ? 2 : 3),
+      hasMultipleSources: Boolean(sig.hasMultipleSources),
+      sourcesBreakdown: sig.sourcesBreakdown || [],
+      finalVerdict: sig.finalVerdict || null,
       signal: sig
     });
   }
@@ -171,6 +178,26 @@ async function generateBestInsights() {
         ? 'WhatsApp (Source of Truth) • Cross-referenced with Google Sheet'
         : (distinctSources > 1 ? `Consensus (${distinctSources} sources)` : signalWithPrice.source);
 
+      const breakdown = groupSignals.map(sib => {
+        const isWA = sib.isSourceOfTruth || (sib.source && sib.source.toLowerCase().includes('whatsapp'));
+        return {
+          id: sib.id,
+          source: sib.source,
+          sourceLabel: isWA ? 'WhatsApp (Source of Truth)' : (sib.source?.includes('Watchlist') ? 'Google Sheet: Watchlist' : sib.source?.includes('Stock list') ? 'Google Sheet: Stock list' : sib.sourceLabel || sib.source),
+          sourceType: isWA ? 'whatsapp' : (sib.source?.toLowerCase().includes('sheet') ? 'google_sheet' : 'telegram'),
+          action: sib.action,
+          price: sib.entryPrice || sib.entryMax || sib.target1,
+          rating: sib.rating,
+          status: sib.status,
+          statusReason: sib.statusReason,
+          isExpired: Boolean(sib.isExpired),
+          isSourceOfTruth: Boolean(isWA),
+          timestamp: sib.timestamp || sib.updatedAt,
+          sender: sib.sender,
+          rawText: sib.rawText
+        };
+      }).sort((a, b) => (b.isSourceOfTruth ? 1 : 0) - (a.isSourceOfTruth ? 1 : 0));
+
       actionableInsights.push({
         type: 'CONSENSUS',
         symbol: sym,
@@ -191,6 +218,9 @@ async function generateBestInsights() {
         sourceOfTruth: waSignal ? 'WhatsApp' : null,
         isExpiredBuy: Boolean(isExitActive),
         expiredReason: isExitActive ? `Buy expired due to WhatsApp ${waExitSignal.action} call` : null,
+        hasMultipleSources: distinctSources > 1,
+        sourcesBreakdown: breakdown,
+        finalVerdict: consensusReason,
         signals: groupSignals,
         priority: waSignal ? 1 : 3
       });

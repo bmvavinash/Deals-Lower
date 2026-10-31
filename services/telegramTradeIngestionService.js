@@ -166,6 +166,12 @@ function startTelegramIngestion(token = null) {
       const forwardSource = msg.forward_from_chat?.title || msg.forward_from?.first_name || null;
       const sourceLabel = forwardSource ? `Telegram Fwd: ${forwardSource}` : `Telegram: ${msg.chat.title || senderName}`;
 
+      // Hard guard: Reject shopping deals channels (Lowerdeal, Deals Global, Flipkart, Amazon, etc.)
+      if (chatId === -1001888310864 || chatId === -1001944640108 || /deal|loot|coupon|discount|amazon|flipkart|fkrt|amzn/i.test(sourceLabel)) {
+        logger.debug(`Ignored shopping deals message from ${sourceLabel}`);
+        return;
+      }
+
       // 1. Check if user is replying to a bot doubt question
       if (msg.reply_to_message && pendingQuestionMap.has(msg.reply_to_message.message_id)) {
         const signalId = pendingQuestionMap.get(msg.reply_to_message.message_id);
