@@ -71,10 +71,14 @@ function isNoiseLine(line) {
   return false;
 }
 
-function generateSignalId(symbol, action, price, dateStr) {
-  const safeDate = (dateStr || new Date().toISOString().slice(0, 10)).replace(/[^0-9]/g, '');
-  const cleanPrice = String(price || '0').replace(/[^0-9]/g, '');
-  return `${(symbol || 'UNKNOWN').toUpperCase()}_${(action || 'CALL').toUpperCase()}_${cleanPrice}_${safeDate}`;
+function generateSignalId(symbol, action, price, dateStr, source = '') {
+  const sym = (symbol || 'UNKNOWN').toUpperCase().trim();
+  const src = (source || '').toLowerCase();
+  if (src.includes('whatsapp')) return `WA_SOIC_${sym}`;
+  if (src.includes('watchlist')) return `GS_WATCHLIST_${sym}`;
+  if (src.includes('stock list')) return `GS_STOCKLIST_${sym}`;
+  if (src.includes('telegram')) return `TG_${sym}`;
+  return `STOCK_${sym}`;
 }
 
 function parsePrice(str) {
@@ -92,6 +96,17 @@ function parseStockMessage(rawText, meta = {}) {
     return {
       isTradeSignal: false,
       reason: 'Message too short or empty',
+      signals: [],
+      rawText,
+      meta
+    };
+  }
+
+  // Reject e-commerce loot / discount / shopping deals chatter immediately
+  if (/flipkart|amazon|amzn\.in|fkrt\.co|myntra|ajio|\bloot\b|\bdiscount\b|\bcoupon\b|\bcombo\s+pack\b|\bfree\s+delivery\b|\bmrp\s*:/i.test(rawText)) {
+    return {
+      isTradeSignal: false,
+      reason: 'E-commerce shopping deals message rejected',
       signals: [],
       rawText,
       meta
@@ -135,7 +150,7 @@ function parseStockMessage(rawText, meta = {}) {
       const isReinitiateCall = action === 'REINITIATE' || /reinitiate|re-initiate|re-enter|fresh\s+buy/i.test(rawText);
 
       signals.push({
-        id: generateSignalId(symbol, action, price, meta.timestamp),
+        id: generateSignalId(symbol, action, price, meta.timestamp, meta.source),
         companyName: currentItem.companyName,
         symbol: symbol,
         exchange: 'NSE',

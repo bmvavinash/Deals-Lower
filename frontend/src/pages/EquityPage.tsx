@@ -2,6 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { stocksAPI } from '../services/api';
 import './EquityPage.css';
 
+interface SourceBreakdownItem {
+  id: string;
+  symbol?: string;
+  source: string;
+  sourceLabel: string;
+  sourceType: 'whatsapp' | 'google_sheet' | 'telegram';
+  action: string;
+  price?: number | null;
+  rating?: number | null;
+  status: string;
+  statusReason?: string | null;
+  isExpired: boolean;
+  isSourceOfTruth: boolean;
+  timestamp?: string;
+  sender?: string;
+  rawText?: string;
+}
+
 interface StockSignal {
   id: string;
   symbol: string;
@@ -25,6 +43,10 @@ interface StockSignal {
   clarificationReason?: string;
   isExpired?: boolean;
   isReinitiated?: boolean;
+  hasMultipleSources?: boolean;
+  sourcesBreakdown?: SourceBreakdownItem[];
+  sourceOfTruth?: string | null;
+  finalVerdict?: string | null;
 }
 
 interface BestInsight {
@@ -45,6 +67,10 @@ interface BestInsight {
   distinctSources?: number;
   isExpiredBuy?: boolean;
   expiredReason?: string;
+  hasMultipleSources?: boolean;
+  sourcesBreakdown?: SourceBreakdownItem[];
+  sourceOfTruth?: string | null;
+  finalVerdict?: string | null;
 }
 
 interface ClarificationItem {
@@ -115,8 +141,11 @@ const EquityPage: React.FC = () => {
   const [sortBy, setSortBy] = useState<string>('rating_desc');
   const [ratingFilter, setRatingFilter] = useState<'all' | '4plus' | '3plus' | 'sub3'>('all');
   const [horizonFilter, setHorizonFilter] = useState<'all' | 'positional' | 'swing'>('all');
-  const [sourceFilter, setSourceFilter] = useState<'all' | 'whatsapp' | 'google_sheets' | 'sheet_watchlist' | 'sheet_stocklist' | 'telegram'>('all');
+  const [sourceFilter, setSourceFilter] = useState<'all' | 'whatsapp' | 'google_sheets' | 'sheet_watchlist' | 'sheet_stocklist' | 'telegram' | 'multi_source'>('all');
   const [cmpStatusFilter, setCmpStatusFilter] = useState<'all' | 'buy_range' | 'target_met' | 'near' | 'expired'>('all');
+
+  // Comparative Multi-Source Modal state (WhatsApp Source of Truth vs Google Sheet)
+  const [selectedStockForSources, setSelectedStockForSources] = useState<StockSignal | BestInsight | null>(null);
 
   // Telegram Config Modal state
   const [showTelegramModal, setShowTelegramModal] = useState(false);
@@ -466,10 +495,11 @@ const EquityPage: React.FC = () => {
 
       // Sub-filter: Source
       const src = s.source?.toLowerCase() || '';
-      if (sourceFilter === 'whatsapp' && !src.includes('whatsapp')) return false;
-      if (sourceFilter === 'google_sheets' && !src.includes('sheet')) return false;
-      if (sourceFilter === 'sheet_watchlist' && !src.includes('watchlist')) return false;
-      if (sourceFilter === 'sheet_stocklist' && !src.includes('stock list')) return false;
+      if (sourceFilter === 'multi_source' && !s.hasMultipleSources) return false;
+      if (sourceFilter === 'whatsapp' && !src.includes('whatsapp') && !s.sourcesBreakdown?.some(sb => sb.sourceType === 'whatsapp')) return false;
+      if (sourceFilter === 'google_sheets' && !src.includes('sheet') && !s.sourcesBreakdown?.some(sb => sb.sourceType === 'google_sheet')) return false;
+      if (sourceFilter === 'sheet_watchlist' && !src.includes('watchlist') && !s.sourcesBreakdown?.some(sb => sb.sourceLabel?.includes('Watchlist'))) return false;
+      if (sourceFilter === 'sheet_stocklist' && !src.includes('stock list') && !s.sourcesBreakdown?.some(sb => sb.sourceLabel?.includes('Stock list'))) return false;
       if (sourceFilter === 'telegram' && !src.includes('telegram')) return false;
 
       // Sub-filter: CMP Status
@@ -1104,6 +1134,19 @@ const EquityPage: React.FC = () => {
                         <span>Source: {item.source || 'Advisory'}</span>
                       )}
                     </span>
+                    {item.hasMultipleSources && (
+                      <button
+                        type="button"
+                        className="btn-sources-badge"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedStockForSources(item);
+                        }}
+                        title="View comparative sources breakdown"
+                      >
+                        🔀 View Sources ({item.sourcesBreakdown?.length || 2})
+                      </button>
+                    )}
                     {item.type === 'ACTIONABLE_EXIT' && <span style={{ color: '#f87171', fontWeight: 600 }}>🚨 Exit Alert Sent</span>}
                     {item.type === 'BUY_OPPORTUNITY' && <span style={{ color: '#4ade80', fontWeight: 600 }}>🚀 In Buy Range</span>}
                   </div>
@@ -1249,10 +1292,11 @@ const EquityPage: React.FC = () => {
               title="Filter by Advisory Source (WhatsApp = 1st Priority / Source of Truth)"
             >
               <option value="all">📂 All Advisory Sources</option>
-              <option value="whatsapp">🟢 1st Priority: WhatsApp (Source of Truth)</option>
-              <option value="google_sheets">📄 2nd Priority: Google Sheets (All)</option>
-              <option value="sheet_watchlist">📄 GS: Watchlist</option>
-              <option value="sheet_stocklist">📋 GS: Stock list</option>
+              <option value="multi_source">🔀 Multi-Source (Both WA &amp; Sheet)</option>
+              <option value="whatsapp">👑 1st Priority: WhatsApp (Source of Truth)</option>
+              <option value="google_sheets">📑 2nd Priority: Google Sheets (All)</option>
+              <option value="sheet_watchlist">&nbsp;&nbsp;├─ Google Sheet: Watchlist</option>
+              <option value="sheet_stocklist">&nbsp;&nbsp;└─ Google Sheet: Stock list</option>
               <option value="telegram">✈️ 3rd Priority: Telegram Ingestion</option>
             </select>
 
@@ -1464,12 +1508,22 @@ const EquityPage: React.FC = () => {
                             )}
                             {sig.source?.toLowerCase().includes('whatsapp') ? (
                               <span className="source-of-truth-pill">
-                                🟢 WhatsApp (Source of Truth)
+                                👑 WhatsApp (Source of Truth)
                               </span>
                             ) : (
                               <span className="source-secondary-pill">
                                 📄 {sig.source}
                               </span>
+                            )}
+                            {sig.hasMultipleSources && (
+                              <button
+                                type="button"
+                                className="btn-sources-badge"
+                                onClick={() => setSelectedStockForSources(sig)}
+                                title="Click to view all sources (WhatsApp vs Google Sheet)"
+                              >
+                                🔀 View Sources ({sig.sourcesBreakdown?.length || 2})
+                              </button>
                             )}
                           </div>
                           <span style={{ fontSize: '11px', color: '#64748b' }}>
@@ -1594,11 +1648,23 @@ const EquityPage: React.FC = () => {
                             <div style={{ fontSize: '12px', color: '#4b5563', lineHeight: 1.3 }}>
                               {sig.source?.toLowerCase().includes('whatsapp') ? (
                                 <div className="source-of-truth-pill" style={{ display: 'inline-flex', marginBottom: '4px' }}>
-                                  🟢 WhatsApp (Source of Truth)
+                                  👑 WhatsApp (Source of Truth)
                                 </div>
                               ) : (
                                 <div className="source-secondary-pill" style={{ display: 'inline-flex', marginBottom: '4px' }}>
                                   📄 {sig.source}
+                                </div>
+                              )}
+                              {sig.hasMultipleSources && (
+                                <div style={{ marginTop: '2px', marginBottom: '4px' }}>
+                                  <button
+                                    type="button"
+                                    className="btn-sources-badge"
+                                    onClick={() => setSelectedStockForSources(sig)}
+                                    title="Click to compare WhatsApp vs Google Sheet sources"
+                                  >
+                                    🔀 View Sources ({sig.sourcesBreakdown?.length || 2})
+                                  </button>
                                 </div>
                               )}
                               <div style={{ color: '#6b7280', fontSize: '11px' }}>
@@ -1656,6 +1722,151 @@ const EquityPage: React.FC = () => {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* 9. Comparative Multi-Source Modal (WhatsApp Source of Truth vs Google Sheet) */}
+      {selectedStockForSources && (
+        <div className="modal-overlay" onClick={() => setSelectedStockForSources(null)}>
+          <div className="sources-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                    {selectedStockForSources.symbol} - Advisory Sources Comparison
+                  </h3>
+                  {selectedStockForSources.hasMultipleSources && (
+                    <span className="badge-multi-source-count">
+                      {selectedStockForSources.sourcesBreakdown?.length || 2} Sources
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
+                  {selectedStockForSources.companyName}
+                  {selectedStockForSources.currentCMP && (
+                    <span style={{ marginLeft: '8px', fontWeight: 600, color: '#0f172a' }}>
+                      | Live CMP: ₹{selectedStockForSources.currentCMP}
+                      {selectedStockForSources.dayChangePercent !== undefined && selectedStockForSources.dayChangePercent !== null && (
+                        <span style={{ 
+                          marginLeft: '4px',
+                          color: selectedStockForSources.dayChangePercent >= 0 ? '#16a34a' : '#dc2626'
+                        }}>
+                          ({selectedStockForSources.dayChangePercent >= 0 ? '+' : ''}{selectedStockForSources.dayChangePercent}%)
+                        </span>
+                      )}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button className="modal-close" onClick={() => setSelectedStockForSources(null)}>✕</button>
+            </div>
+
+            <div className="sources-modal-body">
+              {/* WhatsApp Source of Truth Rule Banner */}
+              <div className="verdict-banner">
+                <div className="verdict-banner-title">
+                  👑 WhatsApp is the 1st Priority Final Source of Truth
+                </div>
+                <div className="verdict-banner-desc">
+                  {selectedStockForSources.finalVerdict || (
+                    selectedStockForSources.sourcesBreakdown?.some(sb => sb.isSourceOfTruth)
+                      ? 'WhatsApp advisory messages take strict precedence. If an exit call was issued in WhatsApp, the Google Sheet buy recommendation is permanently expired unless reinitiated in WhatsApp.'
+                      : 'Consensus across multiple advisory sources.'
+                  )}
+                </div>
+              </div>
+
+              {/* Sources Cards Grid */}
+              <div className="sources-grid">
+                {(selectedStockForSources.sourcesBreakdown || []).map((sourceItem, idx) => {
+                  const isWA = sourceItem.isSourceOfTruth || sourceItem.sourceType === 'whatsapp';
+                  const isExit = ['SELL', 'EXIT', 'COMPLETE_EXIT', 'PARTIAL_EXIT'].includes(sourceItem.action?.toUpperCase());
+
+                  return (
+                    <div 
+                      key={sourceItem.id || idx} 
+                      className={`source-card ${isWA ? 'source-card-whatsapp' : 'source-card-secondary'}`}
+                    >
+                      <div className="source-card-header">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '18px' }}>{isWA ? '👑' : '📑'}</span>
+                          <div>
+                            <div className="source-card-title">{sourceItem.sourceLabel}</div>
+                            <div className="source-card-priority">
+                              {isWA ? '1st Priority • Ultimate Source of Truth' : '2nd Priority • Secondary Advisory'}
+                            </div>
+                          </div>
+                        </div>
+                        <span className={`badge-action ${sourceItem.isExpired ? 'expired' : isExit ? 'sell' : 'buy'}`}>
+                          {sourceItem.action}
+                        </span>
+                      </div>
+
+                      <div className="source-card-stats">
+                        <div className="source-stat-box">
+                          <span className="source-stat-label">
+                            {isExit ? 'Exit / Call Price' : 'Buy Range / Ceiling'}
+                          </span>
+                          <span className="source-stat-val">
+                            {sourceItem.price ? `₹${sourceItem.price}` : 'Market Price'}
+                          </span>
+                        </div>
+
+                        {sourceItem.rating ? (
+                          <div className="source-stat-box">
+                            <span className="source-stat-label">Conviction</span>
+                            <span className="source-stat-val" style={{ color: '#d97706' }}>
+                              {'⭐'.repeat(sourceItem.rating)} ({sourceItem.rating}★)
+                            </span>
+                          </div>
+                        ) : null}
+
+                        <div className="source-stat-box">
+                          <span className="source-stat-label">Signal Status</span>
+                          <span className={`source-status-badge ${sourceItem.isExpired ? 'status-expired' : 'status-active'}`}>
+                            {sourceItem.isExpired ? '⛔ EXPIRED' : (sourceItem.status || 'ACTIVE')}
+                          </span>
+                        </div>
+                      </div>
+
+                      {sourceItem.statusReason && (
+                        <div className="source-status-reason">
+                          <strong>Note: </strong>{sourceItem.statusReason}
+                        </div>
+                      )}
+
+                      {sourceItem.rawText && (
+                        <div className="source-raw-box">
+                          <div className="source-raw-label">
+                            {isWA ? 'Original WhatsApp Advisory Message:' : 'Google Sheet Source Entry:'}
+                          </div>
+                          <div className="source-raw-content">
+                            {sourceItem.sender && <span style={{ color: '#059669', fontWeight: 600 }}>{sourceItem.sender} </span>}
+                            {sourceItem.rawText}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="source-card-footer">
+                        <span>Synced: {sourceItem.timestamp ? new Date(sourceItem.timestamp).toLocaleString('en-IN') : 'Active'}</span>
+                        {isWA && (
+                          <span className="source-truth-tag">
+                            ✓ Controls Final Portfolio Action
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ justifyContent: 'flex-end' }}>
+              <button className="btn-secondary" onClick={() => setSelectedStockForSources(null)}>
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

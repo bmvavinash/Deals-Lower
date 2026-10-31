@@ -149,7 +149,7 @@ async function extractGoogleSheetSignals(options = {}) {
       const horizon = cols[9] || 'Medium term';
 
       allExtractedSignals.push({
-        id: `GS_WATCHLIST_${ticker}_${Date.now()}_${count}`,
+        id: `GS_WATCHLIST_${ticker}`,
         symbol: ticker,
         companyName: stockName || ticker,
         exchange: 'NSE',
@@ -204,7 +204,7 @@ async function extractGoogleSheetSignals(options = {}) {
       }
 
       allExtractedSignals.push({
-        id: `GS_STOCKLIST_${ticker}_${Date.now()}_${count}`,
+        id: `GS_STOCKLIST_${ticker}`,
         symbol: ticker,
         companyName: ticker === 'AARTIPHARM' ? 'Aarti Pharmalabs Limited' : ticker,
         exchange: 'NSE',
