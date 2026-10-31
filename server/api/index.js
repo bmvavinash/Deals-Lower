@@ -111,6 +111,7 @@ const categoriesRoutes = require('./routes/categories');
 const matchingConfigRoutes = require('./routes/matchingConfig');
 const affiliatesRoutes = require('./routes/affiliates');
 const authRoutes = require('./routes/auth');
+const cuelinksRoutes = require('./routes/cuelinks');
 
 const app = express();
 const PORT = process.env.PORT || constants.frontend?.apiPort || 3003;
@@ -215,6 +216,7 @@ mountApiRoute('/categories', categoriesRoutes);
 mountApiRoute('/matching-config', matchingConfigRoutes);
 mountApiRoute('/affiliates', affiliatesRoutes);
 mountApiRoute('/auth', authRoutes);
+mountApiRoute('/cuelinks', cuelinksRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
