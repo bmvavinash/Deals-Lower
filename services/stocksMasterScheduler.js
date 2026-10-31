@@ -13,8 +13,7 @@ try {
     }
   };
 }
-const { extractActiveWhatsAppChat } = require('./whatsappLiveExtractor');
-const { extractGoogleSheetSignals } = require('./googleSheetLiveExtractor');
+// WhatsApp and Google Sheets extractors are lazy-loaded only when running locally on PC (not in cloud)
 const { refreshQuotesNow } = require('./marketQuoteRefresher');
 const { startTelegramIngestion, getTelegramIngestionStatus } = require('./telegramTradeIngestionService');
 const { getAllSignals, getBestInsights } = require('../database/stocksMultiDB');
@@ -104,6 +103,7 @@ async function runWhatsAppScheduledJob() {
   logger.info(`[Scheduler] ⏰ Running 3-min WhatsApp Poller on Chrome Port 9223 (Run #${jobState.totalRuns})...`);
 
   try {
+    const { extractActiveWhatsAppChat } = require('./whatsappLiveExtractor');
     const result = await extractActiveWhatsAppChat({ port: 9223 });
     if (result.success) {
       jobState.lastSuccessAt = new Date().toISOString();
@@ -169,6 +169,7 @@ async function runGoogleSheetsScheduledJob() {
   logger.info(`[Scheduler] 📊 Running 15-min Google Sheet Sync on Chrome Port 9223 (Run #${jobState.totalRuns})...`);
 
   try {
+    const { extractGoogleSheetSignals } = require('./googleSheetLiveExtractor');
     const result = await extractGoogleSheetSignals({ port: 9223 });
     if (result.success) {
       jobState.signalsSynced += (result.extractedSignals?.length || 0);
