@@ -32,13 +32,20 @@ try {
   logger.warn('Could not initialize local stocks DB backup file', { error: e.message });
 }
 
+let persistTimer = null;
 function persistLocalDB() {
-  try {
-    memoryDB.meta.lastUpdated = new Date().toISOString();
-    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(memoryDB, null, 2), 'utf8');
-  } catch (e) {
-    logger.error('Failed to persist local stocks DB', { error: e.message });
-  }
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    try {
+      memoryDB.meta.lastUpdated = new Date().toISOString();
+      fs.writeFile(LOCAL_DB_PATH, JSON.stringify(memoryDB), 'utf8', (err) => {
+        if (err) logger.error('Failed to persist local stocks DB', { error: err.message });
+      });
+    } catch (e) {
+      logger.error('Failed to persist local stocks DB', { error: e.message });
+    }
+  }, 500);
 }
 
 // Get Firebase admin database reference if initialized

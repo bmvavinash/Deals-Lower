@@ -134,8 +134,14 @@ async function runCMPRefresherJob() {
   jobState.isMarketHours = marketOpen;
   jobState.lastRunAt = new Date().toISOString();
   jobState.totalRuns++;
-  jobState.lastStatus = 'running';
 
+  if (!marketOpen) {
+    jobState.lastStatus = 'market_closed';
+    logger.info(`[Scheduler] 💤 Indian market closed (Mon-Fri 09:15-15:30 IST). Skipping quote refresh. (Run #${jobState.totalRuns})`);
+    return;
+  }
+
+  jobState.lastStatus = 'running';
   logger.info(`[Scheduler] ⚡ Running CMP Refresher Job (Market Open: ${marketOpen}, Run #${jobState.totalRuns})...`);
 
   try {
@@ -266,10 +272,16 @@ function startMasterScheduler(options = {}) {
 
   logger.info(`🚀 Starting Stocks Master Scheduler in [${schedulerState.environment}] mode:`);
   logger.info('  • Live CMP Refresher: Every 2 minutes (Market hours: Mon-Fri 09:15-15:30 IST)');
-  logger.info('  • Telegram Ingestion Poller: 24/7 continuous (Listening for forwarded trades in @dealsequity)');
 
-  // A. Start 24/7 Telegram Ingestion Listener
-  startTelegramIngestion();
+  // A. Start Telegram Ingestion Listener only if NOT in cloud
+  // Running two polling instances on the same token causes 409 Conflict loops and OOM kills
+  if (!isCloud) {
+    logger.info('  • Telegram Ingestion Poller: 24/7 continuous (Listening for forwarded trades in @dealsequity)');
+    startTelegramIngestion();
+  } else {
+    logger.info('  • Telegram Ingestion Poller: Skipped on Render cloud container (runs on local workstation)');
+    schedulerState.telegramIngestion.mode = 'managed_on_local_pc';
+  }
 
   // B. CMP Refresher (every 2 minutes during market hours)
   const cmpTask = cron.schedule('*/2 * * * *', () => {
@@ -319,10 +331,14 @@ function startMasterScheduler(options = {}) {
     schedulerState.sheetsSync.lastStatus = 'runs_on_local_pc_only';
   }
 
-  // Initial warm-up execution for CMP after 5 seconds
-  setTimeout(() => {
-    runCMPRefresherJob().catch(() => {});
-  }, 5000);
+  // Initial warm-up execution for CMP after 5 seconds ONLY if market is open
+  if (isIndianMarketOpen()) {
+    setTimeout(() => {
+      runCMPRefresherJob().catch(() => {});
+    }, 5000);
+  } else {
+    logger.info('[Scheduler] Indian market closed. Warm-up CMP refresh skipped.');
+  }
 
   return { success: true, status: 'started', state: getSchedulerState() };
 }

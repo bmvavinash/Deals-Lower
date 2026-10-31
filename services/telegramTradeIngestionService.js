@@ -47,6 +47,8 @@ function startTelegramIngestion(token = null) {
 
   try {
     botInstance = new TelegramBot(botToken, { polling: true });
+    botInstance.on('polling_error', (err) => logger.warn('Telegram Poller error (handled):', { error: err.message, code: err.code }));
+    botInstance.on('error', (err) => logger.warn('Telegram Bot error (handled):', { error: err.message }));
     isPolling = true;
     stats.startedAt = new Date().toISOString();
 

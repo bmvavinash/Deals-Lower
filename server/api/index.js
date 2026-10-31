@@ -249,24 +249,35 @@ try {
 // Autonomous Keep-Alive Self-Ping (Prevents Render free tier from hibernating)
 try {
   const publicUrl = process.env.RENDER_EXTERNAL_URL || 'https://dealsoptimised.onrender.com';
-  const PING_INTERVAL_MS = 5 * 60 * 1000;
+  const https = require('https');
+  const http = require('http');
 
-  const sendSelfPing = async () => {
+  const sendSelfPing = () => {
     try {
       const pingUrl = `${publicUrl.replace(/\/+$/, '')}/health`;
-      const res = await fetch(pingUrl, {
-        headers: { 'User-Agent': 'DealsOptimised-SelfPing/1.0' }
+      const client = pingUrl.startsWith('https') ? https : http;
+      const req = client.get(pingUrl, {
+        headers: { 'User-Agent': 'DealsOptimised-SelfPing/1.0' },
+        timeout: 10000
+      }, (res) => {
+        logger.info(`Keep-alive self-ping sent to ${pingUrl}`, { status: res.statusCode });
       });
-      logger.info(`Keep-alive self-ping sent to ${pingUrl}`, { status: res.status });
+      req.on('error', (err) => {
+        logger.warn('Keep-alive self-ping warning (will retry next interval)', { error: err.message });
+      });
+      req.on('timeout', () => {
+        req.destroy();
+      });
     } catch (pingErr) {
-      logger.warn('Keep-alive self-ping warning (will retry next interval)', { error: pingErr.message });
+      logger.warn('Keep-alive self-ping warning', { error: pingErr.message });
     }
   };
 
-  setTimeout(sendSelfPing, 2 * 60 * 1000);
-  const keepAliveTimer = setInterval(sendSelfPing, PING_INTERVAL_MS);
+  // First ping after 45 seconds, then recurring every 4 minutes (prevents 15m idle hibernate)
+  setTimeout(sendSelfPing, 45 * 1000);
+  const keepAliveTimer = setInterval(sendSelfPing, 4 * 60 * 1000);
   if (keepAliveTimer.unref) keepAliveTimer.unref();
-  logger.info('Autonomous Keep-Alive Self-Ping scheduled every 5 minutes.');
+  logger.info('Autonomous Keep-Alive Self-Ping scheduled every 4 minutes.');
 } catch (keepAliveErr) {
   logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
 }
