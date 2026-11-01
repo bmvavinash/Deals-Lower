@@ -7,10 +7,22 @@ const { getModuleLogger } = require('../logger/logger');
 const logger = getModuleLogger('expired-deals-cleaner');
 
 if (!admin.apps.length) {
+  let serviceAccount = null;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    try {
+      serviceAccount = typeof process.env.FIREBASE_SERVICE_ACCOUNT_JSON === 'object'
+        ? process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+        : JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } catch (_) {}
+  }
   const dbname = constants.postingTypesConfig[constants.type].DB;
-  const DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
+  const DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`] || 'lowerdealhub';
   const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
-  const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+  if (!serviceAccount) {
+    try {
+      serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+    } catch (_) {}
+  }
   
   const databaseURL = DB_Name === 'lowerdealhub' 
     ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
@@ -24,8 +36,12 @@ if (!admin.apps.length) {
 
 const db = admin.database();
 
-async function cleanupExpiredDealsAndBanners() {
-  logger.info('🧹 Starting expired deals and banners database cleanup...');
+/**
+ * Lean, memory-bounded expired deals and banners cleaner.
+ * Uses shallow key queries to avoid downloading 200,000+ objects into V8 memory.
+ */
+async function cleanupExpiredDealsAndBanners(maxBatch = 100) {
+  logger.info('🧹 Starting memory-efficient expired deals and banners cleanup...');
   const productdealsRef = db.ref('productdeals');
   const staticRef = db.ref('productdeals_static');
   const dealsRef = db.ref('deals');
@@ -36,68 +52,101 @@ async function cleanupExpiredDealsAndBanners() {
   let hotDealsDeleted = 0;
   let bannersDeactivated = 0;
 
+  const DB_Name = config.DATABASE_CONFIG.DB1_NAME || 'lowerdealhub';
+  const shallowBaseUrl = DB_Name === 'lowerdealhub'
+    ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+    : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+
   try {
-    // 1. Process productdeals (and productdeals_static)
-    logger.info('Fetching productdeals for expiration check...');
-    const productDealsSnapshot = await productdealsRef.once('value');
-    const productDeals = productDealsSnapshot.val() || {};
-    
-    for (const [key, product] of Object.entries(productDeals)) {
-      if (product.isDeal || product.dealExpiresAt) {
-        const expiry = Number(product.dealExpiresAt);
-        // Wipe deal if expiry is in the past
-        if (expiry && expiry <= now) {
-          logger.info(`Wiping expired deal from productdeals: ${key} (Expired at ${new Date(expiry).toISOString()})`);
-          
-          const updates = {
-            isDeal: false,
-            dealName: null,
-            dealLabel: null,
-            dealExpiresAt: null,
-            deal: null,
-            limitedTimeDeal: null,
-            timer: null,
-            updateTimestamp: new Date().toISOString()
-          };
-          
-          await productdealsRef.child(key).update(updates);
-          await staticRef.child(key).update(updates);
-          expiredDealsWiped++;
+    // 1. Process Banners (typically ~2,000 entries - safe to check active ones)
+    try {
+      logger.info('Checking banners for expiration...');
+      const bannersSnapshot = await bannersRef.once('value');
+      const banners = bannersSnapshot.val() || {};
+      
+      for (const [key, banner] of Object.entries(banners)) {
+        if (banner && banner.isActive) {
+          const expiry = Number(banner.expirationTimestamp);
+          if (expiry && expiry <= now) {
+            logger.info(`Deactivating expired banner: ${key}`);
+            await bannersRef.child(key).update({
+              isActive: false,
+              updateTimestamp: new Date().toISOString()
+            });
+            bannersDeactivated++;
+          }
         }
       }
-    }
-    
-    // 2. Process deals (Hot Deals) - delete completely if expired
-    logger.info('Fetching hot deals for expiration check...');
-    const hotDealsSnapshot = await dealsRef.once('value');
-    const hotDeals = hotDealsSnapshot.val() || {};
-    
-    for (const [key, deal] of Object.entries(hotDeals)) {
-      const expiry = Number(deal.dealExpiresAt);
-      if (expiry && expiry <= now) {
-        logger.info(`Deleting expired hot deal: ${key}`);
-        await dealsRef.child(key).remove();
-        hotDealsDeleted++;
-      }
+    } catch (bannerErr) {
+      logger.warn('Banner expiration check error (non-fatal):', { error: bannerErr.message });
     }
 
-    // 3. Process banners - mark inactive/expired if past expiration
-    logger.info('Fetching banners for expiration check...');
-    const bannersSnapshot = await bannersRef.once('value');
-    const banners = bannersSnapshot.val() || {};
-    
-    for (const [key, banner] of Object.entries(banners)) {
-      if (banner.isActive) {
-        const expiry = Number(banner.expirationTimestamp);
-        if (expiry && expiry <= now) {
-          logger.info(`Deactivating expired banner: ${key} (Expired at ${new Date(expiry).toISOString()})`);
-          await bannersRef.child(key).update({
-            isActive: false,
-            updateTimestamp: new Date().toISOString()
-          });
-          bannersDeactivated++;
+    // 2. Process Deals (Hot Deals) via shallow keys (check newest 100 deals)
+    try {
+      logger.info('Fetching shallow deals keys for expiration check...');
+      const dealsRes = await fetch(`${shallowBaseUrl}/deals.json?shallow=true`);
+      if (dealsRes.ok) {
+        const dealsKeysObj = await dealsRes.json();
+        const allDealKeys = Object.keys(dealsKeysObj || {});
+        // Focus on the newest 100 deals where active deals live
+        const sampleDealKeys = allDealKeys.slice(-maxBatch);
+
+        for (const key of sampleDealKeys) {
+          try {
+            const snap = await dealsRef.child(key).once('value');
+            const deal = snap.val();
+            if (deal && deal.dealExpiresAt) {
+              const expiry = Number(deal.dealExpiresAt);
+              if (expiry && expiry <= now) {
+                logger.info(`Deleting expired hot deal: ${key}`);
+                await dealsRef.child(key).remove();
+                hotDealsDeleted++;
+              }
+            }
+          } catch (_) {}
         }
       }
+    } catch (dealErr) {
+      logger.warn('Hot deals expiration check error (non-fatal):', { error: dealErr.message });
+    }
+
+    // 3. Process ProductDeals (check recent 50 products for expired deal badges)
+    try {
+      logger.info('Fetching shallow productdeals keys for deal badge expiration check...');
+      const prodRes = await fetch(`${shallowBaseUrl}/productdeals.json?shallow=true`);
+      if (prodRes.ok) {
+        const prodKeysObj = await prodRes.json();
+        const allProdKeys = Object.keys(prodKeysObj || {});
+        const sampleProdKeys = allProdKeys.slice(-50);
+
+        for (const key of sampleProdKeys) {
+          try {
+            const snap = await productdealsRef.child(key).once('value');
+            const product = snap.val();
+            if (product && (product.isDeal || product.dealExpiresAt)) {
+              const expiry = Number(product.dealExpiresAt);
+              if (expiry && expiry <= now) {
+                logger.info(`Wiping expired deal badge from productdeals: ${key}`);
+                const updates = {
+                  isDeal: false,
+                  dealName: null,
+                  dealLabel: null,
+                  dealExpiresAt: null,
+                  deal: null,
+                  limitedTimeDeal: null,
+                  timer: null,
+                  updateTimestamp: new Date().toISOString()
+                };
+                await productdealsRef.child(key).update(updates);
+                await staticRef.child(key).update(updates);
+                expiredDealsWiped++;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    } catch (prodErr) {
+      logger.warn('Productdeals deal badge check error (non-fatal):', { error: prodErr.message });
     }
 
     logger.info('🧹 Expired deals and banners cleanup completed', {
@@ -113,7 +162,7 @@ async function cleanupExpiredDealsAndBanners() {
     };
   } catch (error) {
     logger.error('Error cleaning up expired deals and banners:', { error: error.message });
-    throw error;
+    return { expiredDealsWiped, hotDealsDeleted, bannersDeactivated };
   }
 }
 
