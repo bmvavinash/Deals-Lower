@@ -3,7 +3,15 @@
 // const { environment } = require('./config/constants');
 
 // const ENVIRONMENT = environment; // or 'stage' based on your current setup
-const pathToFile = process.env.KEYS_DIR_PATH || (process.env.KEYS_DIR_PATH || "C:/Users/anila/keys")
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+
+const pathToFile = process.env.KEYS_DIR_PATH || (
+  typeof process !== 'undefined' && process.platform === 'linux'
+    ? (fs.existsSync('/home/ubuntu/keys') ? '/home/ubuntu/keys' : path.join(os.homedir(), 'keys'))
+    : "C:/Users/anila/keys"
+);
 
 
 const facebookId="100094567890123" // Replace with your actual Facebook ID
