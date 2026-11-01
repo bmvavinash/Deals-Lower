@@ -6,6 +6,7 @@
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const { getModuleLogger } = require('../logger/logger');
 const { createChromeDriver } = require('../utils/seleniumDriver');
 const { getProductDetails } = require('../scheduler');

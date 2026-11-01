@@ -13,11 +13,16 @@
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
-const admin = require('firebase-admin');
-const { exec } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 const os = require('os');
+const { exec } = require('child_process');
 const cron = require('node-cron');
+
+// Load environment variables from .env
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+
+const admin = require('firebase-admin');
 const constants = require('../config/constants');
 const config = require('../config/config');
 const { getModuleLogger } = require('../logger/logger');
@@ -78,15 +83,20 @@ if (!serviceAccount) {
 }
 
 const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
-if (!defaultApp && serviceAccount) {
-  const databaseURL = DB_Name === 'lowerdealhub' 
-    ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
-    : `https://${DB_Name}-default-rtdb.firebaseio.com`;
-    
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: databaseURL
-  });
+if (!defaultApp) {
+  if (serviceAccount) {
+    const databaseURL = DB_Name === 'lowerdealhub' 
+      ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
+      : `https://${DB_Name}-default-rtdb.firebaseio.com`;
+      
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+      databaseURL: databaseURL
+    });
+  } else {
+    logger.error('CRITICAL: No Firebase credentials found for localDaemon!');
+    process.exit(1);
+  }
 }
 
 const db = admin.database();
