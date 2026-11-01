@@ -752,10 +752,20 @@ function getISTTimestamp() {
 }
 
 function getFlipkartProductId(url) {
-    const parsedUrl = new URL(url);
-    const searchParams = new URLSearchParams(parsedUrl.search);
-    let productCode = searchParams.get("pid") || "";
-    return productCode;
+    if (!url || typeof url !== 'string') return "";
+    try {
+        const parsedUrl = new URL(url);
+        const searchParams = new URLSearchParams(parsedUrl.search);
+        let productCode = searchParams.get("pid") || "";
+        if (!productCode) {
+            const m = url.match(/\/p\/(itm[a-z0-9]+)/i);
+            if (m) productCode = m[1];
+        }
+        return productCode;
+    } catch {
+        const m = url.match(/[?&]pid=([A-Z0-9]+)/i) || url.match(/\/p\/(itm[a-z0-9]+)/i);
+        return m ? m[1] : "";
+    }
 }
 
 

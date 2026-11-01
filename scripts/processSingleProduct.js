@@ -54,6 +54,13 @@ async function main() {
       }
     }
 
+    if (!productCode && storeKey) {
+      try {
+        const { extractProductCode } = require('../services/headlessProductExtractor');
+        productCode = extractProductCode(resolvedUrl, storeKey);
+      } catch (_) {}
+    }
+
     if (productCode) {
       logger.info(`Detected single product: [${storeKey || 'Unknown'}] code=${productCode}`);
       
