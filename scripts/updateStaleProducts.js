@@ -13,7 +13,7 @@ const logger = getModuleLogger('updateStaleProducts');
  * Efficiently discovers stale products using Firebase RTDB shallow key queries
  * to avoid downloading massive multi-megabyte payloads in cloud runners.
  */
-async function getStaleProducts(maxItems = 30, hoursOld = 12) {
+async function getStaleProducts(maxItems = 12, hoursOld = 12) {
   try {
     const DB_Name = config.DATABASE_CONFIG.DB1_NAME || 'lowerdealhub';
     const shallowUrl = DB_Name === 'lowerdealhub' 
@@ -139,14 +139,12 @@ async function main() {
                 
                 if (currentData) {
                     if (currentData.updatedAt === item.oldUpdatedAt) {
-                        // Scraper completely failed on it -> mark Out of Stock & flag error
+                        // Scraper completely failed on it -> hide from display & flag error, keep outOfStock untouched per user rule
                         await productDealsDB.productdealsRef.child(item.key).update({ 
                             isDisplay: false, 
-                            outOfStock: true, 
                             errorStatus: 'ScrapeFailed', 
                             updatedAt: new Date().toISOString() 
                         });
-                        markedOutOfStock++;
                         failedItems.push({ key: item.key, url: item.url, reason: 'ScrapeFailed / No price detected' });
                         logger.info(`Marked product with ScrapeFailed error: ${item.key}`);
                     } else {

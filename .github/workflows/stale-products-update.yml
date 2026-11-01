@@ -17,7 +17,7 @@ env:
 jobs:
   stale-products-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     concurrency:
       group: stale-products-update
       cancel-in-progress: true
