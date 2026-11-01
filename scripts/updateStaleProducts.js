@@ -101,7 +101,7 @@ async function main() {
     } catch (_) {}
     
     try {
-        const staleItems = await getStaleProducts(30, 12);
+        const staleItems = await getStaleProducts(12, 12);
         logger.info(`Found ${staleItems.length} stale products to process.`);
         
         if (staleItems.length === 0) {
