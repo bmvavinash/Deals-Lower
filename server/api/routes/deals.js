@@ -212,7 +212,6 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
   }
 
   // 2. Fallback to Firebase Queue if server extraction was unable or failed
-  let isDaemonAlive = false;
   let detectedPlatform = null;
   let productCode = null;
   try {
@@ -222,19 +221,45 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     // ignore
   }
 
+  // 3. Check heartbeats of both Daemons (Local residential PC vs Oracle Cloud VM)
+  let isLocalAlive = false;
+  let isOracleAlive = false;
+  let anyDaemonAlive = false;
+
   try {
     if (admin.apps.length) {
       const db = admin.database();
-      const heartbeatRef = db.ref('daemonHeartbeat');
-      const snapshot = await heartbeatRef.once('value');
-      const heartbeat = snapshot.val();
-      if (heartbeat && heartbeat.timestamp) {
-        const lastTime = new Date(heartbeat.timestamp).getTime();
-        isDaemonAlive = (Date.now() - lastTime) < 120000;
+      const now = Date.now();
+      const [localSnap, oracleSnap, legacySnap] = await Promise.all([
+        db.ref('daemons/local').once('value'),
+        db.ref('daemons/oracle').once('value'),
+        db.ref('daemonHeartbeat').once('value')
+      ]);
+
+      const localVal = localSnap.val();
+      const oracleVal = oracleSnap.val();
+      const legacyVal = legacySnap.val();
+
+      if (localVal && localVal.timestamp) {
+        isLocalAlive = (now - new Date(localVal.timestamp).getTime()) < 60000;
       }
+      if (oracleVal && oracleVal.timestamp) {
+        isOracleAlive = (now - new Date(oracleVal.timestamp).getTime()) < 60000;
+      }
+      if (legacyVal && legacyVal.timestamp) {
+        const legacyActive = (now - new Date(legacyVal.timestamp).getTime()) < 60000;
+        if (legacyActive) {
+          if (legacyVal.type === 'oracle' || legacyVal.platform === 'linux' || (legacyVal.hostname && legacyVal.hostname.includes('deals-backend'))) {
+            isOracleAlive = true;
+          } else {
+            isLocalAlive = true;
+          }
+        }
+      }
+      anyDaemonAlive = isLocalAlive || isOracleAlive;
     }
   } catch (hbErr) {
-    logger.warn('Failed to check daemon heartbeat', { error: hbErr.message });
+    logger.warn('Failed to check daemon heartbeats', { error: hbErr.message });
   }
 
   if (admin.apps.length) {
@@ -242,6 +267,16 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     const queueRef = db.ref('commandsQueue');
     const newCommandRef = queueRef.push();
     
+    // Priority routing: Local daemon preferred if online (residential IP); fallback to Oracle Cloud VM (24/7 cloud runner)
+    let initialTarget = 'oracle';
+    if (isLocalAlive) {
+      initialTarget = 'local';
+    } else if (isOracleAlive) {
+      initialTarget = 'oracle';
+    } else {
+      initialTarget = 'all';
+    }
+
     const safeUrl = targetUrl.replace(/"/g, '\\"');
     const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
     const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
@@ -250,60 +285,105 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
       id: `process-product-${Date.now()}`,
       command: cliCommand,
       name: `Process Product (${targetUrl.substring(0, 50)}...)`,
+      productCode: productCode || null,
+      targetDaemon: initialTarget,
       role: 'all',
       status: 'pending',
+      targetUrl,
       createdAt: new Date().toISOString(),
       triggeredBy: 'api'
     });
 
     const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
+    let currentTarget = initialTarget;
+    let daemonResult = null;
 
-    // If localDaemon is active, optionally wait briefly (up to 8 seconds) to see if it finishes processing
-    if (isDaemonAlive) {
+    // Phase 1: Wait loop with failover
+    if (anyDaemonAlive) {
       const waitStart = Date.now();
-      let daemonResult = null;
-      while (Date.now() - waitStart < 8000) {
+      let hasFailedOver = false;
+
+      while (Date.now() - waitStart < 16000) {
         await new Promise(res => setTimeout(res, 1000));
         const cmdSnap = await newCommandRef.once('value');
         const cmdVal = cmdSnap.val();
+
         if (cmdVal && (cmdVal.status === 'completed' || cmdVal.status === 'success')) {
           daemonResult = cmdVal;
           break;
         }
-        if (cmdVal && cmdVal.status === 'failed') {
+
+        // Automatic Failover: If targeted to local daemon, but local has not picked it up in 7s or failed, redirect to Oracle Cloud!
+        if (currentTarget === 'local' && !hasFailedOver && (Date.now() - waitStart >= 7000)) {
+          if (!cmdVal || cmdVal.status === 'pending' || cmdVal.status === 'failed') {
+            if (isOracleAlive) {
+              logger.info(`[FAILOVER] Local daemon did not pick up task or timed out. Reassigning task ${newCommandRef.key} to Oracle Cloud daemon.`);
+              hasFailedOver = true;
+              currentTarget = 'oracle';
+              try {
+                await newCommandRef.update({
+                  targetDaemon: 'oracle',
+                  status: 'pending',
+                  failedOverFrom: 'local',
+                  reassignedAt: new Date().toISOString()
+                });
+              } catch (reassignErr) {
+                logger.warn('Failed to reassign command in RTDB', reassignErr);
+              }
+            }
+          }
+        }
+
+        if (cmdVal && cmdVal.status === 'failed' && hasFailedOver) {
           break;
         }
       }
 
       if (daemonResult) {
+        let productDetails = null;
+        if (productCode) {
+          try {
+            const prodSnap = await db.ref(`products/${productCode}`).once('value');
+            productDetails = prodSnap.val();
+          } catch (_) {}
+        }
+
+        const executor = daemonResult.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
         return {
           originalUrl: targetUrl,
           success: true,
           status: 'success',
-          processedOn: 'localDaemon',
+          processedOn: daemonResult.executorType === 'oracle' ? 'oracleDaemon' : 'localDaemon',
           productCode,
           lowerdealUrl,
-          message: `Product [${productCode || 'deal'}] processed successfully via Local Daemon!`
+          title: productDetails?.title || '',
+          price: productDetails?.price || null,
+          photo: productDetails?.photo || '',
+          data: productDetails,
+          message: `Product [${productCode || 'deal'}] processed successfully via ${executor}!`
         };
       }
     }
 
     return {
       originalUrl: targetUrl,
-      success: isDaemonAlive,
-      status: isDaemonAlive ? 'queued' : 'error',
+      success: anyDaemonAlive,
+      status: anyDaemonAlive ? 'queued' : 'error',
       queued: true,
       queuedId: newCommandRef.key,
-      isDaemonAlive,
+      targetDaemon: currentTarget,
+      isDaemonAlive: anyDaemonAlive,
+      isLocalAlive,
+      isOracleAlive,
       productCode,
       lowerdealUrl,
       processedOn: 'queue',
-      reason: isDaemonAlive 
-        ? 'Server extraction was unable to extract product. Task queued and dispatched to active Local Daemon.'
-        : 'Server extraction failed and Local Daemon is offline. Please start local daemon to process.',
-      message: isDaemonAlive 
-        ? 'Product processing queued in Firebase. Processing by Local Daemon in progress.'
-        : 'Unable to process on server and Local Daemon is currently offline.'
+      reason: anyDaemonAlive 
+        ? `Server extraction was unable to extract product. Task queued and dispatched to active ${currentTarget === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon'}.`
+        : 'Server extraction failed and both Local Daemon and Oracle Cloud VM are offline. Please ensure a daemon is running.',
+      message: anyDaemonAlive 
+        ? `Product processing queued in Firebase. Processing by ${currentTarget === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon'} in progress.`
+        : 'Unable to process on server and daemons are currently offline.'
     };
   }
 
@@ -447,7 +527,10 @@ router.post('/process-product', async (req, res) => {
         responsePayload.isCuelinks = firstResult.isCuelinks;
         responsePayload.queued = Boolean(firstResult.queued);
         responsePayload.queuedId = firstResult.queuedId;
+        responsePayload.targetDaemon = firstResult.targetDaemon;
         responsePayload.isDaemonAlive = firstResult.isDaemonAlive;
+        responsePayload.isLocalAlive = firstResult.isLocalAlive;
+        responsePayload.isOracleAlive = firstResult.isOracleAlive;
         responsePayload.outOfStock = Boolean(firstResult.outOfStock);
         responsePayload.inStock = firstResult.inStock !== undefined ? firstResult.inStock : !firstResult.outOfStock;
         responsePayload.availability = firstResult.availability || (firstResult.outOfStock ? 'OutOfStock' : 'InStock');
@@ -715,6 +798,56 @@ router.post('/process-product', async (req, res) => {
       error: error.message,
       timestamp: new Date().toISOString()
     });
+  }
+});
+
+/**
+ * GET /api/deals/queue-status/:commandId
+ * Poll the processing status of a queued product command from Firebase RTDB
+ */
+router.get('/queue-status/:commandId', async (req, res) => {
+  try {
+    const { commandId } = req.params;
+    if (!commandId) {
+      return res.status(400).json({ success: false, error: 'Command ID is required' });
+    }
+
+    if (!admin.apps.length) {
+      return res.status(503).json({ success: false, error: 'Database service not available' });
+    }
+
+    const db = admin.database();
+    const snap = await db.ref(`commandsQueue/${commandId}`).once('value');
+    const cmd = snap.val();
+
+    if (!cmd) {
+      return res.status(404).json({ success: false, error: 'Command not found in queue' });
+    }
+
+    let productData = null;
+    const pCode = cmd.productCode;
+    if (cmd.status === 'completed' && pCode) {
+      try {
+        const prodSnap = await db.ref(`products/${pCode}`).once('value');
+        productData = prodSnap.val();
+      } catch (_) {}
+    }
+
+    return res.json({
+      success: true,
+      status: cmd.status, // 'pending' | 'running' | 'completed' | 'failed' | 'expired'
+      targetDaemon: cmd.targetDaemon || 'all',
+      executorId: cmd.executorId || null,
+      executorType: cmd.executorType || null,
+      productCode: pCode || null,
+      lowerdealUrl: pCode ? `https://lowerdeal.com/p/${pCode}` : null,
+      product: productData,
+      completedAt: cmd.completedAt || null,
+      error: cmd.error || null
+    });
+  } catch (err) {
+    logger.error('Error checking queue status', { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 

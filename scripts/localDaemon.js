@@ -32,11 +32,22 @@ const logger = getModuleLogger('local-daemon');
 // 1. Parse command-line arguments
 let runnerRole = 'all';
 let processStaleCommands = false;
+let daemonType = (process.env.DAEMON_TYPE || '').toLowerCase();
+if (!daemonType) {
+  if (os.platform() === 'linux' || os.hostname().includes('deals-backend') || process.env.ORACLE_VM === 'true') {
+    daemonType = 'oracle';
+  } else {
+    daemonType = 'local';
+  }
+}
 
 const args = process.argv.slice(2);
 for (let i = 0; i < args.length; i++) {
   if ((args[i] === '--role' || args[i] === '-r') && args[i + 1]) {
     runnerRole = args[i + 1].toLowerCase();
+    i++;
+  } else if ((args[i] === '--type' || args[i] === '-t') && args[i + 1]) {
+    daemonType = args[i + 1].toLowerCase();
     i++;
   } else if (args[i] === '--force-stale') {
     processStaleCommands = true;
@@ -44,7 +55,8 @@ for (let i = 0; i < args.length; i++) {
 }
 
 logger.info('====================================================');
-logger.info('🌟 DEALS OPTIMISED - HYBRID LOCAL DAEMON ACTIVE 🌟');
+logger.info('🌟 DEALS OPTIMISED - HYBRID DAEMON ACTIVE 🌟');
+logger.info(`Daemon Type: ${daemonType.toUpperCase()} (${os.hostname()} - ${os.platform()})`);
 logger.info(`Execution Role: ${runnerRole.toUpperCase()}`);
 logger.info(`Force Run Stale Triggers: ${processStaleCommands}`);
 logger.info('====================================================');
@@ -107,28 +119,53 @@ const configRef = db.ref('schedulerConfig');
  * Starts listening to the Firebase command queue with strictly sequential execution (1 at a time)
  */
 function startCommandListener() {
-  logger.info(`🚀 Sequential Queue listener started for role: [${runnerRole.toUpperCase()}]`);
+  logger.info(`🚀 Sequential Queue listener started for [${daemonType.toUpperCase()}] (role: [${runnerRole.toUpperCase()}])`);
 
   const pendingExecutionQueue = [];
   let isBusyExecuting = false;
+  let currentlyExecutingKey = null;
 
   const executeCommandItem = (key, commandData) => {
     return new Promise(async (resolve) => {
       logger.info(`📥 Pulling queued execution request: "${commandData.name}" (${commandData.id})`);
+
+      // Verify command is still pending before locking (prevents race condition between daemons)
+      let freshVal = null;
+      try {
+        const freshSnap = await queueRef.child(key).once('value');
+        freshVal = freshSnap.val();
+      } catch (checkErr) {
+        logger.warn(`Failed to inspect fresh command status for ${key}:`, checkErr.message);
+      }
+
+      if (!freshVal || freshVal.status !== 'pending') {
+        logger.info(`Command ${key} was already claimed by another runner (${freshVal?.executorId || freshVal?.status || 'unknown'}). Skipping.`);
+        return resolve();
+      }
+
+      // Check targetDaemon again against fresh data
+      const currentTarget = freshVal.targetDaemon || 'all';
+      if (currentTarget !== 'all' && currentTarget !== daemonType) {
+        logger.info(`Command ${key} is targeted to ${currentTarget}, skipping for ${daemonType}.`);
+        return resolve();
+      }
 
       // Lock the command instantly to avoid duplicate runner pickup
       try {
         await queueRef.child(key).update({
           status: 'running',
           startedAt: new Date().toISOString(),
-          executorId: 'local-runner-' + runnerRole
+          executorId: `${daemonType}-runner-${runnerRole}`,
+          executorType: daemonType,
+          executorHost: os.hostname(),
+          productCode: commandData.productCode || freshVal.productCode || null
         });
       } catch (err) {
         logger.error(`Failed to lock command ${key}:`, err);
         return resolve();
       }
 
-      logger.info(`⚙️ Running command: "${commandData.command}"`);
+      logger.info(`⚙️ Running command on [${daemonType.toUpperCase()}]: "${commandData.command}"`);
 
       // Execute script locally with a 15-minute watchdog timer to prevent hangs
       const watchdogTimeoutMs = 15 * 60 * 1000;
@@ -142,6 +179,7 @@ function startCommandListener() {
           await queueRef.child(key).update({
             status: 'failed',
             error: 'Watchdog Timeout: Terminated after 15 minutes of inactivity',
+            executorType: daemonType,
             completedAt: new Date().toISOString()
           });
         } catch (err) {
@@ -157,13 +195,14 @@ function startCommandListener() {
         const completedAt = new Date().toISOString();
         
         if (error) {
-          logger.error(`❌ Local command run failed: "${commandData.name}"`, error);
+          logger.error(`❌ Command run failed on [${daemonType.toUpperCase()}]: "${commandData.name}"`, error);
           try {
             await queueRef.child(key).update({
               status: 'failed',
               error: error.message,
               stderr: stderr || '',
               stdout: stdout || '',
+              executorType: daemonType,
               completedAt
             });
           } catch (e) {
@@ -172,12 +211,13 @@ function startCommandListener() {
           return resolve();
         }
 
-        logger.info(`✅ Local command completed successfully: "${commandData.name}"`);
+        logger.info(`✅ Command completed successfully on [${daemonType.toUpperCase()}]: "${commandData.name}"`);
         try {
           await queueRef.child(key).update({
             status: 'completed',
             stdout: stdout || '',
             stderr: stderr || '',
+            executorType: daemonType,
             completedAt
           });
         } catch (e) {
@@ -194,36 +234,55 @@ function startCommandListener() {
   const triggerNext = async () => {
     if (isBusyExecuting || pendingExecutionQueue.length === 0) return;
     isBusyExecuting = true;
-    const { key, commandData } = pendingExecutionQueue.shift();
+    const item = pendingExecutionQueue.shift();
+    if (!item) {
+      isBusyExecuting = false;
+      return;
+    }
+    const { key, commandData } = item;
+    currentlyExecutingKey = key;
     try {
       await executeCommandItem(key, commandData);
     } catch (e) {
       logger.error('Error executing queued command', e);
     } finally {
+      currentlyExecutingKey = null;
       isBusyExecuting = false;
       setImmediate(triggerNext);
     }
   };
 
-  queueRef.orderByChild('status').equalTo('pending').on('child_added', async (snapshot) => {
+  const handleCommandCandidate = async (snapshot) => {
     const key = snapshot.key;
     const commandData = snapshot.val();
-    if (!commandData) return;
+    if (!commandData || commandData.status !== 'pending') return;
 
     // 1. Filter command by role
     const commandRole = commandData.role || 'all';
     if (runnerRole !== 'all' && commandRole !== runnerRole) {
-      logger.debug(`Skipping command ${commandData.id} (requires: ${commandRole}, we are: ${runnerRole})`);
+      logger.debug(`Skipping command ${commandData.id || key} (requires: ${commandRole}, we are: ${runnerRole})`);
       return;
     }
 
-    // 2. Cooldown check / Expiration check for offline triggers
+    // 2. Filter command by targetDaemon
+    const target = commandData.targetDaemon || 'all';
+    if (target !== 'all' && target !== daemonType) {
+      logger.debug(`Skipping command ${commandData.id || key} (targeted to: ${target}, we are: ${daemonType})`);
+      return;
+    }
+
+    // 3. Avoid duplicate enqueueing if already executing or already in queue
+    if (currentlyExecutingKey === key || pendingExecutionQueue.some(item => item.key === key)) {
+      return;
+    }
+
+    // 4. Cooldown check / Expiration check for offline triggers
     const createdAt = new Date(commandData.createdAt).getTime();
     const now = Date.now();
     const expirationThresholdMs = 30 * 60 * 1000;
     
     if (!processStaleCommands && (now - createdAt > expirationThresholdMs)) {
-      logger.warn(`⚠️ Skipping stale trigger command ${commandData.id} (older than 30 mins)`);
+      logger.warn(`⚠️ Skipping stale trigger command ${commandData.id || key} (older than 30 mins)`);
       try {
         await queueRef.child(key).update({
           status: 'expired',
@@ -237,9 +296,13 @@ function startCommandListener() {
     }
 
     // Enqueue for strictly sequential execution
+    logger.info(`📥 Enqueuing command for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
     pendingExecutionQueue.push({ key, commandData });
     triggerNext();
-  });
+  };
+
+  queueRef.orderByChild('status').equalTo('pending').on('child_added', handleCommandCandidate);
+  queueRef.on('child_changed', handleCommandCandidate);
 }
 
 /**
@@ -391,13 +454,14 @@ function startConfigListener() {
 }
 
 function startHeartbeat() {
-  logger.info('💖 Starting local daemon heartbeat updater...');
+  logger.info(`💖 Starting [${daemonType.toUpperCase()}] daemon heartbeat updater...`);
   
   const writeHeartbeat = async () => {
     try {
-      await db.ref('daemonHeartbeat').set({
+      const hbData = {
         timestamp: new Date().toISOString(),
         role: runnerRole,
+        type: daemonType,
         status: 'active',
         pid: process.pid,
         platform: os.platform(),
@@ -407,10 +471,18 @@ function startHeartbeat() {
           heapTotal: Math.round(process.memoryUsage().heapTotal / (1024 * 1024)) + ' MB',
           heapUsed: Math.round(process.memoryUsage().heapUsed / (1024 * 1024)) + ' MB'
         }
-      });
-      logger.info('💖 Daemon heartbeat successfully updated in Firebase.');
+      };
+
+      // 1. Write to specific daemon path: daemons/oracle or daemons/local
+      await db.ref(`daemons/${daemonType}`).set(hbData);
+      // 2. Also write to dedicated role-specific heartbeat key
+      await db.ref(daemonType === 'oracle' ? 'oracleHeartbeat' : 'localHeartbeat').set(hbData);
+      // 3. Keep legacy heartbeat key updated for backwards compatibility
+      await db.ref('daemonHeartbeat').set(hbData);
+
+      logger.info(`💖 [${daemonType.toUpperCase()}] Daemon heartbeat successfully updated in Firebase.`);
     } catch (e) {
-      logger.warn('Failed to write daemon heartbeat to Firebase', { error: e.message });
+      logger.warn(`Failed to write [${daemonType}] daemon heartbeat to Firebase`, { error: e.message });
     }
   };
 

@@ -65,12 +65,86 @@ const Dashboard: React.FC = () => {
         setProcessedLowerdealUrls([response.data.lowerdealUrl]);
       }
 
+      // If queued for background daemon execution, poll queue status for live completion
+      if (response.data.status === 'queued' && response.data.queuedId) {
+        const queuedId = response.data.queuedId;
+        const targetDaemonName = response.data.targetDaemon === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+        addNotification({
+          type: 'info',
+          message: `Product queued on ${targetDaemonName}. Scraper is extracting live details in background...`,
+          source: 'Process Product',
+          page: 'Dashboard'
+        });
+
+        const pollInterval = 2500;
+        const maxAttempts = 18; // ~45 seconds max polling
+        let attempts = 0;
+        
+        const pollStatus = async () => {
+          attempts++;
+          try {
+            const statusRes = await dealsAPI.checkQueueStatus(queuedId);
+            const statusData = statusRes.data;
+
+            if (statusData.status === 'completed') {
+              clearInterval(pollTimer);
+              setIsProcessing(false);
+              const prodTitle = statusData.product?.title || statusData.productCode || 'Deal';
+              const prodPrice = statusData.product?.price ? ` - ₹${statusData.product.price}` : '';
+              const executorLabel = statusData.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+              addNotification({
+                type: 'success',
+                message: `Product extracted successfully (${prodTitle}${prodPrice}) via ${executorLabel}!`,
+                source: 'Process Product',
+                page: 'Dashboard'
+              });
+              if (statusData.productCode) {
+                setProductCode(statusData.productCode);
+              }
+              return;
+            }
+
+            if (statusData.status === 'failed') {
+              clearInterval(pollTimer);
+              setIsProcessing(false);
+              addNotification({
+                type: 'error',
+                message: `Scraper execution failed: ${statusData.error || 'Unknown error'}`,
+                source: 'Process Product',
+                page: 'Dashboard'
+              });
+              return;
+            }
+
+            if (attempts >= maxAttempts) {
+              clearInterval(pollTimer);
+              setIsProcessing(false);
+              addNotification({
+                type: 'warning',
+                message: 'Processing is taking longer than expected. You can check the Lowerdeal link in a moment.',
+                source: 'Process Product',
+                page: 'Dashboard'
+              });
+            }
+          } catch (pollErr) {
+            if (attempts >= maxAttempts) {
+              clearInterval(pollTimer);
+              setIsProcessing(false);
+            }
+          }
+        };
+
+        const pollTimer = setInterval(pollStatus, pollInterval);
+        return; // Retain isProcessing = true while polling
+      }
+
       addNotification({
         type,
         message: response.data.message || 'Product(s) processed successfully',
         source: 'Process Product',
         page: 'Dashboard'
       });
+      setIsProcessing(false);
     } catch (error: any) {
       addNotification({
         type: 'error',
@@ -78,7 +152,6 @@ const Dashboard: React.FC = () => {
         source: 'Process Product',
         page: 'Dashboard'
       });
-    } finally {
       setIsProcessing(false);
     }
   };

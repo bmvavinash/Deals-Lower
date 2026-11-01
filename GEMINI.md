@@ -18,7 +18,10 @@ Refer to [SERVER_HEALTH_OPTIMIZATION_GUIDELINES.md](./SERVER_HEALTH_OPTIMIZATION
 - Market hours check (`isIndianMarketOpen`) gates stock quote updates.
 - All scheduled disk/database persists must be debounced.
 
-### 3. Distributed Architecture (Render <-> Oracle Cloud Redirection)
+### 3. Distributed Architecture (Render <-> Oracle Cloud & Local Daemon Redirection)
 - **Render Cloud**: Acts as the central, lightweight API Gateway. Handles authentication verification, dashboard data delivery, static HTML parsing (Amazon & Myntra), and health pings.
-- **Ajio & Flipkart**: React client-side rendering and Akamai WAF block datacenter cloud scrapers. Render immediately offloads these URLs to Firebase RTDB `commandsQueue` and generates the deal URL without waiting for browser automation.
-- **Oracle Cloud VM (`140.245.249.227`)**: Runs `oracle-daemon` via PM2, pulling pending jobs from `commandsQueue` to perform headless Chrome and Selenium scraping, subsequently writing results directly to Firebase RTDB (`deals` and `products`).
+- **Ajio & Flipkart**: Dynamic JS rendering and Akamai WAF require real Chrome automation. Render offloads these URLs to Firebase RTDB `commandsQueue`.
+- **Prioritized Routing & Dynamic Failover**:
+  - **Local Daemon (Priority 1)**: Preferred for residential IP when active.
+  - **Oracle Cloud VM `140.245.249.227` (Priority 2 / Fallback)**: Always-on 24/7 runner with headless Chrome under PM2 (`oracle-daemon`). If Local Daemon is offline, or is running but fails to claim the task within timeout (7-8s), Render automatically fails over and reassigns the queue task to `oracle`.
+  - **Client Real-time Polling**: When tasks are queued, frontend polls `/api/deals/queue-status/:commandId` for up to 45s, dynamically reporting live extraction progress, final product title, and price upon completion.

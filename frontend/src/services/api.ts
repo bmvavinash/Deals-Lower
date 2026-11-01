@@ -220,6 +220,8 @@ export const dealsAPI = {
       : { url: urlOrUrls, postProduct, saleName };
     return api.post('/deals/process-product', payload, { timeout: 180000 });
   },
+  checkQueueStatus: (commandId: string) =>
+    api.get(`/deals/queue-status/${encodeURIComponent(commandId)}`),
   updateProduct: (productCode: string, updates: any, db?: string) =>
     api.put(`/deals/${productCode}`, updates, { params: { db } }),
   deleteProduct: (productCode: string, db?: string) =>
