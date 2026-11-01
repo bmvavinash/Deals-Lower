@@ -669,18 +669,17 @@ router.get('/github-actions', async (req, res) => {
 
     if (db) {
       try {
-        const axios = require('axios');
         const dbUrl = db.app?.options?.databaseURL;
         if (dbUrl) {
           const [actionsRes, pointersRes] = await Promise.all([
-            axios.get(`${dbUrl}/executionTracking/githubActions.json`, { timeout: 4000 }).catch(() => ({ data: null })),
-            axios.get(`${dbUrl}/schedulerState/categoryPointers.json`, { timeout: 4000 }).catch(() => ({ data: null }))
+            fetch(`${dbUrl}/executionTracking/githubActions.json`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()).catch(() => null),
+            fetch(`${dbUrl}/schedulerState/categoryPointers.json`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()).catch(() => null)
           ]);
-          githubActionsData = actionsRes.data || {};
-          categoryPointersData = pointersRes.data || {};
+          githubActionsData = actionsRes || {};
+          categoryPointersData = pointersRes || {};
         }
       } catch (restErr) {
-        logger.warn('REST github-actions fetch fallback triggered', { error: restErr.message });
+        // Fallback to RTDB
       }
 
       if (Object.keys(githubActionsData || {}).length === 0) {
@@ -793,7 +792,6 @@ router.post('/github-actions/trigger', async (req, res) => {
     // 1. Try GitHub Actions REST API dispatch if token available and not explicitly forced to daemon
     if (dispatchTarget !== 'commands-queue' && ghToken) {
       try {
-        const axios = require('axios');
         const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflowFile}/dispatches`;
         const payload = {
           ref: 'main',
@@ -802,21 +800,28 @@ router.post('/github-actions/trigger', async (req, res) => {
         if (category) payload.inputs.category = category;
         if (target_query) payload.inputs.target_query = target_query;
 
-        const response = await axios.post(url, payload, {
+        const response = await fetch(url, {
+          method: 'POST',
           headers: {
             'Accept': 'application/vnd.github.v3+json',
             'Authorization': `Bearer ${ghToken}`,
+            'Content-Type': 'application/json',
             'User-Agent': 'DealsOptimised-Admin'
           },
-          timeout: 10000
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(10000)
         });
 
         if (response.status === 204 || response.status === 200) {
           ghaSuccess = true;
           dispatchedVia = 'github-actions';
+        } else {
+          const errBody = await response.json().catch(() => ({}));
+          ghaError = errBody.message || `HTTP ${response.status}`;
+          logger.warn(`GitHub Actions API dispatch error for ${workflowFile}: ${ghaError}`);
         }
       } catch (err) {
-        ghaError = err.response?.data?.message || err.message;
+        ghaError = err.message;
         logger.warn(`GitHub Actions API dispatch error for ${workflowFile}: ${ghaError}`);
       }
     }
