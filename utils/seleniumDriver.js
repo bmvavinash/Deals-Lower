@@ -52,7 +52,7 @@ async function createHeadlessChromeDriver() {
 
   const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
   try {
-    await driver.manage().setTimeouts({ pageLoad: 25000, implicit: 5000 });
+    await driver.manage().setTimeouts({ pageLoad: 25000, implicit: 0 });
   } catch {}
   try {
     await driver.executeScript('Object.defineProperty(navigator, "webdriver", {get: () => undefined})');
