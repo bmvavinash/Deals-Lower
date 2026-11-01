@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useQuery } from 'react-query';
 import { executionAPI } from '../services/api';
 import PipelineView from '../components/Execution/PipelineView';
+import GithubActionsManager from '../components/Execution/GithubActionsManager';
 import './ExecutionMonitor.css';
 
 interface Execution {
@@ -227,6 +228,7 @@ const ExecutionMonitor: React.FC = () => {
   }, [autoRefresh, refetchStatus, refetchHistory]);
 
   const currentExec = status?.currentExecution;
+  const executionType = currentExec?.type;
 
   // Filter history based on selected tab
   const filteredHistory = historyList?.filter((run) => {
@@ -481,7 +483,7 @@ const ExecutionMonitor: React.FC = () => {
       )}
 
       {/* Manual Trigger Panel depending on Selected Tab */}
-      {selectedTab !== 'all' && (
+      {selectedTab !== 'all' && selectedTab !== 'github_actions' && (
         <div className="trigger-control-panel">
           <h3>⚡ Manual Trigger: {getTypeName(selectedTab)}</h3>
           
@@ -629,7 +631,11 @@ const ExecutionMonitor: React.FC = () => {
           </div>
         </div>
 
-        {/* History Grid Table */}
+        {selectedTab === 'github_actions' ? (
+          <GithubActionsManager autoRefresh={autoRefresh} />
+        ) : (
+          <>
+            {/* History Grid Table */}
         {filteredHistory.length > 0 ? (
           <div className="history-table-wrapper">
             <table className="history-table">
@@ -701,6 +707,8 @@ const ExecutionMonitor: React.FC = () => {
             <span className="empty-icon">📂</span>
             <p>No runs history found for the selected type</p>
           </div>
+        )}
+          </>
         )}
       </div>
 

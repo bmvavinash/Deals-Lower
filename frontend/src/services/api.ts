@@ -338,7 +338,10 @@ export const executionAPI = {
   restartDaemon: () => api.post('/execution/daemon/restart'),
   getSchedulerConfig: () => api.get('/execution/scheduler/config'),
   saveSchedulerConfig: (config: any) => api.post('/execution/scheduler/config', config),
-  getLogs: (file?: string) => api.get('/execution/logs', { params: { file } })
+  getLogs: (file?: string) => api.get('/execution/logs', { params: { file } }),
+  getGithubActions: () => api.get('/execution/github-actions'),
+  triggerGithubAction: (data: { actionName?: string; category?: string; target_query?: string; dispatchTarget?: string; githubToken?: string }) => 
+    api.post('/execution/github-actions/trigger', data)
 };
 
 // Banners API
