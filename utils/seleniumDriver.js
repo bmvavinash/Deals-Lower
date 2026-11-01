@@ -31,6 +31,8 @@ async function createHeadlessChromeDriver() {
 
   options.addArguments('--disable-gpu');
   options.addArguments('--disable-setuid-sandbox');
+  options.setPageLoadStrategy('eager');
+  options.setTimeouts({ pageLoad: 25000, implicit: 5000 });
 
   if (process.platform === 'linux') {
     const fs = require('fs');
