@@ -1,7 +1,7 @@
 name: '🔄 Stale Products Update'
 on:
   schedule:
-    - cron: '0 */6 * * *'    # Every 6 hours to keep deals fresh
+    - cron: '*/30 * * * *'    # Every 30 minutes to continuously keep deals fresh
   workflow_dispatch:        # Allow manual trigger
 
 env:
@@ -17,7 +17,7 @@ env:
 jobs:
   stale-products-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     concurrency:
       group: stale-products-update
       cancel-in-progress: true
