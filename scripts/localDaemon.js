@@ -298,9 +298,13 @@ function startCommandListener() {
       return;
     }
 
-    // Enqueue for strictly sequential execution
+    // Enqueue for sequential execution with priority for interactive API commands
     logger.info(`📥 Enqueuing command for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
-    pendingExecutionQueue.push({ key, commandData });
+    if (commandData.triggeredBy === 'api' || commandData.priority === 1) {
+      pendingExecutionQueue.unshift({ key, commandData });
+    } else {
+      pendingExecutionQueue.push({ key, commandData });
+    }
     triggerNext();
   };
 

@@ -313,23 +313,21 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
           break;
         }
 
-        // Automatic Failover: If targeted to local daemon, but local has not picked it up in 4s or failed, redirect to Oracle Cloud!
-        if (currentTarget === 'local' && !hasFailedOver && (Date.now() - waitStart >= 4000)) {
-          if (!cmdVal || cmdVal.status === 'pending' || cmdVal.status === 'failed') {
-            if (isOracleAlive) {
-              logger.info(`[FAILOVER] Local daemon did not pick up task or timed out. Reassigning task ${newCommandRef.key} to Oracle Cloud daemon.`);
-              hasFailedOver = true;
-              currentTarget = 'oracle';
-              try {
-                await newCommandRef.update({
-                  targetDaemon: 'oracle',
-                  status: 'pending',
-                  failedOverFrom: 'local',
-                  reassignedAt: new Date().toISOString()
-                });
-              } catch (reassignErr) {
-                logger.warn('Failed to reassign command in RTDB', reassignErr);
-              }
+        // Failover to Oracle only if local daemon explicitly failed
+        if (currentTarget === 'local' && !hasFailedOver && cmdVal && cmdVal.status === 'failed') {
+          if (isOracleAlive) {
+            logger.info(`[FAILOVER] Local daemon failed execution. Reassigning task ${newCommandRef.key} to Oracle Cloud daemon.`);
+            hasFailedOver = true;
+            currentTarget = 'oracle';
+            try {
+              await newCommandRef.update({
+                targetDaemon: 'oracle',
+                status: 'pending',
+                failedOverFrom: 'local',
+                reassignedAt: new Date().toISOString()
+              });
+            } catch (reassignErr) {
+              logger.warn('Failed to reassign command in RTDB', reassignErr);
             }
           }
         }
@@ -343,8 +341,12 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
         let productDetails = null;
         if (productCode) {
           try {
-            const prodSnap = await db.ref(`products/${productCode}`).once('value');
-            productDetails = prodSnap.val();
+            const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
+            const [dealsSnap, prodDealsSnap] = await Promise.all([
+              db.ref(`deals/${safeKey}`).once('value'),
+              db.ref(`productdeals/${safeKey}`).once('value')
+            ]);
+            productDetails = dealsSnap.val() || prodDealsSnap.val();
           } catch (_) {}
         }
 
@@ -824,12 +826,40 @@ router.get('/queue-status/:commandId', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Command not found in queue' });
     }
 
+    // Dynamic failover check during client polling if local daemon stalled or failed
+    if (cmd.targetDaemon === 'local' && (cmd.status === 'pending' || cmd.status === 'failed')) {
+      const createdAt = new Date(cmd.createdAt || 0).getTime();
+      const isStale = (Date.now() - createdAt) > 25000;
+      if (cmd.status === 'failed' || isStale) {
+        try {
+          const oracleSnap = await db.ref('daemons/oracle').once('value');
+          const oracleVal = oracleSnap.val();
+          const isOracleAlive = oracleVal && (Date.now() - new Date(oracleVal.timestamp).getTime() < 60000);
+          if (isOracleAlive) {
+            logger.info(`[POLLING FAILOVER] Reassigning stalled/failed local command ${commandId} to Oracle Cloud.`);
+            await db.ref(`commandsQueue/${commandId}`).update({
+              targetDaemon: 'oracle',
+              status: 'pending',
+              failedOverFrom: 'local',
+              reassignedAt: new Date().toISOString()
+            });
+            cmd.targetDaemon = 'oracle';
+            cmd.status = 'pending';
+          }
+        } catch (_) {}
+      }
+    }
+
     let productData = null;
     const pCode = cmd.productCode;
     if (cmd.status === 'completed' && pCode) {
       try {
-        const prodSnap = await db.ref(`products/${pCode}`).once('value');
-        productData = prodSnap.val();
+        const safeKey = String(pCode).replace(/[.#$/\[\]]/g, '_');
+        const [dealsSnap, prodDealsSnap] = await Promise.all([
+          db.ref(`deals/${safeKey}`).once('value'),
+          db.ref(`productdeals/${safeKey}`).once('value')
+        ]);
+        productData = dealsSnap.val() || prodDealsSnap.val();
       } catch (_) {}
     }
 

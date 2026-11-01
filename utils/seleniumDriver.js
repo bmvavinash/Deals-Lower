@@ -31,6 +31,21 @@ async function createHeadlessChromeDriver() {
 
   options.addArguments('--disable-gpu');
   options.addArguments('--disable-setuid-sandbox');
+  options.addArguments('--disable-extensions');
+  options.addArguments('--disable-background-networking');
+  options.addArguments('--disable-default-apps');
+  options.addArguments('--disable-sync');
+  options.addArguments('--disable-translate');
+  options.addArguments('--disable-renderer-backgrounding');
+  options.addArguments('--disable-backgrounding-occluded-windows');
+  options.addArguments('--disable-background-timer-throttling');
+  options.addArguments('--mute-audio');
+  options.addArguments('--no-first-run');
+  options.addArguments('--blink-settings=imagesEnabled=false');
+  options.setUserPreferences({
+    'profile.managed_default_content_settings.images': 2,
+    'profile.default_content_setting_values.notifications': 2
+  });
   options.setPageLoadStrategy('eager');
   
   if (process.platform === 'linux') {
