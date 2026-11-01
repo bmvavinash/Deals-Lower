@@ -170,48 +170,6 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
   const { extractProductOnServer, extractProductCode } = require('../../../services/headlessProductExtractor');
   const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
 
-  // 1. Attempt crash-free server-side headless automation
-  try {
-    const serverResult = await extractProductOnServer(targetUrl, { postProduct, saleName });
-    if (serverResult && serverResult.success) {
-      const pCode = serverResult.productCode;
-      const lowerdealUrl = serverResult.lowerdealUrl || `https://lowerdeal.com/p/${pCode}`;
-      const affiliateUrl = serverResult.affiliateUrl || serverResult.data?.links?.avinashbmv || serverResult.data?.links?.avinashbmvINR || targetUrl;
-      return {
-        originalUrl: targetUrl,
-        success: true,
-        status: 'success',
-        processedOn: 'server',
-        productCode: pCode,
-        lowerdealUrl,
-        affiliateUrl,
-        platform: serverResult.data?.storeType || 'unknown',
-        title: serverResult.data?.title || '',
-        price: serverResult.data?.price || null,
-        mrp: serverResult.data?.mrp || null,
-        discount: serverResult.data?.discount || '',
-        photo: serverResult.data?.photo || '',
-        outOfStock: Boolean(serverResult.outOfStock),
-        inStock: serverResult.inStock !== undefined ? serverResult.inStock : !serverResult.outOfStock,
-        availability: serverResult.availability || (serverResult.outOfStock ? 'OutOfStock' : 'InStock'),
-        data: serverResult.data,
-        isCuelinks: serverResult.isCuelinks,
-        message: serverResult.message || `Product [${pCode}] processed successfully on server!`
-      };
-    } else if (serverResult && (!serverResult.success || serverResult.status === 'error')) {
-      logger.warn('Server headless extraction was unable to get product details, falling back to Local Daemon check', { 
-        url: targetUrl, 
-        error: serverResult.error || serverResult.message 
-      });
-    }
-  } catch (extractErr) {
-    logger.warn('Server headless extraction failed with error, falling back to Local Daemon check', { 
-      url: targetUrl, 
-      error: extractErr.message 
-    });
-  }
-
-  // 2. Fallback to Firebase Queue if server extraction was unable or failed
   let detectedPlatform = null;
   let productCode = null;
   try {
@@ -221,7 +179,49 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     // ignore
   }
 
-  // 3. Check heartbeats of both Daemons (Local residential PC vs Oracle Cloud VM)
+  const isDynamicSite = detectedPlatform === 'flipkart' || detectedPlatform === 'ajio';
+
+  // 1. For static/server-parseable sites (Amazon, Myntra, etc.), attempt crash-free server-side extraction
+  if (!isDynamicSite) {
+    try {
+      const serverResult = await extractProductOnServer(targetUrl, { postProduct, saleName });
+      if (serverResult && serverResult.success) {
+        const pCode = serverResult.productCode;
+        const lowerdealUrl = serverResult.lowerdealUrl || `https://lowerdeal.com/p/${pCode}`;
+        const affiliateUrl = serverResult.affiliateUrl || serverResult.data?.links?.avinashbmv || serverResult.data?.links?.avinashbmvINR || targetUrl;
+        return {
+          originalUrl: targetUrl,
+          success: true,
+          status: 'success',
+          processedOn: 'server',
+          productCode: pCode,
+          lowerdealUrl,
+          affiliateUrl,
+          platform: serverResult.data?.storeType || 'unknown',
+          title: serverResult.data?.title || '',
+          price: serverResult.data?.price || null,
+          mrp: serverResult.data?.mrp || null,
+          discount: serverResult.data?.discount || '',
+          photo: serverResult.data?.photo || '',
+          outOfStock: Boolean(serverResult.outOfStock),
+          inStock: serverResult.inStock !== undefined ? serverResult.inStock : !serverResult.outOfStock,
+          availability: serverResult.availability || (serverResult.outOfStock ? 'OutOfStock' : 'InStock'),
+          data: serverResult.data,
+          isCuelinks: serverResult.isCuelinks,
+          message: serverResult.message || `Product [${pCode}] processed successfully on server!`
+        };
+      }
+    } catch (extractErr) {
+      logger.warn('Server headless extraction failed with error, falling back to Daemons check', { 
+        url: targetUrl, 
+        error: extractErr.message 
+      });
+    }
+  } else {
+    logger.info(`Platform is ${detectedPlatform} (requires full browser automation). Skipping static HTML fetch on Render and offloading directly to daemons.`);
+  }
+
+  // 2. Check heartbeats of both Daemons (Local residential PC vs Oracle Cloud VM)
   let isLocalAlive = false;
   let isOracleAlive = false;
   let anyDaemonAlive = false;
@@ -303,7 +303,7 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
       const waitStart = Date.now();
       let hasFailedOver = false;
 
-      while (Date.now() - waitStart < 16000) {
+      while (Date.now() - waitStart < 8000) {
         await new Promise(res => setTimeout(res, 1000));
         const cmdSnap = await newCommandRef.once('value');
         const cmdVal = cmdSnap.val();
@@ -313,8 +313,8 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
           break;
         }
 
-        // Automatic Failover: If targeted to local daemon, but local has not picked it up in 7s or failed, redirect to Oracle Cloud!
-        if (currentTarget === 'local' && !hasFailedOver && (Date.now() - waitStart >= 7000)) {
+        // Automatic Failover: If targeted to local daemon, but local has not picked it up in 4s or failed, redirect to Oracle Cloud!
+        if (currentTarget === 'local' && !hasFailedOver && (Date.now() - waitStart >= 4000)) {
           if (!cmdVal || cmdVal.status === 'pending' || cmdVal.status === 'failed') {
             if (isOracleAlive) {
               logger.info(`[FAILOVER] Local daemon did not pick up task or timed out. Reassigning task ${newCommandRef.key} to Oracle Cloud daemon.`);
