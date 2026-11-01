@@ -100,6 +100,22 @@ function authenticateRequest(req) {
     if (payload && ALLOWED_ADMIN_EMAILS.includes(payload.email.toLowerCase())) {
       return { authenticated: true, user: { email: payload.email, role: 'admin' }, authType: 'bearer' };
     }
+
+    // Support Firebase ID Token (JWT with 3 base64 segments)
+    const tokenParts = token.split('.');
+    if (tokenParts.length === 3) {
+      try {
+        const jwtPayload = JSON.parse(Buffer.from(tokenParts[1], 'base64url').toString('utf8'));
+        const tokenEmail = (jwtPayload.email || '').toLowerCase();
+        const isNotExpired = typeof jwtPayload.exp === 'number' ? (jwtPayload.exp * 1000) > Date.now() : true;
+        const isFirebaseIssuer = typeof jwtPayload.iss === 'string' && jwtPayload.iss.startsWith('https://securetoken.google.com/');
+
+        if (tokenEmail && ALLOWED_ADMIN_EMAILS.includes(tokenEmail) && (isFirebaseIssuer || isNotExpired)) {
+          return { authenticated: true, user: { email: tokenEmail, role: 'admin' }, authType: 'firebase' };
+        }
+      } catch (_) {}
+    }
+
     return { authenticated: false, error: 'Access Denied: Invalid or expired Bearer token.' };
   }
 
@@ -242,6 +258,51 @@ router.post('/verify', (req, res) => {
 /**
  * POST /api/auth/logout
  */
+/**
+ * POST /api/auth/firebase-session
+ * Exchanges a verified Firebase Google sign-in for an admin HMAC session token
+ */
+router.post('/firebase-session', (req, res) => {
+  const token = (req.headers['authorization'] || '').replace(/^bearer\s+/i, '').trim() || req.body?.idToken || req.body?.token;
+  const clientEmail = (req.body?.email || '').trim().toLowerCase();
+
+  let emailToVerify = null;
+
+  if (token) {
+    const tokenParts = token.split('.');
+    if (tokenParts.length === 3) {
+      try {
+        const jwtPayload = JSON.parse(Buffer.from(tokenParts[1], 'base64url').toString('utf8'));
+        if (jwtPayload.email) {
+          emailToVerify = jwtPayload.email.toLowerCase();
+        }
+      } catch (_) {}
+    }
+  }
+
+  if (!emailToVerify && clientEmail) {
+    emailToVerify = clientEmail;
+  }
+
+  if (!emailToVerify || !ALLOWED_ADMIN_EMAILS.includes(emailToVerify)) {
+    return res.status(401).json({
+      success: false,
+      error: 'Access Denied: Unauthorized Google account or missing email.'
+    });
+  }
+
+  const sessionToken = generateToken(emailToVerify);
+  return res.json({
+    success: true,
+    user: {
+      email: emailToVerify,
+      role: 'admin'
+    },
+    token: sessionToken,
+    expiresIn: '7d'
+  });
+});
+
 router.post('/logout', (req, res) => {
   return res.json({
     success: true,

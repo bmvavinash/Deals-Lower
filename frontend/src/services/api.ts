@@ -1,3 +1,4 @@
+import { auth } from '../config/firebase';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 // ─────────────────────────────────────────────
@@ -25,8 +26,8 @@ const api: AxiosInstance = axios.create({
 // ─────────────────────────────────────────────
 // Request interceptor: attach auth token & resolve baseURL
 // ─────────────────────────────────────────────
-api.interceptors.request.use((config) => {
-  // Attach token from admin session if available
+api.interceptors.request.use(async (config) => {
+  // 1. Attach token from admin session if available
   try {
     const saved = localStorage.getItem('admin_auth_session');
     if (saved) {
@@ -34,10 +35,37 @@ api.interceptors.request.use((config) => {
       if (parsed.token) {
         config.headers = config.headers || {};
         config.headers['Authorization'] = `Bearer ${parsed.token}`;
+        if (!config.baseURL) config.baseURL = API_BASE_URL;
+        return config;
       }
     }
   } catch {
     // ignore JSON error
+  }
+
+  // 2. Fallback: If no session token, attach active Firebase user ID token
+  if (!config.headers?.['Authorization'] && auth?.currentUser) {
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      if (idToken) {
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = `Bearer ${idToken}`;
+      }
+    } catch {
+      // ignore firebase token error
+    }
+  }
+
+  // 3. Fallback: Localhost developer bypass
+  if (!config.headers?.['Authorization'] && isLocal) {
+    try {
+      const bypass = localStorage.getItem('auth_bypass_user');
+      if (bypass) {
+        config.headers = config.headers || {};
+        config.headers['x-admin-email'] = bypass;
+        config.headers['x-admin-password'] = 'Avinash@123';
+      }
+    } catch {}
   }
 
   if (!config.baseURL) {
@@ -232,6 +260,8 @@ export const categoriesAPI = {
 export const authAPI = {
   login: (email: string, password: string) =>
     api.post('/auth/login', { email, password }),
+  firebaseSession: (idToken?: string, email?: string) =>
+    api.post('/auth/firebase-session', { idToken, email }),
   verify: (token?: string) =>
     api.post('/auth/verify', { token })
 };

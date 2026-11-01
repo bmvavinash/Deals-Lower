@@ -84,6 +84,21 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         } else {
           setUser(firebaseUser);
           setError(null);
+          // Auto-obtain or restore admin session token from Firebase User
+          try {
+            const idToken = await firebaseUser.getIdToken();
+            const res = await authAPI.firebaseSession(idToken, norm);
+            if (res.data?.token) {
+              const newSession = {
+                email: norm,
+                token: res.data.token
+              };
+              localStorage.setItem('admin_auth_session', JSON.stringify(newSession));
+              setAdminSession(newSession);
+            }
+          } catch (sessionErr) {
+            console.warn('Could not exchange Firebase token with backend:', sessionErr);
+          }
         }
       }
       setLoading(false);
@@ -155,6 +170,22 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       if (!ALLOWED_ADMIN_EMAILS.includes(norm)) {
         setError(`Access Denied: Email "${loggedUser.email}" is not authorized.`);
         await signOut(auth);
+      } else {
+        setUser(loggedUser);
+        try {
+          const idToken = await loggedUser.getIdToken();
+          const res = await authAPI.firebaseSession(idToken, norm);
+          if (res.data?.token) {
+            const newSession = {
+              email: norm,
+              token: res.data.token
+            };
+            localStorage.setItem('admin_auth_session', JSON.stringify(newSession));
+            setAdminSession(newSession);
+          }
+        } catch (sessionErr) {
+          console.warn('Could not exchange Firebase token with backend:', sessionErr);
+        }
       }
     } catch (err: any) {
       console.error('Google Sign-In failed:', err);
