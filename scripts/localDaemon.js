@@ -79,6 +79,9 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
 if (!serviceAccount) {
   const candidatePaths = [
     process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+    process.env.KEYS_DIR_PATH ? path.join(process.env.KEYS_DIR_PATH, `${filePath}.json`) : null,
+    path.join(os.homedir(), 'keys', `${filePath}.json`),
+    path.join('/home/ubuntu/keys', `${filePath}.json`),
     path.join(__dirname, '../config', `${filePath}.json`),
     path.join(__dirname, '../../config', `${filePath}.json`),
     `${constants.pathToFile}/${filePath}.json`
