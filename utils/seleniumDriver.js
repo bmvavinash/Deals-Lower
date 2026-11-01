@@ -32,8 +32,7 @@ async function createHeadlessChromeDriver() {
   options.addArguments('--disable-gpu');
   options.addArguments('--disable-setuid-sandbox');
   options.setPageLoadStrategy('eager');
-  options.setTimeouts({ pageLoad: 25000, implicit: 5000 });
-
+  
   if (process.platform === 'linux') {
     const fs = require('fs');
     const linuxBinaries = [
@@ -52,6 +51,9 @@ async function createHeadlessChromeDriver() {
   }
 
   const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
+  try {
+    await driver.manage().setTimeouts({ pageLoad: 25000, implicit: 5000 });
+  } catch {}
   try {
     await driver.executeScript('Object.defineProperty(navigator, "webdriver", {get: () => undefined})');
   } catch {
