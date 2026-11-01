@@ -1,13 +1,17 @@
 name: '👗 Category: Fashion'
 on:
   schedule:
-    - cron: '10 */2 * * *'
+    - cron: '6 * * * *'
   workflow_dispatch:
     inputs:
       category:
         description: 'Category to scrape (overrides default)'
         required: false
         default: 'fashion'
+      target_query:
+        description: 'Specific subcategory or search query (leave blank for round-robin rotation)'
+        required: false
+        default: ''
 
 env:
   HEADFUL: 'true'
@@ -22,7 +26,7 @@ env:
 jobs:
   category-fashion:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50
     concurrency:
       group: category-fashion
       cancel-in-progress: true
@@ -44,4 +48,5 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           CATEGORY: ${{ github.event.inputs.category || 'fashion' }}
+          TARGET_QUERY: ${{ github.event.inputs.target_query || '' }}
 

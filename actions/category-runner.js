@@ -14,116 +14,70 @@ require('./setup-firebase');
 const { runBatch } = require('../dataSources/batchProductExtractor');
 const { executionTracker } = require('../services/executionTracker');
 const { githubActionLogger } = require('../services/githubActionLogger');
-
-const PLATFORM_SEEDS = {
-  'electronics': [
-    'https://www.amazon.in/s?k=laptop',
-    'https://www.amazon.in/s?k=mobile+phones',
-    'https://www.amazon.in/s?k=headphones',
-    'https://www.amazon.in/s?k=smartwatch',
-    'https://www.flipkart.com/search?q=laptop',
-    'https://www.flipkart.com/search?q=mobile+phones',
-    'https://www.flipkart.com/search?q=headphones',
-    'https://www.flipkart.com/search?q=smartwatch'
-  ],
-  'fashion': [
-    'https://www.amazon.in/s?k=men+shirts',
-    'https://www.amazon.in/s?k=women+dresses',
-    'https://www.amazon.in/s?k=shoes',
-    'https://www.flipkart.com/search?q=men+shirts',
-    'https://www.flipkart.com/search?q=women+dresses',
-    'https://www.myntra.com/men-shirts',
-    'https://www.myntra.com/women-dresses',
-    'https://www.myntra.com/shoes',
-    'https://www.ajio.com/search/?text=men%20shirts',
-    'https://www.ajio.com/search/?text=women%20dresses'
-  ],
-  'home-kitchen': [
-    'https://www.amazon.in/s?k=kitchen+appliances',
-    'https://www.amazon.in/s?k=furniture',
-    'https://www.flipkart.com/search?q=kitchen+appliances',
-    'https://www.flipkart.com/search?q=furniture'
-  ],
-  'sports-fitness': [
-    'https://www.amazon.in/s?k=fitness+equipment',
-    'https://www.amazon.in/s?k=sports+shoes',
-    'https://www.flipkart.com/search?q=fitness+equipment',
-    'https://www.flipkart.com/search?q=sports+shoes',
-    'https://www.myntra.com/sports-shoes',
-    'https://www.ajio.com/search/?text=sports%20shoes'
-  ],
-  'beauty-personal-care': [
-    'https://www.amazon.in/s?k=skincare',
-    'https://www.amazon.in/s?k=makeup',
-    'https://www.flipkart.com/search?q=skincare',
-    'https://www.flipkart.com/search?q=makeup',
-    'https://www.myntra.com/skincare',
-    'https://www.myntra.com/makeup'
-  ],
-  'automotive': [
-    'https://www.amazon.in/s?k=car+accessories',
-    'https://www.flipkart.com/search?q=car+accessories'
-  ],
-  'baby-kids': [
-    'https://www.amazon.in/s?k=baby+products',
-    'https://www.amazon.in/s?k=kids+toys',
-    'https://www.flipkart.com/search?q=baby+products',
-    'https://www.flipkart.com/search?q=kids+toys',
-    'https://www.myntra.com/kids-wear',
-    'https://www.ajio.com/search/?text=kids%20wear'
-  ],
-  'grocery': [
-    'https://www.amazon.in/s?k=grocery',
-    'https://www.flipkart.com/search?q=grocery'
-  ],
-  'books-stationery': [
-    'https://www.amazon.in/s?k=books',
-    'https://www.amazon.in/s?k=stationery',
-    'https://www.flipkart.com/search?q=books',
-    'https://www.flipkart.com/search?q=stationery'
-  ],
-  'deals-trending': [
-    'https://www.amazon.in/deals',
-    'https://www.amazon.in/gp/bestsellers',
-    'https://www.flipkart.com/offers-store',
-    'https://www.myntra.com/shop/offers'
-  ]
-};
+const { categorySeedManager } = require('../services/categorySeedManager');
 
 /**
  * Runner script to scrape products for a specific category across all platforms
+ * using dynamic round-robin rotation across all subcategories and popular A-to-Z search terms.
  */
 async function main() {
-  const actionName = `category-${CATEGORY}`;
-  console.log(`[${new Date().toISOString()}] Starting category-runner for action: ${actionName}`);
+  const isDryRun = process.argv.includes('--dry-run') || process.env.DRY_RUN === 'true';
+  const targetQuery = process.env.TARGET_QUERY || null;
+  const actionName = `category-${CATEGORY.toLowerCase()}`;
   
-  const seeds = PLATFORM_SEEDS[CATEGORY];
-  if (!seeds || !Array.isArray(seeds)) {
-    console.error(`ERROR: Unknown category "${CATEGORY}". Valid categories: ${Object.keys(PLATFORM_SEEDS).join(', ')}`);
+  console.log(`[${new Date().toISOString()}] Starting category-runner for action: ${actionName} (isDryRun: ${isDryRun}, targetQuery: "${targetQuery || 'none'}")`);
+
+  // Resolve dynamic rotating seeds (or target query override)
+  const seedData = await categorySeedManager.getSeedsForCategory(CATEGORY, targetQuery, 8);
+  const seeds = seedData.seeds;
+  const selectedQueries = seedData.selectedQueries;
+
+  if (!seeds || !Array.isArray(seeds) || seeds.length === 0) {
+    console.error(`ERROR: No seed URLs resolved for category "${CATEGORY}".`);
     process.exit(1);
   }
 
-  console.log(`[${new Date().toISOString()}] Processing ${seeds.length} seed URLs for category: ${CATEGORY}`);
+  console.log(`[${new Date().toISOString()}] Processing ${seeds.length} seed URLs across ${selectedQueries.length} queries for category: ${CATEGORY}`);
+  console.log(`[${new Date().toISOString()}] Selected Queries for this run: ${selectedQueries.join(', ')}`);
 
-  // Set 15-minute timeout
+  if (isDryRun) {
+    console.log('[DRY-RUN] Resolved URLs:');
+    seeds.forEach((url, i) => console.log(`  ${i + 1}. ${url}`));
+    console.log('[DRY-RUN] Completed without scraping.');
+    process.exit(0);
+  }
+
+  // Safety internal watchdog timer: 48 minutes (matching the 50-minute workflow ceiling)
   const timeoutId = setTimeout(() => {
-    console.error(`[${new Date().toISOString()}] TIMEOUT: category-runner exceeded 15 minutes`);
+    console.error(`[${new Date().toISOString()}] WATCHDOG TIMEOUT: category-runner reached 48 minutes.`);
     process.exit(1);
-  }, 15 * 60 * 1000);
+  }, 48 * 60 * 1000);
 
-  // Start tracking across logging systems
-  await githubActionLogger.startAction(actionName, { category: CATEGORY, seedsCount: seeds.length });
+  // Start tracking across logging systems with rich metadata
+  await githubActionLogger.startAction(actionName, {
+    category: CATEGORY,
+    seedsCount: seeds.length,
+    selectedQueries,
+    isOverride: seedData.isOverride,
+    nextPointer: seedData.nextPointer
+  });
+
   try {
-    await executionTracker.startBulkExecution('github-actions', 'productdeals', { origin: 'GitHub Actions', category: CATEGORY });
+    await executionTracker.startBulkExecution('github-actions', 'productdeals', {
+      origin: 'GitHub Actions',
+      category: CATEGORY,
+      selectedQueries
+    });
   } catch (trackerErr) {
     console.warn('Execution tracker start warning:', trackerErr.message);
   }
 
   try {
     // Run batch with targetDb: 'productdeals' so it updates productdeals & productdeals_static
+    console.log(`[${new Date().toISOString()}] Launching runBatch for ${seeds.length} URLs...`);
     const results = await runBatch(seeds, 'website', CATEGORY, 'productdeals');
 
-    // Collect any errors or seeds that yielded 0 products to delegate to localDaemon
+    // Collect any errors, blocked URLs (e.g. Ajio WAF), or failures to delegate to Oracle VM / localDaemon
     const failedItems = [];
     if (results && Array.isArray(results.errors)) {
       for (const err of results.errors) {
@@ -131,9 +85,10 @@ async function main() {
       }
     }
 
-    // Complete tracking and auto-enqueue missed items to commandsQueue
+    // Complete tracking and auto-enqueue missed items to commandsQueue for Oracle Cloud / localDaemon
     await githubActionLogger.completeAction(actionName, {
       category: CATEGORY,
+      selectedQueries,
       ...results
     }, failedItems);
 
@@ -144,7 +99,7 @@ async function main() {
     }
 
     console.log(`[${new Date().toISOString()}] Results summary:`, JSON.stringify(results, null, 2));
-    console.log(`[${new Date().toISOString()}] Completed successfully.`);
+    console.log(`[${new Date().toISOString()}] Category runner finished successfully.`);
     clearTimeout(timeoutId);
     process.exit(0);
   } catch (error) {

@@ -1621,7 +1621,12 @@ async function initializeDriver() {
 	}
 
 	const options = new chrome.Options();
-	options.addArguments('--headless=new');
+	const isHeadful = process.env.HEADFUL === 'true' || process.env.HEADLESS === 'false';
+	if (!isHeadful) {
+		options.addArguments('--headless=new');
+	} else {
+		logger.info('HEADFUL=true detected: running Chrome in full headful mode (Xvfb desktop rendering).');
+	}
 	options.addArguments('--no-sandbox');
 	options.addArguments('--disable-dev-shm-usage');
 	options.addArguments('--window-size=1920,1080');

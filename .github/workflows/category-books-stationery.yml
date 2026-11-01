@@ -1,13 +1,17 @@
 name: '📚 Category: Books & Stationery'
 on:
   schedule:
-    - cron: '45 */2 * * *'
+    - cron: '48 * * * *'
   workflow_dispatch:
     inputs:
       category:
         description: 'Category to scrape (overrides default)'
         required: false
         default: 'books-stationery'
+      target_query:
+        description: 'Specific subcategory or search query (leave blank for round-robin rotation)'
+        required: false
+        default: ''
 
 env:
   HEADFUL: 'true'
@@ -22,7 +26,7 @@ env:
 jobs:
   category-books-stationery:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50
     concurrency:
       group: category-books-stationery
       cancel-in-progress: true
@@ -44,4 +48,5 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           CATEGORY: ${{ github.event.inputs.category || 'books-stationery' }}
+          TARGET_QUERY: ${{ github.event.inputs.target_query || '' }}
 
