@@ -108,6 +108,8 @@ class ProductDealsDB {
 			const searchIndexUpdates = {};
 			let createdCount = 0;
 			let updatedCount = 0;
+			let priceReducedCount = 0;
+			let missedDealsCount = 0;
 			const now = getISTTimestamp();
 			
 			const targetRef = targetDb === 'productdeals' ? this.productdealsRef : (targetDb === 'productdeals_static' ? this.staticRef : this.dealsRef);
@@ -133,6 +135,14 @@ class ProductDealsDB {
 						const val = snapshot.val();
 						if (val) {
 							existingRecords[safeKey] = val;
+						} else {
+							// Also check alternative ref (dealsRef vs productdealsRef) so previous price is reliably found
+							const altRef = targetDb === 'productdeals' ? this.dealsRef : this.productdealsRef;
+							try {
+								const altSnap = await altRef.child(safeKey).once('value');
+								const altVal = altSnap.val();
+								if (altVal) existingRecords[safeKey] = altVal;
+							} catch (_) {}
 						}
 					} catch (e) {
 						logger.warn('Failed to fetch existing record for key (timed out or connection error)', { safeKey, error: e.message });
@@ -463,30 +473,43 @@ class ProductDealsDB {
 
 					if (oldPrice > 0 && newPrice > 0 && Math.abs(oldPrice - newPrice) >= 1) {
 						if (newPrice > oldPrice) {
+							// Price Increased -> Missed Deal
 							normalized.isMissedDeal = true;
 							normalized.isExpired = true;
 							normalized.dealStatus = 'missed';
+							normalized.dealBadge = 'Missed Deal';
 							normalized.previousPrice = oldPrice;
 							normalized.dealPrice = existingProduct.dealPrice || oldPrice;
 							normalized.currentPrice = newPrice;
 							normalized.missedSavings = Math.round(newPrice - oldPrice);
 							normalized.isPriceDrop = false;
+							missedDealsCount++;
+							logger.info('Detected price increase (Missed Deal): ' + safeKey, { oldPrice, newPrice, missedSavings: normalized.missedSavings });
 						} else if (newPrice < oldPrice) {
+							// Price Reduced -> Price Reduced / Price Drop
 							normalized.isPriceDrop = true;
 							normalized.isMissedDeal = false;
 							normalized.isExpired = false;
 							normalized.dealStatus = 'active';
+							normalized.dealBadge = 'Price Reduced';
 							normalized.previousPrice = oldPrice;
 							normalized.currentPrice = newPrice;
 							normalized.price = newPrice;
+							normalized.offerPrice = newPrice;
 							normalized.priceDropAmount = Math.round(oldPrice - newPrice);
+							normalized.priceDropPercent = Math.round(((oldPrice - newPrice) / oldPrice) * 100);
+							priceReducedCount++;
+							logger.info('Detected price decrease (Price Reduced): ' + safeKey, { oldPrice, newPrice, priceDropAmount: normalized.priceDropAmount, priceDropPercent: normalized.priceDropPercent });
 						}
 					} else {
 						if (existingProduct.isMissedDeal) normalized.isMissedDeal = existingProduct.isMissedDeal;
 						if (existingProduct.isPriceDrop) normalized.isPriceDrop = existingProduct.isPriceDrop;
+						if (existingProduct.dealBadge) normalized.dealBadge = existingProduct.dealBadge;
+						if (existingProduct.dealStatus) normalized.dealStatus = existingProduct.dealStatus;
 						if (existingProduct.previousPrice) normalized.previousPrice = existingProduct.previousPrice;
 						if (existingProduct.missedSavings) normalized.missedSavings = existingProduct.missedSavings;
 						if (existingProduct.priceDropAmount) normalized.priceDropAmount = existingProduct.priceDropAmount;
+						if (existingProduct.priceDropPercent) normalized.priceDropPercent = existingProduct.priceDropPercent;
 						if (existingProduct.dealPrice) normalized.dealPrice = existingProduct.dealPrice;
 					}
 				}
@@ -531,7 +554,9 @@ class ProductDealsDB {
 				count: totalCount,
 				created: createdCount,
 				updated: updatedCount,
-				failed: failedCount
+				failed: failedCount,
+				priceReducedCount,
+				missedDealsCount
 			};
 		} catch (error) {
 			logger.error('bulkUpsertProducts error', { error: error.message, stack: error.stack });
@@ -547,7 +572,7 @@ class ProductDealsDB {
 			if (isIndexUpdated) {
 				try {
 					const { uploadSearchIndexToR2 } = require('../../scripts/uploadSearchIndexToR2');
-					uploadSearchIndexToR2().catch(err => logger.error('Cloudflare R2 index upload failed (background finally)', { error: err.message }));
+					await uploadSearchIndexToR2().catch(err => logger.error('Cloudflare R2 index upload failed (background finally)', { error: err.message }));
 				} catch (r2Err) {
 					logger.warn('Could not load Cloudflare R2 upload script in finally', { error: r2Err.message });
 				}

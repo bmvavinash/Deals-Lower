@@ -12,6 +12,8 @@ if (!CATEGORY) {
 
 require('./setup-firebase');
 const { runBatch } = require('../dataSources/batchProductExtractor');
+const { executionTracker } = require('../services/executionTracker');
+const { githubActionLogger } = require('../services/githubActionLogger');
 
 const PLATFORM_SEEDS = {
   'electronics': [
@@ -88,13 +90,12 @@ const PLATFORM_SEEDS = {
   ]
 };
 
-const { executionTracker } = require('../services/executionTracker');
-
 /**
  * Runner script to scrape products for a specific category across all platforms
  */
 async function main() {
-  console.log(`[${new Date().toISOString()}] Starting category-runner for category: ${CATEGORY}`);
+  const actionName = `category-${CATEGORY}`;
+  console.log(`[${new Date().toISOString()}] Starting category-runner for action: ${actionName}`);
   
   const seeds = PLATFORM_SEEDS[CATEGORY];
   if (!seeds || !Array.isArray(seeds)) {
@@ -110,25 +111,48 @@ async function main() {
     process.exit(1);
   }, 15 * 60 * 1000);
 
+  // Start tracking across logging systems
+  await githubActionLogger.startAction(actionName, { category: CATEGORY, seedsCount: seeds.length });
   try {
-    try {
-      await executionTracker.startBulkExecution('github-actions', 'deals', { origin: 'GitHub Actions', category: CATEGORY });
-    } catch (trackerErr) {
-      console.warn('Execution tracker start warning:', trackerErr.message);
+    await executionTracker.startBulkExecution('github-actions', 'productdeals', { origin: 'GitHub Actions', category: CATEGORY });
+  } catch (trackerErr) {
+    console.warn('Execution tracker start warning:', trackerErr.message);
+  }
+
+  try {
+    // Run batch with targetDb: 'productdeals' so it updates productdeals & productdeals_static
+    const results = await runBatch(seeds, 'website', CATEGORY, 'productdeals');
+
+    // Collect any errors or seeds that yielded 0 products to delegate to localDaemon
+    const failedItems = [];
+    if (results && Array.isArray(results.errors)) {
+      for (const err of results.errors) {
+        failedItems.push({ url: err.url, reason: err.error || 'Scrape error' });
+      }
     }
-    const results = await runBatch(seeds, 'website', CATEGORY);
+
+    // Complete tracking and auto-enqueue missed items to commandsQueue
+    await githubActionLogger.completeAction(actionName, {
+      category: CATEGORY,
+      ...results
+    }, failedItems);
+
     try {
       await executionTracker.completeBulkExecution({ category: CATEGORY, ...results });
     } catch (trackerErr) {
       console.warn('Execution tracker complete warning:', trackerErr.message);
     }
+
     console.log(`[${new Date().toISOString()}] Results summary:`, JSON.stringify(results, null, 2));
     console.log(`[${new Date().toISOString()}] Completed successfully.`);
     clearTimeout(timeoutId);
     process.exit(0);
   } catch (error) {
     console.error(`[${new Date().toISOString()}] ERROR in category-runner:`, error);
-    try { await executionTracker.completeBulkExecution({ status: 'failed', error: error.message }); } catch(e){}
+    await githubActionLogger.failAction(actionName, error);
+    try { 
+      await executionTracker.completeBulkExecution({ status: 'failed', error: error.message }); 
+    } catch (_) {}
     clearTimeout(timeoutId);
     process.exit(1);
   }

@@ -18,6 +18,7 @@ const https = require('https');
 const { handleProductProcessing } = require('../dataSources/handleProductProcessing');
 const { scrapePage, loadConfig } = require('../pageScheduler');
 const { getProductDetails } = require('../scheduler');
+const { githubActionLogger } = require('../services/githubActionLogger');
 
 /**
  * Helper to send a reply back to Telegram
@@ -59,6 +60,7 @@ async function sendTelegramMessage(text) {
  * Runner script to process a single hot deal URL triggered by Telegram bot
  */
 async function main() {
+  const actionName = 'hot-deals-telegram';
   console.log(`[${new Date().toISOString()}] Starting hot-deals-runner for URL: ${DEAL_URL}`);
   
   // Set 10-minute timeout
@@ -66,6 +68,8 @@ async function main() {
     console.error(`[${new Date().toISOString()}] TIMEOUT: hot-deals-runner exceeded 10 minutes`);
     process.exit(1);
   }, 10 * 60 * 1000);
+
+  await githubActionLogger.startAction(actionName, { url: DEAL_URL, chatId: CHAT_ID });
 
   try {
     let result;
@@ -81,6 +85,11 @@ async function main() {
     if (CHAT_ID) {
       await sendTelegramMessage(`Successfully processed deal:\n${DEAL_URL}\nResult: Success`);
     }
+
+    await githubActionLogger.completeAction(actionName, {
+      url: DEAL_URL,
+      success: !!result
+    });
     
     clearTimeout(timeoutId);
     process.exit(0);
@@ -90,6 +99,8 @@ async function main() {
     if (CHAT_ID) {
       await sendTelegramMessage(`Failed to process deal:\n${DEAL_URL}\nError: ${error.message}`);
     }
+
+    await githubActionLogger.failAction(actionName, error, [{ url: DEAL_URL, reason: error.message }]);
     
     clearTimeout(timeoutId);
     process.exit(1);
