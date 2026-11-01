@@ -10,11 +10,35 @@ const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
 const logger = getModuleLogger('updateStaleProducts');
 
 /**
- * Efficiently discovers stale products using Firebase RTDB shallow key queries
- * to avoid downloading massive multi-megabyte payloads in cloud runners.
+ * Checks whether an active Sale is currently live via dealsConfig, active banners, or environment flag.
  */
-async function getStaleProducts(maxItems = 12, hoursOld = 12) {
+async function checkIsSaleLive() {
+  if (process.env.IS_SALE_LIVE === 'true') return true;
   try {
+    const dealsConfigSnap = await productDealsDB.productdealsRef.parent.child('dealsConfig/liveDealActive').once('value');
+    if (dealsConfigSnap.val() === true) return true;
+
+    const bannersSnap = await productDealsDB.productdealsRef.parent.child('banners').once('value');
+    const banners = bannersSnap.val();
+    if (banners && Object.values(banners).some(b => b && b.isActive)) return true;
+  } catch (_) {}
+  return false;
+}
+
+/**
+ * Prioritized Cycled Sequence for Stale Product Discovery:
+ * - Priority 1: > 1 year old (or missing / invalid updatedAt)
+ * - Priority 2: > 6 months old (6m to 1y)
+ * - Priority 3: > 1 month old (1m to 6m)
+ * - Priority 4: > 1 week old (7d to 1m)
+ * - Priority 5: > 1 day old (24h to 7d)
+ * - Priority 6: > 2 hours old (2h to 24h) [or > 1 hour if Sale is Live]
+ */
+async function getStaleProducts(maxItems = 12) {
+  try {
+    const isSaleLive = await checkIsSaleLive();
+    logger.info(`Stale product cycle check: isSaleLive=${isSaleLive}`);
+
     const DB_Name = config.DATABASE_CONFIG.DB1_NAME || 'lowerdealhub';
     const shallowUrl = DB_Name === 'lowerdealhub' 
       ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/productdeals.json?shallow=true`
@@ -28,25 +52,35 @@ async function getStaleProducts(maxItems = 12, hoursOld = 12) {
     if (!keysObj) return [];
     
     const allKeys = Object.keys(keysObj);
-    logger.info(`Total products in database: ${allKeys.length}. Sampling for stale records...`);
+    logger.info(`Total products in database: ${allKeys.length}. Sampling across historical, mid, and recent eras...`);
 
-    const staleThresholdTime = Date.now() - (hoursOld * 60 * 60 * 1000);
-    const staleItems = [];
-
-    // Balance recent and pseudo-random keys for broad freshness coverage
-    const sampleTarget = Math.min(100, allKeys.length);
-    const halfSample = Math.floor(sampleTarget / 2);
-    const recentKeys = allKeys.slice(-halfSample);
-    const randomKeys = [];
-    for (let i = 0; i < halfSample; i++) {
-      const idx = Math.floor(Math.random() * (allKeys.length - halfSample));
-      randomKeys.push(allKeys[idx]);
+    // Sample across the key space: oldest/historical (first slice), mid range, and newest (last slice)
+    const sampleSize = Math.min(150, allKeys.length);
+    const sliceCount = Math.floor(sampleSize / 3);
+    const oldestKeys = allKeys.slice(0, sliceCount);
+    const newestKeys = allKeys.slice(-sliceCount);
+    const middleKeys = [];
+    const midStart = sliceCount;
+    const midEnd = Math.max(sliceCount, allKeys.length - sliceCount);
+    for (let i = 0; i < sliceCount; i++) {
+      const idx = midStart + Math.floor(Math.random() * (midEnd - midStart));
+      if (allKeys[idx]) middleKeys.push(allKeys[idx]);
     }
-    const sampleKeys = Array.from(new Set([...recentKeys, ...randomKeys]));
+    const sampleKeys = Array.from(new Set([...oldestKeys, ...middleKeys, ...newestKeys]));
 
-    // Check records in small concurrent batches
-    const chunkSize = 10;
-    for (let i = 0; i < sampleKeys.length && staleItems.length < maxItems; i += chunkSize) {
+    const now = Date.now();
+    const H1 = 1 * 3600 * 1000;
+    const H2 = 2 * 3600 * 1000;
+    const D1 = 24 * 3600 * 1000;
+    const D7 = 7 * D1;
+    const M1 = 30 * D1;
+    const M6 = 180 * D1;
+    const Y1 = 365 * D1;
+
+    const evaluatedCandidates = [];
+    const chunkSize = 15;
+
+    for (let i = 0; i < sampleKeys.length; i += chunkSize) {
       const chunk = sampleKeys.slice(i, i + chunkSize);
       const promises = chunk.map(async (key) => {
         try {
@@ -56,32 +90,78 @@ async function getStaleProducts(maxItems = 12, hoursOld = 12) {
           const url = product.productUrl || product.url;
           if (!url) return null;
 
-          let isStale = false;
+          let priorityTier = 999;
+          let ageDiff = Infinity;
+          let tierLabel = '';
+
           if (!product.updatedAt) {
-            isStale = true;
+            priorityTier = 1;
+            tierLabel = '>1yr / Missing updatedAt';
           } else {
             const updateTime = new Date(product.updatedAt).getTime();
-            if (isNaN(updateTime) || updateTime < staleThresholdTime) {
-              isStale = true;
+            if (isNaN(updateTime)) {
+              priorityTier = 1;
+              tierLabel = '>1yr / Invalid updatedAt';
+            } else {
+              ageDiff = now - updateTime;
+              if (ageDiff >= Y1) {
+                priorityTier = 1;
+                tierLabel = '> 1 Year';
+              } else if (ageDiff >= M6) {
+                priorityTier = 2;
+                tierLabel = '> 6 Months';
+              } else if (ageDiff >= M1) {
+                priorityTier = 3;
+                tierLabel = '> 1 Month';
+              } else if (ageDiff >= D7) {
+                priorityTier = 4;
+                tierLabel = '> 1 Week';
+              } else if (ageDiff >= D1) {
+                priorityTier = 5;
+                tierLabel = '> 1 Day';
+              } else if (ageDiff >= (isSaleLive ? H1 : H2)) {
+                priorityTier = 6;
+                tierLabel = isSaleLive ? '> 1 Hour (Live Sale)' : '> 2 Hours';
+              }
             }
           }
 
-          if (isStale) {
-            return { key, url, oldUpdatedAt: product.updatedAt || null };
+          if (priorityTier <= 6) {
+            return {
+              key,
+              url,
+              oldUpdatedAt: product.updatedAt || null,
+              priorityTier,
+              ageDiff,
+              tierLabel
+            };
           }
         } catch (_) {}
         return null;
       });
 
-      const results = await Promise.all(promises);
-      for (const res of results) {
-        if (res && staleItems.length < maxItems) {
-          staleItems.push(res);
-        }
+      const chunkResults = await Promise.all(promises);
+      for (const res of chunkResults) {
+        if (res) evaluatedCandidates.push(res);
       }
     }
 
-    return staleItems;
+    // Sort strictly by priorityTier ASC (Priority 1 first, then 2, 3...), and by ageDiff DESC within tier
+    evaluatedCandidates.sort((a, b) => {
+      if (a.priorityTier !== b.priorityTier) return a.priorityTier - b.priorityTier;
+      return b.ageDiff - a.ageDiff;
+    });
+
+    const selectedStaleItems = evaluatedCandidates.slice(0, maxItems);
+    
+    // Log tier distribution
+    const tierCounts = {};
+    for (const item of selectedStaleItems) {
+      tierCounts[item.tierLabel] = (tierCounts[item.tierLabel] || 0) + 1;
+    }
+    logger.info(`Selected ${selectedStaleItems.length} stale items by priority cycle:`, tierCounts);
+
+    return selectedStaleItems;
   } catch (error) {
     logger.error('Error fetching stale products:', { error: error.message });
     return [];
@@ -101,7 +181,7 @@ async function main() {
     } catch (_) {}
     
     try {
-        const staleItems = await getStaleProducts(12, 12);
+        const staleItems = await getStaleProducts(12);
         logger.info(`Found ${staleItems.length} stale products to process.`);
         
         if (staleItems.length === 0) {
@@ -212,4 +292,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { getStaleProducts, main };
+module.exports = { getStaleProducts, main, checkIsSaleLive };
