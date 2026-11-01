@@ -23,20 +23,97 @@ const api: AxiosInstance = axios.create({
   timeout: 30000,
 });
 
+// Helper to decode JWT payload expiration
+function parseTokenExp(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length >= 2) {
+      const payload = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload.exp || null;
+    }
+  } catch {}
+  return null;
+}
+
+// Global broadcast to automatically log out user when session expires
+export function triggerSessionExpired(reason = 'Your session has expired. Please sign in again.') {
+  try {
+    localStorage.removeItem('admin_auth_session');
+    localStorage.removeItem('auth_bypass_user');
+  } catch {}
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:session_expired', { detail: { reason } }));
+  }
+}
+
+// Auto-refresh token mechanism using Firebase
+let refreshPromise: Promise<string | null> | null = null;
+export async function refreshAuthToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      if (auth && auth.currentUser) {
+        console.log('[Auth] Attempting background token refresh via Firebase...');
+        const newIdToken = await auth.currentUser.getIdToken(true);
+        if (newIdToken) {
+          const res = await axios.post(`${API_BASE_URL}/auth/firebase-session`, {
+            idToken: newIdToken,
+            email: auth.currentUser.email
+          }, { timeout: 10000 });
+
+          if (res.data?.token) {
+            const newSession = {
+              email: auth.currentUser.email,
+              token: res.data.token
+            };
+            localStorage.setItem('admin_auth_session', JSON.stringify(newSession));
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('auth:session_updated', { detail: newSession }));
+            }
+            console.log('[Auth] Backend session token refreshed successfully.');
+            return res.data.token;
+          }
+          return newIdToken;
+        }
+      }
+    } catch (e) {
+      console.warn('[Auth] Background token refresh failed:', e);
+    } finally {
+      refreshPromise = null;
+    }
+    return null;
+  })();
+
+  return refreshPromise;
+}
+
 // ─────────────────────────────────────────────
 // Request interceptor: attach auth token & resolve baseURL
 // ─────────────────────────────────────────────
 api.interceptors.request.use(async (config) => {
-  // 1. Attach token from admin session if available
+  // 1. Attach token from admin session if available (with pre-expiration check)
   try {
     const saved = localStorage.getItem('admin_auth_session');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed.token) {
-        config.headers = config.headers || {};
-        config.headers['Authorization'] = `Bearer ${parsed.token}`;
-        if (!config.baseURL) config.baseURL = API_BASE_URL;
-        return config;
+        const exp = parseTokenExp(parsed.token);
+        // Pre-emptive update if expiring within 60 seconds or already expired
+        if (exp && (exp - 60000) <= Date.now()) {
+          const refreshedToken = await refreshAuthToken();
+          if (refreshedToken) {
+            config.headers = config.headers || {};
+            config.headers['Authorization'] = `Bearer ${refreshedToken}`;
+            if (!config.baseURL) config.baseURL = API_BASE_URL;
+            return config;
+          }
+        } else {
+          config.headers = config.headers || {};
+          config.headers['Authorization'] = `Bearer ${parsed.token}`;
+          if (!config.baseURL) config.baseURL = API_BASE_URL;
+          return config;
+        }
       }
     }
   } catch {
@@ -83,9 +160,28 @@ api.interceptors.response.use(
     return response;
   },
   async (error) => {
-    const config = error?.config as (AxiosRequestConfig & { _retried?: boolean }) | undefined;
+    const config = error?.config as (AxiosRequestConfig & { _retried?: boolean; _authRetried?: boolean }) | undefined;
 
-    // Only attempt fallback if config exists, hasn't been retried, and was a network error
+    // Automatic Token Update or Automatic Logout on 401 Unauthorized
+    if (error?.response?.status === 401 && config && !config._authRetried) {
+      config._authRetried = true;
+      console.warn('[Auth] Received 401 Unauthorized. Attempting automatic token update...');
+
+      const newToken = await refreshAuthToken();
+      if (newToken) {
+        console.log('[Auth] Token automatically refreshed. Retrying original request...');
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = `Bearer ${newToken}`;
+        return api.request(config);
+      }
+
+      // If token update is impossible or rejected, automatically log out
+      console.warn('[Auth] Credentials expired and cannot be auto-refreshed. Triggering automatic logout.');
+      triggerSessionExpired('Your session has expired. Please sign in again.');
+      return Promise.reject(error);
+    }
+
+    // Network error fallback to Render
     const isNetworkError = Boolean(error && !error.response);
     if (config && !config._retried && isNetworkError && FALLBACK_URL && config.baseURL !== FALLBACK_URL) {
       config._retried = true;

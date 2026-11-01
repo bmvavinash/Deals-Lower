@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { auth, googleProvider, isConfigured } from '../../config/firebase';
-import { authAPI } from '../../services/api';
+import { authAPI, refreshAuthToken, triggerSessionExpired } from '../../services/api';
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -42,6 +42,37 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     );
   };
 
+  // Listen for automatic session expiration and update events
+  useEffect(() => {
+    const handleSessionExpired = (e: any) => {
+      const reason = e?.detail?.reason || 'Your session has expired. Please sign in again.';
+      setAdminSession(null);
+      setUser(null);
+      setBypassUser(null);
+      try {
+        localStorage.removeItem('admin_auth_session');
+        localStorage.removeItem('auth_bypass_user');
+        if (auth) signOut(auth).catch(() => {});
+      } catch {}
+      setError(reason);
+    };
+
+    const handleSessionUpdated = (e: any) => {
+      if (e?.detail) {
+        setAdminSession(e.detail);
+        setError(null);
+      }
+    };
+
+    window.addEventListener('auth:session_expired', handleSessionExpired);
+    window.addEventListener('auth:session_updated', handleSessionUpdated);
+
+    return () => {
+      window.removeEventListener('auth:session_expired', handleSessionExpired);
+      window.removeEventListener('auth:session_updated', handleSessionUpdated);
+    };
+  }, []);
+
   useEffect(() => {
     // 1. Verify persisted backend admin session on load
     const saved = localStorage.getItem('admin_auth_session');
@@ -49,10 +80,13 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       try {
         const parsed = JSON.parse(saved);
         if (parsed.token) {
-          authAPI.verify(parsed.token).catch(() => {
-            console.warn('Backend session expired or invalid. Clearing saved session.');
-            localStorage.removeItem('admin_auth_session');
-            setAdminSession(null);
+          authAPI.verify(parsed.token).catch(async () => {
+            console.warn('Backend session expired or invalid. Attempting automatic update...');
+            const updatedToken = await refreshAuthToken();
+            if (!updatedToken) {
+              console.warn('Automatic update failed. Automatically logging out.');
+              handleLogout('Your session has expired. Please sign in again.');
+            }
           });
         }
       } catch {
@@ -195,7 +229,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (message?: string) => {
     setLoading(true);
     try {
       localStorage.removeItem('admin_auth_session');
@@ -206,7 +240,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
         await signOut(auth);
       }
       setUser(null);
-      setError(null);
+      setError(message || null);
     } catch (err) {
       console.error('Sign-Out failed:', err);
     } finally {
