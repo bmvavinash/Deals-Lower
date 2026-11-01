@@ -11,6 +11,32 @@ const config = require('../../config/config.js');
 const logger = getModuleLogger('api-server');
 
 const app = express();
+
+// ============================================
+// GLOBAL CRASH SHIELD - Never exit process
+// Guarantees /health and port binding stay alive
+// ============================================
+process.on('uncaughtException', (error) => {
+  console.error('🚨 [GLOBAL] Uncaught Exception:', error);
+  try {
+    logger.error('💥 [GLOBAL] Uncaught Exception', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+  } catch (_) {}
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('🚨 [GLOBAL] Unhandled Rejection:', reason);
+  try {
+    logger.error('💥 [GLOBAL] Unhandled Rejection', {
+      reason: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+      timestamp: new Date().toISOString()
+    });
+  } catch (_) {}
+});
 const PORT = process.env.PORT || constants.frontend?.apiPort || 3003;
 
 // Middleware
@@ -108,36 +134,6 @@ if (!admin.apps.length) {
     logger.warn('Could not find Firebase credentials. Deferring initialization to individual modules.');
   }
 }
-
-// ============================================
-// GLOBAL ERROR HANDLERS - Catch ALL errors
-// ============================================
-process.on('uncaughtException', (error) => {
-  console.error('🚨 [GLOBAL] Uncaught Exception:', error);
-  console.error('🚨 [GLOBAL] Stack:', error.stack);
-  logger.error('💥 [GLOBAL] Uncaught Exception', {
-    error: error.message,
-    stack: error.stack,
-    name: error.name,
-    code: error.code,
-    errno: error.errno,
-    syscall: error.syscall,
-    timestamp: new Date().toISOString()
-  });
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('🚨 [GLOBAL] Unhandled Rejection:', reason);
-  if (reason instanceof Error) {
-    console.error('🚨 [GLOBAL] Stack:', reason.stack);
-  }
-  logger.error('💥 [GLOBAL] Unhandled Rejection', {
-    reason: reason instanceof Error ? reason.message : String(reason),
-    stack: reason instanceof Error ? reason.stack : undefined,
-    promise: promise.toString(),
-    timestamp: new Date().toISOString()
-  });
-});
 
 const originalConsoleError = console.error;
 console.error = function(...args) {
@@ -273,11 +269,10 @@ try {
     }
   };
 
-  // First ping after 45 seconds, then recurring every 4 minutes (prevents 15m idle hibernate)
-  setTimeout(sendSelfPing, 45 * 1000);
-  const keepAliveTimer = setInterval(sendSelfPing, 4 * 60 * 1000);
-  if (keepAliveTimer.unref) keepAliveTimer.unref();
-  logger.info('Autonomous Keep-Alive Self-Ping scheduled every 4 minutes.');
+  // First ping after 20 seconds, then recurring every 3 minutes (prevents Render idle hibernation)
+  setTimeout(sendSelfPing, 20 * 1000);
+  const keepAliveTimer = setInterval(sendSelfPing, 3 * 60 * 1000);
+  logger.info('Autonomous Keep-Alive Self-Ping scheduled every 3 minutes.');
 } catch (keepAliveErr) {
   logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
 }
