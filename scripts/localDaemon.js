@@ -104,18 +104,113 @@ const queueRef = db.ref('commandsQueue');
 const configRef = db.ref('schedulerConfig');
 
 /**
- * Starts listening to the Firebase command queue
+ * Starts listening to the Firebase command queue with strictly sequential execution (1 at a time)
  */
 function startCommandListener() {
-  logger.info(`🚀 Queue listener started for role: [${runnerRole.toUpperCase()}]`);
+  logger.info(`🚀 Sequential Queue listener started for role: [${runnerRole.toUpperCase()}]`);
+
+  const pendingExecutionQueue = [];
+  let isBusyExecuting = false;
+
+  const executeCommandItem = (key, commandData) => {
+    return new Promise(async (resolve) => {
+      logger.info(`📥 Pulling queued execution request: "${commandData.name}" (${commandData.id})`);
+
+      // Lock the command instantly to avoid duplicate runner pickup
+      try {
+        await queueRef.child(key).update({
+          status: 'running',
+          startedAt: new Date().toISOString(),
+          executorId: 'local-runner-' + runnerRole
+        });
+      } catch (err) {
+        logger.error(`Failed to lock command ${key}:`, err);
+        return resolve();
+      }
+
+      logger.info(`⚙️ Running command: "${commandData.command}"`);
+
+      // Execute script locally with a 15-minute watchdog timer to prevent hangs
+      const watchdogTimeoutMs = 15 * 60 * 1000;
+      let hasFinished = false;
+      const watchdogTimer = setTimeout(async () => {
+        if (hasFinished) return;
+        hasFinished = true;
+        logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" exceeded max runtime. Killing process...`);
+        try { child.kill('SIGKILL'); } catch (_) {}
+        try {
+          await queueRef.child(key).update({
+            status: 'failed',
+            error: 'Watchdog Timeout: Terminated after 15 minutes of inactivity',
+            completedAt: new Date().toISOString()
+          });
+        } catch (err) {
+          logger.error('Failed to update timed out command in DB', err);
+        }
+        resolve();
+      }, watchdogTimeoutMs);
+
+      const child = exec(commandData.command, { cwd: path.join(__dirname, '../'), maxBuffer: 1024 * 1024 * 50 }, async (error, stdout, stderr) => {
+        if (hasFinished) return;
+        hasFinished = true;
+        clearTimeout(watchdogTimer);
+        const completedAt = new Date().toISOString();
+        
+        if (error) {
+          logger.error(`❌ Local command run failed: "${commandData.name}"`, error);
+          try {
+            await queueRef.child(key).update({
+              status: 'failed',
+              error: error.message,
+              stderr: stderr || '',
+              stdout: stdout || '',
+              completedAt
+            });
+          } catch (e) {
+            logger.error('Failed to update failed status in RTDB', e);
+          }
+          return resolve();
+        }
+
+        logger.info(`✅ Local command completed successfully: "${commandData.name}"`);
+        try {
+          await queueRef.child(key).update({
+            status: 'completed',
+            stdout: stdout || '',
+            stderr: stderr || '',
+            completedAt
+          });
+        } catch (e) {
+          logger.error('Failed to update completed status in RTDB', e);
+        }
+        resolve();
+      });
+
+      child.stdout.on('data', (data) => console.log(`[EXEC LOG] ${data.toString().trim()}`));
+      child.stderr.on('data', (data) => console.error(`[EXEC ERR] ${data.toString().trim()}`));
+    });
+  };
+
+  const triggerNext = async () => {
+    if (isBusyExecuting || pendingExecutionQueue.length === 0) return;
+    isBusyExecuting = true;
+    const { key, commandData } = pendingExecutionQueue.shift();
+    try {
+      await executeCommandItem(key, commandData);
+    } catch (e) {
+      logger.error('Error executing queued command', e);
+    } finally {
+      isBusyExecuting = false;
+      setImmediate(triggerNext);
+    }
+  };
 
   queueRef.orderByChild('status').equalTo('pending').on('child_added', async (snapshot) => {
     const key = snapshot.key;
     const commandData = snapshot.val();
-
     if (!commandData) return;
 
-    // 1. Filter command by role (skip if this runner represents another role)
+    // 1. Filter command by role
     const commandRole = commandData.role || 'all';
     if (runnerRole !== 'all' && commandRole !== runnerRole) {
       logger.debug(`Skipping command ${commandData.id} (requires: ${commandRole}, we are: ${runnerRole})`);
@@ -125,10 +220,10 @@ function startCommandListener() {
     // 2. Cooldown check / Expiration check for offline triggers
     const createdAt = new Date(commandData.createdAt).getTime();
     const now = Date.now();
-    const expirationThresholdMs = 30 * 60 * 1000; // 30 minutes
+    const expirationThresholdMs = 30 * 60 * 1000;
     
     if (!processStaleCommands && (now - createdAt > expirationThresholdMs)) {
-      logger.warn(`⚠️ Skipping stale trigger command ${commandData.id} (queued at ${commandData.createdAt}, older than 30 mins)`);
+      logger.warn(`⚠️ Skipping stale trigger command ${commandData.id} (older than 30 mins)`);
       try {
         await queueRef.child(key).update({
           status: 'expired',
@@ -141,66 +236,9 @@ function startCommandListener() {
       return;
     }
 
-    logger.info(`📥 Pulling queued execution request: "${commandData.name}" (${commandData.id})`);
-
-    // Lock the command instantly to avoid duplicate runner pickup
-    try {
-      await queueRef.child(key).update({
-        status: 'running',
-        startedAt: new Date().toISOString(),
-        executorId: 'local-runner-' + runnerRole
-      });
-    } catch (err) {
-      logger.error(`Failed to lock command ${key}:`, err);
-      return;
-    }
-
-    logger.info(`⚙️ Running command: "${commandData.command}"`);
-
-    // Execute script locally with a 30-minute watchdog timer to prevent hangs
-    const watchdogTimeoutMs = 30 * 60 * 1000;
-    const watchdogTimer = setTimeout(async () => {
-      logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" has exceeded max runtime of 30 minutes. Killing child process...`);
-      child.kill('SIGKILL');
-      try {
-        await queueRef.child(key).update({
-          status: 'failed',
-          error: 'Watchdog Timeout: Terminated after 30 minutes of inactivity',
-          completedAt: new Date().toISOString()
-        });
-      } catch (err) {
-        logger.error('Failed to update timed out command in DB', err);
-      }
-    }, watchdogTimeoutMs);
-
-    const child = exec(commandData.command, { cwd: path.join(__dirname, '../'), maxBuffer: 1024 * 1024 * 50 }, async (error, stdout, stderr) => {
-      clearTimeout(watchdogTimer);
-      const completedAt = new Date().toISOString();
-      
-      if (error) {
-        logger.error(`❌ Local command run failed: "${commandData.name}"`, error);
-        await queueRef.child(key).update({
-          status: 'failed',
-          error: error.message,
-          stderr: stderr || '',
-          stdout: stdout || '',
-          completedAt
-        });
-        return;
-      }
-
-      logger.info(`✅ Local command completed successfully: "${commandData.name}"`);
-      await queueRef.child(key).update({
-        status: 'completed',
-        stdout: stdout || '',
-        stderr: stderr || '',
-        completedAt
-      });
-    });
-
-    // Output logs directly to terminal so capthas / actions can be observed
-    child.stdout.on('data', (data) => console.log(`[EXEC LOG] ${data.toString().trim()}`));
-    child.stderr.on('data', (data) => console.error(`[EXEC ERR] ${data.toString().trim()}`));
+    // Enqueue for strictly sequential execution
+    pendingExecutionQueue.push({ key, commandData });
+    triggerNext();
   });
 }
 
