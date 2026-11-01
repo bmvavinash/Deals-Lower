@@ -48,10 +48,37 @@ logger.info('====================================================');
 const dbname = constants.postingTypesConfig[constants.type].DB;
 const DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
 const filePath = config.DATABASE_CONFIG[`${dbname}_TOKEN_FILE`];
-const serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
+let serviceAccount = null;
+if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+  try {
+    serviceAccount = typeof process.env.FIREBASE_SERVICE_ACCOUNT_JSON === 'object'
+      ? process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+      : JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+  } catch (e) {
+    logger.warn('Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON:', e.message);
+  }
+}
+
+if (!serviceAccount) {
+  const candidatePaths = [
+    process.env.FIREBASE_SERVICE_ACCOUNT_PATH,
+    path.join(__dirname, '../config', `${filePath}.json`),
+    path.join(__dirname, '../../config', `${filePath}.json`),
+    `${constants.pathToFile}/${filePath}.json`
+  ].filter(Boolean);
+
+  for (const cp of candidatePaths) {
+    try {
+      if (fs.existsSync(cp)) {
+        serviceAccount = require(cp);
+        break;
+      }
+    } catch (_) {}
+  }
+}
 
 const defaultApp = admin.apps.find(app => app.name === '[DEFAULT]');
-if (!defaultApp) {
+if (!defaultApp && serviceAccount) {
   const databaseURL = DB_Name === 'lowerdealhub' 
     ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
     : `https://${DB_Name}-default-rtdb.firebaseio.com`;

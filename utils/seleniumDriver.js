@@ -29,6 +29,17 @@ async function createHeadlessChromeDriver() {
   options.addArguments('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36');
   options.excludeSwitches(['enable-automation']);
 
+  if (process.platform === 'linux') {
+    const fs = require('fs');
+    const linuxBinaries = ['/snap/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/chromium', '/usr/bin/google-chrome'];
+    for (const bin of linuxBinaries) {
+      if (fs.existsSync(bin)) {
+        options.setChromeBinaryPath(bin);
+        break;
+      }
+    }
+  }
+
   const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
   try {
     await driver.executeScript('Object.defineProperty(navigator, "webdriver", {get: () => undefined})');
