@@ -104,7 +104,7 @@ router.get('/stats', async (req, res, next) => {
  */
 router.get('/config', (req, res, next) => {
   try {
-    const constants = require('../../../../config/constants');
+    const constants = require('../../../config/constants');
     const notifs = constants.notifications || {};
     
     res.json({
