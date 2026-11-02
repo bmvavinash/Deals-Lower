@@ -29,12 +29,8 @@ async function generateBestInsights() {
     }
     symbolMap.get(symKey).push(sig);
 
-    // Fetch quote (use cached CMP if updated within last 60 seconds)
-    const quote = (sig.currentCMP && sig.cmpUpdatedAt && (Date.now() - new Date(sig.cmpUpdatedAt).getTime() < 60000))
-      ? { ltp: Number(sig.currentCMP), dayChangePercent: Number(sig.dayChangePercent || 0) }
-      : await getLiveQuote(sig.symbol);
-    const evaluated = evaluateSignalWithCMP(sig, quote) || sig;
-    refreshedSignals.push(evaluated);
+    // Use stored CMP quote from Multi-DB (kept updated by background refresher)
+    refreshedSignals.push(sig);
   }
 
   const actionableInsights = [];

@@ -24,8 +24,8 @@ async function searchAndSelectChat(waPage, searchQuery) {
 
     logger.info(`Searching for chat matching "${searchQuery}" in WhatsApp...`);
     const searchFound = await waPage.evaluate((query) => {
-      const input = document.querySelector('input[placeholder="Search or start a new chat"]') ||
-                    document.querySelector('input[aria-label="Search or start a new chat"]') ||
+      const input = document.querySelector('input[placeholder*="Search"]') ||
+                    document.querySelector('input[aria-label*="Search"]') ||
                     document.querySelector('input[role="textbox"]');
       if (!input) return false;
       input.focus();
@@ -36,22 +36,34 @@ async function searchAndSelectChat(waPage, searchQuery) {
     }, searchQuery);
 
     if (searchFound) {
-      await new Promise(r => setTimeout(r, 1500));
-      // Click matching item
-      const clicked = await waPage.evaluate((query) => {
-        const side = document.querySelector('#side') || document.body;
-        const rows = Array.from(side.querySelectorAll('div[role="listitem"], div[role="row"]'));
-        const match = rows.find(r => r.innerText.toLowerCase().includes(query.toLowerCase()));
-        if (match) {
-          match.click();
-          return true;
+      await new Promise(r => setTimeout(r, 2000));
+      
+      // Native bounding box click on matching item in side bar
+      const elements = await waPage.$$('span[title], div[data-testid="cell-frame-container"], div[role="listitem"]');
+      let clicked = false;
+      for (const el of elements) {
+        const text = await waPage.evaluate(node => node.getAttribute('title') || node.innerText || '', el);
+        if (text.toLowerCase().includes(searchQuery.toLowerCase())) {
+          const box = await el.boundingBox();
+          if (box) {
+            await waPage.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+            clicked = true;
+            break;
+          }
         }
-        return false;
-      }, searchQuery);
+      }
+
+      if (!clicked) {
+        // Fallback to keyboard Enter on first search match
+        await waPage.keyboard.press('ArrowDown');
+        await new Promise(r => setTimeout(r, 500));
+        await waPage.keyboard.press('Enter');
+        clicked = true;
+      }
 
       if (clicked) {
-        await new Promise(r => setTimeout(r, 2000));
-        logger.info(`Successfully opened chat matching "${searchQuery}".`);
+        await new Promise(r => setTimeout(r, 2500));
+        logger.info(`Successfully clicked search result for "${searchQuery}".`);
         return true;
       }
     }

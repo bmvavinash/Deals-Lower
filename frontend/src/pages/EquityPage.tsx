@@ -192,11 +192,15 @@ const EquityPage: React.FC = () => {
         stocksAPI.getSchedulerStatus()
       ]);
 
+      let loadedSignals: StockSignal[] = [];
+      let loadedInsights: BestInsight[] = [];
+      let loadedScheduler: any = null;
+
       if (signalsRes.status === 'fulfilled' && signalsRes.value.data?.success) {
-        setSignals(signalsRes.value.data.data || []);
+        loadedSignals = signalsRes.value.data.data || [];
       }
       if (insightsRes.status === 'fulfilled' && insightsRes.value.data?.success) {
-        setInsights(insightsRes.value.data.data || []);
+        loadedInsights = insightsRes.value.data.data || [];
       }
       if (doubtsRes.status === 'fulfilled' && doubtsRes.value.data?.success) {
         setClarifications(doubtsRes.value.data.data || []);
@@ -205,8 +209,75 @@ const EquityPage: React.FC = () => {
         setNotifications(notifsRes.value.data.data || []);
       }
       if (schedRes.status === 'fulfilled' && schedRes.value.data?.success) {
-        setSchedulerState(schedRes.value.data.data || null);
+        loadedScheduler = schedRes.value.data.data || null;
       }
+
+      // Resilient Firebase RTDB Fallback:
+      // If signals are empty or API server failed (e.g. Render cloud asleep / 503),
+      // fetch directly from Firebase RTDB REST endpoint (instant, zero cold starts)
+      if (loadedSignals.length === 0) {
+        try {
+          const fbRes = await fetch('https://lowerdealhub-default-rtdb.asia-southeast1.firebasedatabase.app/stocks/signals.json');
+          if (fbRes.ok) {
+            const rawData = await fbRes.json();
+            if (rawData) {
+              const list = Object.values(rawData) as StockSignal[];
+              if (list.length > 0) {
+                const bySym = new Map<string, StockSignal[]>();
+                list.forEach(s => {
+                  const sym = (s.symbol || '').toUpperCase().trim();
+                  if (!bySym.has(sym)) bySym.set(sym, []);
+                  bySym.get(sym)!.push(s);
+                });
+                const consolidated: StockSignal[] = [];
+                bySym.forEach((group) => {
+                  const primary = group.find(s => s.isSourceOfTruth || s.source?.toLowerCase().includes('whatsapp'))
+                    || group.find(s => s.source?.toLowerCase().includes('watchlist'))
+                    || group[0];
+                  consolidated.push({
+                    ...primary,
+                    hasMultipleSources: group.length > 1,
+                    sourcesBreakdown: group.map(sib => ({
+                      id: sib.id,
+                      source: sib.source,
+                      sourceLabel: sib.source?.toLowerCase().includes('whatsapp') ? 'WhatsApp (Source of Truth)' : (sib.source || 'Advisory'),
+                      sourceType: sib.source?.toLowerCase().includes('whatsapp') ? 'whatsapp' : 'google_sheet',
+                      action: sib.action,
+                      price: sib.entryPrice || sib.entryMax || sib.target1,
+                      rating: sib.rating,
+                      status: sib.status,
+                      statusReason: sib.statusReason,
+                      isExpired: Boolean(sib.isExpired),
+                      isSourceOfTruth: Boolean(sib.isSourceOfTruth || sib.source?.toLowerCase().includes('whatsapp')),
+                      timestamp: sib.timestamp,
+                      rawText: (sib as any).rawText
+                    }))
+                  });
+                });
+                loadedSignals = consolidated;
+                console.log(`[EquityPage] Recovered ${consolidated.length} signals via Firebase RTDB direct fallback.`);
+              }
+            }
+          }
+        } catch (fbErr: any) {
+          console.warn('[EquityPage] Firebase direct fallback error:', fbErr.message);
+        }
+      }
+
+      // If scheduler state is null from server, try reading Firebase RTDB scheduler state or default to active
+      if (!loadedScheduler) {
+        try {
+          const fbSchedRes = await fetch('https://lowerdealhub-default-rtdb.asia-southeast1.firebasedatabase.app/stocks/scheduler.json');
+          if (fbSchedRes.ok) {
+            const fbSched = await fbSchedRes.json();
+            if (fbSched) loadedScheduler = fbSched;
+          }
+        } catch (_) {}
+      }
+
+      setSignals(loadedSignals);
+      setInsights(loadedInsights);
+      setSchedulerState(loadedScheduler || { isMasterActive: true, environment: 'cloud / resilient' });
       setLastRefreshedAt(new Date());
     } catch (err: any) {
       console.error('Error fetching equity dashboard data:', err?.message, err?.response?.status, err?.config?.url);
