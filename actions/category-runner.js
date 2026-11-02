@@ -27,8 +27,8 @@ async function main() {
   
   console.log(`[${new Date().toISOString()}] Starting category-runner for action: ${actionName} (isDryRun: ${isDryRun}, targetQuery: "${targetQuery || 'none'}")`);
 
-  // Resolve dynamic rotating seeds (or target query override)
-  const seedData = await categorySeedManager.getSeedsForCategory(CATEGORY, targetQuery, 8);
+  // Resolve dynamic rotating seeds (or target query override) using auto store-count calibrated batch sizing
+  const seedData = await categorySeedManager.getSeedsForCategory(CATEGORY, targetQuery);
   const seeds = seedData.seeds;
   const selectedQueries = seedData.selectedQueries;
 
@@ -47,11 +47,17 @@ async function main() {
     process.exit(0);
   }
 
-  // Safety internal watchdog timer: 48 minutes (matching the 50-minute workflow ceiling)
-  const timeoutId = setTimeout(() => {
-    console.error(`[${new Date().toISOString()}] WATCHDOG TIMEOUT: category-runner reached 48 minutes.`);
-    process.exit(1);
-  }, 48 * 60 * 1000);
+  let isDone = false;
+  // Safety internal watchdog timer: 45 minutes (matching the 50-minute workflow ceiling)
+  const timeoutId = setTimeout(async () => {
+    if (isDone) return;
+    console.error(`[${new Date().toISOString()}] WATCHDOG TIMEOUT: category-runner reached 45 minutes. Gracefully finalizing.`);
+    try {
+      await githubActionLogger.failAction(actionName, new Error('Runner reached 45-minute watchdog ceiling'));
+      await executionTracker.completeBulkExecution({ status: 'timeout', error: 'Runner reached 45-minute ceiling' });
+    } catch (_) {}
+    process.exit(0);
+  }, 45 * 60 * 1000);
 
   // Start tracking across logging systems with rich metadata
   await githubActionLogger.startAction(actionName, {
@@ -100,6 +106,7 @@ async function main() {
 
     console.log(`[${new Date().toISOString()}] Results summary:`, JSON.stringify(results, null, 2));
     console.log(`[${new Date().toISOString()}] Category runner finished successfully.`);
+    isDone = true;
     clearTimeout(timeoutId);
     process.exit(0);
   } catch (error) {
@@ -108,6 +115,7 @@ async function main() {
     try { 
       await executionTracker.completeBulkExecution({ status: 'failed', error: error.message }); 
     } catch (_) {}
+    isDone = true;
     clearTimeout(timeoutId);
     process.exit(1);
   }
