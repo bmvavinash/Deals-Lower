@@ -76,6 +76,27 @@ async function main() {
       console.log(`[${new Date().toISOString()}] ✅ Persisted cards to ${jsonPath}`);
     }
 
+    // 3. Ensure live sale alert is dispatched across all channels if any sale is live
+    if (cards && cards.length > 0) {
+      try {
+        const liveCards = cards.filter(c => c.isActive !== false && (
+          c.title?.toLowerCase().includes('live') ||
+          c.badge?.toLowerCase().includes('live') ||
+          c.category?.toLowerCase().includes('festive') ||
+          c.dealType === 'live_sale' ||
+          c.isLiveSale === true
+        ));
+        if (liveCards.length > 0) {
+          const { triggerSaleLiveNotifications } = require('../services/saleLiveNotificationService');
+          const topCard = liveCards[0];
+          await triggerSaleLiveNotifications(topCard);
+          console.log(`[${new Date().toISOString()}] 📢 Verified sale live notifications for: ${topCard.title}`);
+        }
+      } catch (notifErr) {
+        console.warn(`[${new Date().toISOString()}] Sale live notification error:`, notifErr.message);
+      }
+    }
+
     try {
       if (executionTracker && typeof executionTracker.endDbUpdateExecution === 'function') {
         await executionTracker.endDbUpdateExecution('completed', { count: cards.length });
