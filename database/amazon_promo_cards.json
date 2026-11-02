@@ -1,12 +1,25 @@
 [
   {
+    "id": "amazon_8pm_promo",
+    "title": "8PM Deals Live Now",
+    "tagline": "Powered by SAMSUNG Galaxy | intel Core ULTRA",
+    "priceBadge": "Live Now",
+    "category": "Festive Deals",
+    "imageUrl": "/banners/amazon_8pm_deals.gif",
+    "clickRedirectUrl": "https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM",
+    "platform": "amazon",
+    "videoUrl": "https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4",
+    "isActive": true,
+    "lastUpdated": "2026-11-02T17:08:26.752Z"
+  },
+  {
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=220683129031&discounts-widget=%2522%257B%255C%2522state%255C%2522%253A%257B%255C%2522refinementFilters%255C%2522%253A%257B%255C%2522departments%255C%2522%253A%255B%255C%25221571272031%252F1953602031%255C%2522%255D%257D%257D%252C%255C%2522version%255C%2522%253A1%257D%2522&pd_rd_w=2BGLs&content-id=amzn1.sym.83f28340-522c-4e6b-9d6d-33a6a846d009&pf_rd_p=83f28340-522c-4e6b-9d6d-33a6a846d009&pf_rd_r=HDDSH4NY2KPW9D7G3ZNR&pd_rd_wg=rGqpD&pd_rd_r=ec2c620b-b2f1-443d-a4a2-9d4a519ef223&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_2",
     "imageUrl": "/banners/card_scraped_2.png",
     "isActive": true,
     "isCompleted": false,
     "isExpired": false,
-    "lastUpdated": "2026-11-02T06:56:52.577Z",
+    "lastUpdated": "2026-11-02T17:08:26.752Z",
     "platform": "amazon",
     "priceBadge": "under ₹499",
     "title": "Women's fashion under ₹499",
@@ -17,7 +30,7 @@
     "id": "amazon_promo_scraped_3",
     "imageUrl": "/banners/card_scraped_3.png",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.577Z",
+    "lastUpdated": "2026-11-02T17:08:26.752Z",
     "platform": "amazon",
     "priceBadge": "Under ₹499",
     "title": "Under ₹499 Bodywashes"
@@ -27,7 +40,7 @@
     "id": "amazon_promo_scraped_4",
     "imageUrl": "/banners/card_scraped_4.png",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.577Z",
+    "lastUpdated": "2026-11-02T17:08:26.752Z",
     "platform": "amazon",
     "priceBadge": "Under ₹399",
     "title": "Under ₹399 Kurta & kurta sets",
@@ -38,7 +51,7 @@
     "id": "amazon_promo_scraped_6",
     "imageUrl": "/banners/card_scraped_9.png",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z",
+    "lastUpdated": "2026-11-02T17:08:26.752Z",
     "platform": "amazon",
     "priceBadge": "Under ₹499",
     "title": "Under ₹499 Festive décor",
@@ -49,7 +62,7 @@
     "id": "amazon_promo_scraped_8",
     "imageUrl": "/banners/card_scraped_8.png",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z",
+    "lastUpdated": "2026-11-02T17:08:26.752Z",
     "platform": "amazon",
     "priceBadge": "Under ₹99",
     "title": "Under ₹99 Fashion, home & more",
@@ -63,28 +76,17 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=kitchen&bbn=222850916031&rh=n%3A976442031%2Cn%3A222850916031%2Cn%3A1380485031%2Cn%3A1380500031%2Cp_36%3A-49900&s=exact-aware-popularity-rank&dc=&qid=1792267779&rnid=3444809031&ref=sr_nr_p_36_0_0&pd_rd_w=1R2K2&content-id=amzn1.sym.1da74ae3-f940-49b3-89ae-62cf8e78d3c9&pf_rd_p=1da74ae3-f940-49b3-89ae-62cf8e78d3c9&pf_rd_r=HDDSH4NY2KPW9D7G3ZNR&pd_rd_wg=tDr57&pd_rd_r=ec2c620b-b2f1-443d-a4a2-9d4a519ef223&ref_=pd_hp_d_r_stg_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z"
+    "lastUpdated": "2026-11-02T17:08:26.752Z"
   },
   {
     "id": "amazon_promo_scraped_13",
-    "title": "Up to 80% off Deals on Musical Instruments",
-    "priceBadge": "Up to 80%",
-    "imageUrl": "/banners/card_scraped_13.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&hidden-keywords=musical%20instruments%20for%20adults&pd_rd_w=NPTE5&content-id=amzn1.sym.c3469c0a-fef0-4893-824b-051d924af705&pf_rd_p=c3469c0a-fef0-4893-824b-051d924af705&pf_rd_r=HDDSH4NY2KPW9D7G3ZNR&pd_rd_wg=rGqpD&pd_rd_r=ec2c620b-b2f1-443d-a4a2-9d4a519ef223&ref_=pd_hp_d_r_atf_unk",
-    "platform": "amazon",
-    "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z",
-    "videoUrl": "https://m.media-amazon.com/images/I/C1DLA3adZDL.mp4"
-  },
-  {
-    "id": "amazon_promo_scraped_9",
     "title": "Starting ₹249 Price drop on headphones",
     "priceBadge": "Starting ₹249",
     "imageUrl": "/banners/card_scraped_7.png",
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&s=price-asc-rank&hidden-keywords=B0BS1QCFHX%7CB0CWVX1GNX%7CB0F7Y54PJX%7CB09CYX92NB%7CB0BW8TXJJ2%7CB08TV2P1N8%7CB09XS7JWHH%7CB0DGTSRX3R%7CB0BXXPG6FP%7CB0F3PQHWTZ%7CB0CCRZPKR1%7CB0CCZ26B5V%7CB0FG2QT7H2%7CB0F3QJLD3B%7CB0DV5J28LW%7CB0FC2Y3XGV%7CB0BS1PRC4L%7CB0FC2YFSN4%7CB0GXBG2MNF%7CB0CRZ6KTB4%7CB0FDKR293G%7CB0CHMN4KVN%7CB0H4ZB5NQV%7CB0F7M3HPBD%7CB0FM38916Y%7CB0F3PT1VBL%7CB0C33XXS56%7CB0FDKQZ18F%7CB0GZNHB218%7CB0GY4PPX7F%7CB0F7Y67F6C%7CB0DK3W2XK3%7CB0GLPHXR6N%7CB0D3TMKMYN%7CB0DGTTKCJX%7CB0DDHM6D3L%7CB0FC2W8WJM%7CB0DZHR44J9%7CB0FDKQ2FG6%7CB0GZMYP6Y6%7CB0BZP2H373%7CB0D8BZDPXB%7CB0GY4RH3MX%7CB0GF9ZNLWM%7CB0GZN7C6X8%7CB0GZMYZW7R%7CB0DZXTVL6V%7CB0DV5HX4JZ%7CB0GZNZCR9Y%7CB0FG2QDFD7%7CB0F8BVYRWS%7CB0DFDT1TWC%7CB0C9L8ZR6Q%7CB0FC2Y8XYF%7CB0GLP4M3D3%7CB0C3ZYFZ77%7CB0GXB9M2HW%7CB0CTHY2PQ9%7CB0BS1RT9S2%7CB0FGYDGJ3H%7CB071Z8M4KX%7CB0CFYJ8HRS%7CB0GXBCTQV4%7CB09XSDMT4F%7CB0FM37T5JX%7CB0D9R4GYTN%7CB0GLPKLJ6R%7CB0GL1SQRQ2%7CB0BZPK3XFQ%7CB0BW8RVQ3V%7CB0DN1RPL19%7CB0G2C8MR7L%7CB0D49ZS9MT%7CB0BS74M665%7CB0FZL2NCFV%7CB0GXBJ3658%7CB0FDKQYGS3%7CB0FHKHT717%7CB0DN1Q4NSJ%7CB0DGTYFC93%7CB0G2TD1RSC%7CB0FP9DP8FH%7CB0C345M3T7%7CB0HC6RTJH6%7CB08TSSCZR8%7CB0DXNYJRMH%7CB0GWDCM82P%7CB0C3V5X3QT%7CB0D1VN2VB7%7CB0GK1GSRLJ%7CB0GWD8BWXQ%7CB0GFWFBJPG%7CB0GXB8M9ZV%7CB0DGL6R3SX%7CB08TTXNZ4Y%7CB0GWDGNJC9%7CB07L8KNP5F%7CB0FM396D71%7CB0F5PXSSG6%7CB0D5D294RR%7CB0GZND14GT%7CB0FC2Z19RX%7CB01DEWVZ2C%7CB0DGLQHBF9%7CB0H1X2CN2K%7CB0C411BWXD%7CB0DHL63KWK%7CB0F8BVSK21%7CB0FG2PWNRC%7CB0CQJZD55X%7CB0DK979YJ7%7CB0DWHB886R%7CB0CTHVX6DK%7CB0D4VN3S8T%7CB0GWD96NDL%7CB0DV5GLTLZ%7CB0CF5QFH77%7CB0DP4RW63N%7CB0GWDCCVHD%7CB0F7M1JXVV%7CB074ZF7PVZ%7CB0FHHM74H8%7CB0CRZ4P1CL%7CB0CQJWMMG7%7CB0GK7LB2L2%7CB0DZHQHDWR%7CB0DGV56J6G%7CB0D44H2RG3%7CB0GWDFFFH5%7CB0GFB2WX82%7CB0FWJSVD1F%7CB0GZN2M7T7%7CB0FCLPQG26%7CB0FDKS5NN7%7CB0DTK5HVRB%7CB0FHW7PX1N%7CB0C664NHV6%7CB0CCZC9J1V%7CB0FPM9JSQH%7CB0DGQNXDJP%7CB0DXPL5XHF%7CB0CP3N5F5B%7CB0DK96DPY6%7CB0GRV5Q18B%7CB0CQKDKPS6%7CB0D5CZQ31M%7CB0B1PXM75C%7CB0CKRC958Z%7CB09YLFHFDW%7CB0FV3S8RNN%7CB0F2LCBKVN%7CB0F5PX1JVY%7CB0FDKPFLFP%7CB0FBHRH4WV%7CB0C413GYVC%7CB0G2S349C4%7CB0G2RZZF9S%7CB0FPM5QP4F%7CB0GFXJY36H%7CB0BS1QB15L%7CB0DXPNVSSB%7CB0F9PJJLCT%7CB0G599TLD9%7CB0FS1SD28Q%7CB0GFWX988R%7CB0CF5PNVZH%7CB0FC327SXQ%7CB0D3LGQ841%7CB0GLPB158X%7CB0GZN9ZPRG%7CB0BQN2RMJF%7CB0DS2XNXZB%7CB088FM4QG4%7CB0F8BWZSFD%7CB0F8BW7YL7%7CB0DGV6TB8D%7CB0GZNFM1CT%7CB0D9R2KDY9%7CB0D4Z9HG1X%7CB0D8BT4BRN%7CB0F7M3YLVS%7CB0GXBBD73Q%7CB0GWD513TF%7CB0DGV465ZW%7CB0GLPFQQ38%7CB0CGZJDY84%7CB0GM167464%7CB0FC2XZ2JJ%7CB0GRV6L413%7CB0F9YV4KDD%7CB0DGV6RP7C%7CB0FN7X2YHZ%7CB0FQJTC86Q%7CB0F8HQVBQB%7CB0G2CD1LHF%7CB0F7M3Q8DV%7CB00KGZZ824%7CB0FDKRX5G9%7CB0GXL58V5T%7CB0GX9ZRTM6%7CB07GQD4K6L%7CB0FDPZ868C%7CB0DL4S61RP%7CB0CFYJM1CN%7CB0FCG2D3X7%7CB0DKJZ6F9Q%7CB0DV5JTG17%7CB0H8TCFL8X%7CB0DGLRPVB6%7CB0FHHKP966%7CB0H8KJS82H%7CB0DGX1VCWX%7CB0BKQRF51Z%7CB0GDR29F53%7CB01MF8MB65%7CB0C9V3437T%7CB08VS3YLRK%7CB07T5DKR5D%7CB0FM38MRWL%7CB0GGC7JYPP%7CB0DHV38WWD%7CB0DKJXWKH6%7CB0FPLP7SMZ%7CB0FVXNFQZ7%7CB09R24HMNW%7CB0CQJXC3SP%7CB09B5CPV71%7CB09R24JBYV%7CB0DZXX6SKP%7CB0BKQRQCGQ%7CB0D3DH8TSC%7CB0D6YPF4QF%7CB0FTZ519VK%7CB088FKCD4J%7CB0CQJWQWD9%7CB0FM2Y25HP%7CB0DS2Y94LS%7CB0FZ9T5JBR%7CB07KY3FNQP%7CB0BJDKG3GZ%7CB0DZXT72RY%7CB0F6XJCT9C%7CB0BKQTRCQV%7CB01DF29XFW%7CB0GVK3QFSG%7CB0FHHFY22M&pd_rd_w=i2GXJ&content-id=amzn1.sym.a5b9b33f-6139-4501-a35b-2ae21551acd3&pf_rd_p=a5b9b33f-6139-4501-a35b-2ae21551acd3&pf_rd_r=XS44NYK5P7DA7PWFSR2Z&pd_rd_wg=vofaq&pd_rd_r=5ea3b9da-5ad1-4b13-aa75-84eec1d95fba&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z",
+    "lastUpdated": "2026-11-02T17:08:26.752Z",
     "videoUrl": "https://m.media-amazon.com/images/I/C1vjfndG9yL.mp4"
   },
   {
@@ -95,7 +97,7 @@
     "clickRedirectUrl": "https://www.amazon.in/dp/B0GS5Y7QBF/?_encoding=UTF8&_encoding=UTF8&ref_=pd_hp_d_r_atf_unk&pd_rd_w=sMvgx&content-id=amzn1.sym.589e118b-d3b2-4133-af5d-2b6728c84dc8&pf_rd_p=589e118b-d3b2-4133-af5d-2b6728c84dc8&pf_rd_r=HDDSH4NY2KPW9D7G3ZNR&pd_rd_wg=rGqpD&pd_rd_r=ec2c620b-b2f1-443d-a4a2-9d4a519ef223",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z"
+    "lastUpdated": "2026-11-02T17:08:26.753Z"
   },
   {
     "id": "amazon_promo_scraped_12",
@@ -105,7 +107,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/ref=OMGPricedrop/?_encoding=UTF8&node=219636562031&pd_rd_w=xHXDm&content-id=amzn1.sym.ffa510b2-3e04-49c0-afbd-3ae751809537&pf_rd_p=ffa510b2-3e04-49c0-afbd-3ae751809537&pf_rd_r=HDDSH4NY2KPW9D7G3ZNR&pd_rd_wg=rGqpD&pd_rd_r=ec2c620b-b2f1-443d-a4a2-9d4a519ef223&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z",
+    "lastUpdated": "2026-11-02T17:08:26.753Z",
     "videoUrl": "https://m.media-amazon.com/images/I/B1Qt8b7MGqL.mp4"
   },
   {
@@ -116,7 +118,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=1389409031&pd_rd_w=9onFW&content-id=amzn1.sym.c0769c2c-8d4c-4cdd-93d1-29059da712be&pf_rd_p=c0769c2c-8d4c-4cdd-93d1-29059da712be&pf_rd_r=HDDSH4NY2KPW9D7G3ZNR&pd_rd_wg=rGqpD&pd_rd_r=ec2c620b-b2f1-443d-a4a2-9d4a519ef223&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.578Z"
+    "lastUpdated": "2026-11-02T17:08:26.753Z"
   },
   {
     "id": "amazon_promo_scraped_14",
@@ -126,6 +128,6 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=222836437031&ref_=LowASP-Jup-26-under99_hero&discounts-widget=%2522%257B%255C%2522state%255C%2522%253A%257B%255C%2522refinementFilters%255C%2522%253A%257B%255C%2522departments%255C%2522%253A%255B%255C%2522976443031%252F1380374031%255C%2522%255D%257D%257D%252C%255C%2522version%255C%2522%253A1%257D%2522&promotionsSearchLastSeenAsin=B0FPWWYNBT&promotionsSearchStartIndex=0&promotionsSearchPageSize=30&pd_rd_w=cXCkY&content-id=amzn1.sym.0c253e5e-e99e-4d74-a7f9-670b5b305e3f&pf_rd_p=0c253e5e-e99e-4d74-a7f9-670b5b305e3f&pf_rd_r=HDDSH4NY2KPW9D7G3ZNR&pd_rd_wg=rGqpD&pd_rd_r=ec2c620b-b2f1-443d-a4a2-9d4a519ef223",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-02T06:56:52.579Z"
+    "lastUpdated": "2026-11-02T17:08:26.753Z"
   }
 ]
