@@ -226,25 +226,23 @@ async function scrapeAmazonPromoCards() {
         console.warn('Firebase RTDB sync warning:', fbErr.message);
       }
 
-      // Broadcast Web Push notification for any Live sale cards
+      // Trigger end-to-end notifications (Browser Web Push + Telegram) for any Live sale cards
       try {
-        const liveCards = masterCards.filter(c => c.isActive && (c.title?.toLowerCase().includes('live') || c.badge?.toLowerCase().includes('live') || c.dealType === 'live_sale'));
+        const { triggerSaleLiveNotifications } = require('../services/saleLiveNotificationService');
+        const liveCards = masterCards.filter(c => c.isActive !== false && (
+          c.title?.toLowerCase().includes('live') ||
+          c.badge?.toLowerCase().includes('live') ||
+          c.category?.toLowerCase().includes('festive') ||
+          c.dealType === 'live_sale' ||
+          c.isLiveSale === true
+        ));
         if (liveCards.length > 0) {
-          const { broadcastWebPush } = require('../services/webPushService');
           const topCard = liveCards[0];
-          await broadcastWebPush({
-            title: `🔥 ${topCard.title || 'New Sale'} is LIVE! | LowerDeal`,
-            body: `${topCard.badge || 'Limited-time sale'} is now live on lowerdeal.com. Check out exclusive deals!`,
-            link: 'https://lowerdeal.com',
-            extraData: {
-              saleName: topCard.title || 'Live Sale',
-              badge: topCard.badge || ''
-            }
-          });
-          console.log(`📢 Dispatched Web Push notification for live sale: ${topCard.title}`);
+          await triggerSaleLiveNotifications(topCard);
+          console.log(`📢 Dispatched sale live notifications (Browser + Telegram) for: ${topCard.title}`);
         }
-      } catch (pushErr) {
-        console.warn('Web push notification broadcast warning:', pushErr.message);
+      } catch (notifErr) {
+        console.warn('Sale live notification broadcast warning:', notifErr.message);
       }
 
       return masterCards;

@@ -167,6 +167,52 @@ router.post('/webpush/broadcast', async (req, res, next) => {
   }
 });
 
+/**
+ * POST /api/notifications/sale-live/broadcast
+ * Broadcast a live sale alert across Web Push, Telegram, and In-App notifications
+ */
+router.post('/sale-live/broadcast', async (req, res, next) => {
+  try {
+    const { triggerSaleLiveNotifications } = require('../../../services/saleLiveNotificationService');
+    const { card, title, badge, platform, force } = req.body;
+    
+    let saleCard = card;
+    if (!saleCard) {
+      if (title) {
+        saleCard = {
+          id: 'manual_' + Date.now(),
+          title,
+          badge: badge || 'Live Now',
+          platform: platform || 'Amazon'
+        };
+      } else {
+        // Pick top active live card from database/amazon_promo_cards.json
+        const fs = require('fs');
+        const path = require('path');
+        const jsonPath = path.join(__dirname, '../../../database/amazon_promo_cards.json');
+        if (fs.existsSync(jsonPath)) {
+          const cards = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+          saleCard = cards.find(c => c.isActive !== false && (
+            c.title?.toLowerCase().includes('live') ||
+            c.badge?.toLowerCase().includes('live') ||
+            c.dealType === 'live_sale'
+          )) || cards[0];
+        }
+      }
+    }
+
+    if (!saleCard) {
+      return res.status(400).json({ success: false, error: 'No promotional card found to broadcast.' });
+    }
+
+    const result = await triggerSaleLiveNotifications(saleCard, { force: force !== undefined ? !!force : true });
+    res.json(result);
+  } catch (error) {
+    logger.error('Error broadcasting sale live notifications', { error: error.message });
+    next(error);
+  }
+});
+
 module.exports = router;
 
 

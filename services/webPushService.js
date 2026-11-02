@@ -134,18 +134,27 @@ async function broadcastWebPush({ title, body, link, icon, badge, extraData = {}
   for (const sub of subscribers) {
     // Deliver to EVERY device of this subscriber
     for (const dev of sub.devices) {
+      // Ensure all data payload values are strings (required by FCM)
+      const sanitizedData = {};
+      const rawData = {
+        title: payload.title,
+        message: payload.body,
+        link: payload.link,
+        source: 'lowerdeal.com',
+        ...extraData
+      };
+      for (const [k, v] of Object.entries(rawData)) {
+        if (v !== undefined && v !== null) {
+          sanitizedData[k] = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        }
+      }
+
       const message = {
         notification: {
           title: payload.title,
           body: payload.body
         },
-        data: {
-          title: payload.title,
-          message: payload.body,
-          link: payload.link,
-          source: 'lowerdeal.com',
-          ...extraData
-        },
+        data: sanitizedData,
         webpush: {
           fcmOptions: {
             link: payload.link
