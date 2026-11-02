@@ -1,16 +1,36 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { auth, googleProvider, isConfigured } from '../../config/firebase';
+import { authAPI, refreshAuthToken, triggerSessionExpired } from '../../services/api';
 
 interface AuthGateProps {
   children: React.ReactNode;
 }
 
-const ALLOWED_EMAIL = 'avinash1bmv@gmail.com';
+// Authorized administrator emails per user requirement
+const ALLOWED_ADMIN_EMAILS = ['avinash1bmv@gmail.com', 'avi2bmv@gmail.com', 'gupta4aventis@gmail.com', 'gupta4aventis'];
 
 const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [bypassUser, setBypassUser] = useState<string | null>(null);
+  const [adminSession, setAdminSession] = useState<{ email: string; token: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('admin_auth_session');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.email && parsed.token) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore JSON parse error
+    }
+    return null;
+  });
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,8 +42,59 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     );
   };
 
+  // Listen for automatic session expiration and update events
   useEffect(() => {
-    // Only check or allow bypass if we are on localhost/development
+    const handleSessionExpired = (e: any) => {
+      const reason = e?.detail?.reason || 'Your session has expired. Please sign in again.';
+      setAdminSession(null);
+      setUser(null);
+      setBypassUser(null);
+      try {
+        localStorage.removeItem('admin_auth_session');
+        localStorage.removeItem('auth_bypass_user');
+        if (auth) signOut(auth).catch(() => {});
+      } catch {}
+      setError(reason);
+    };
+
+    const handleSessionUpdated = (e: any) => {
+      if (e?.detail) {
+        setAdminSession(e.detail);
+        setError(null);
+      }
+    };
+
+    window.addEventListener('auth:session_expired', handleSessionExpired);
+    window.addEventListener('auth:session_updated', handleSessionUpdated);
+
+    return () => {
+      window.removeEventListener('auth:session_expired', handleSessionExpired);
+      window.removeEventListener('auth:session_updated', handleSessionUpdated);
+    };
+  }, []);
+
+  useEffect(() => {
+    // 1. Verify persisted backend admin session on load
+    const saved = localStorage.getItem('admin_auth_session');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.token) {
+          authAPI.verify(parsed.token).catch(async () => {
+            console.warn('Backend session expired or invalid. Attempting automatic update...');
+            const updatedToken = await refreshAuthToken();
+            if (!updatedToken) {
+              console.warn('Automatic update failed. Automatically logging out.');
+              handleLogout('Your session has expired. Please sign in again.');
+            }
+          });
+        }
+      } catch {
+        localStorage.removeItem('admin_auth_session');
+      }
+    }
+
+    // 2. Check local development bypass
     if (isLocalhost()) {
       const savedBypass = localStorage.getItem('auth_bypass_user');
       if (savedBypass) {
@@ -31,29 +102,90 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       }
     }
 
+    // 3. Optional Firebase Auth listener
     if (!isConfigured || !auth) {
       setLoading(false);
-      // If running on a public server and Firebase is not configured, show a configuration error
-      if (!isLocalhost()) {
-        setError("Security Setup Required: Firebase environment variables (VITE_FIREBASE_*) are missing. Please configure them in your Vercel Project Settings.");
-      }
       return;
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser && firebaseUser.email !== ALLOWED_EMAIL) {
-        setError(`Access Denied: Email "${firebaseUser.email}" is not authorized.`);
-        await signOut(auth);
-        setUser(null);
-      } else {
-        setUser(firebaseUser);
-        setError(null);
+      if (firebaseUser) {
+        const norm = (firebaseUser.email || '').toLowerCase();
+        if (!ALLOWED_ADMIN_EMAILS.includes(norm)) {
+          setError(`Access Denied: Email "${firebaseUser.email}" is not authorized.`);
+          await signOut(auth);
+          setUser(null);
+        } else {
+          setUser(firebaseUser);
+          setError(null);
+          // Auto-obtain or restore admin session token from Firebase User
+          try {
+            const idToken = await firebaseUser.getIdToken();
+            const res = await authAPI.firebaseSession(idToken, norm);
+            if (res.data?.token) {
+              const newSession = {
+                email: norm,
+                token: res.data.token
+              };
+              localStorage.setItem('admin_auth_session', JSON.stringify(newSession));
+              setAdminSession(newSession);
+            }
+          } catch (sessionErr) {
+            console.warn('Could not exchange Firebase token with backend:', sessionErr);
+          }
+        }
       }
       setLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
+
+  // Stop loading once initial checks are ready
+  useEffect(() => {
+    if (!isConfigured || !auth) {
+      setLoading(false);
+    }
+  }, []);
+
+  // Normal Email + Password login (Backend verification)
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    const normalized = email.trim().toLowerCase();
+    if (!ALLOWED_ADMIN_EMAILS.includes(normalized)) {
+      setError('Access Denied: Invalid credentials or unauthorized account.');
+      return;
+    }
+
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
+    setIsLoggingIn(true);
+    try {
+      const response = await authAPI.login(normalized, password);
+      if (response.data && response.data.success) {
+        const newSession = {
+          email: response.data.user.email,
+          token: response.data.token
+        };
+        localStorage.setItem('admin_auth_session', JSON.stringify(newSession));
+        setAdminSession(newSession);
+        setError(null);
+      } else {
+        setError(response.data?.error || 'Authentication failed. Please verify password.');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      const backendError = err.response?.data?.error || err.message || 'Login failed. Please check your credentials.';
+      setError(backendError);
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     if (!auth) return;
@@ -68,27 +200,47 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
       
       const result = await signInWithPopup(auth, googleProvider);
       const loggedUser = result.user;
-      if (loggedUser.email !== ALLOWED_EMAIL) {
+      const norm = (loggedUser.email || '').toLowerCase();
+      if (!ALLOWED_ADMIN_EMAILS.includes(norm)) {
         setError(`Access Denied: Email "${loggedUser.email}" is not authorized.`);
         await signOut(auth);
+      } else {
+        setUser(loggedUser);
+        try {
+          const idToken = await loggedUser.getIdToken();
+          const res = await authAPI.firebaseSession(idToken, norm);
+          if (res.data?.token) {
+            const newSession = {
+              email: norm,
+              token: res.data.token
+            };
+            localStorage.setItem('admin_auth_session', JSON.stringify(newSession));
+            setAdminSession(newSession);
+          }
+        } catch (sessionErr) {
+          console.warn('Could not exchange Firebase token with backend:', sessionErr);
+        }
       }
     } catch (err: any) {
       console.error('Google Sign-In failed:', err);
       setError(err.message || 'Failed to authenticate via Google.');
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (message?: string) => {
     setLoading(true);
     try {
+      localStorage.removeItem('admin_auth_session');
+      setAdminSession(null);
+      localStorage.removeItem('auth_bypass_user');
+      setBypassUser(null);
       if (auth) {
         await signOut(auth);
       }
-      localStorage.removeItem('auth_bypass_user');
-      setBypassUser(null);
       setUser(null);
-      setError(null);
+      setError(message || null);
     } catch (err) {
       console.error('Sign-Out failed:', err);
     } finally {
@@ -97,12 +249,12 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   };
 
   const handleBypassLogin = () => {
-    localStorage.setItem('auth_bypass_user', ALLOWED_EMAIL);
-    setBypassUser(ALLOWED_EMAIL);
+    localStorage.setItem('auth_bypass_user', ALLOWED_ADMIN_EMAILS[0]);
+    setBypassUser(ALLOWED_ADMIN_EMAILS[0]);
     setError(null);
   };
 
-  // If loading, show a beautiful dark loading screen
+  // If loading, show a dark loading screen
   if (loading) {
     return (
       <div style={styles.container}>
@@ -112,16 +264,21 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     );
   }
 
-  // If authenticated as the correct user (either via Firebase or Bypass), render dashboard
-  const isAuthenticated = (user && user.email === ALLOWED_EMAIL) || (isLocalhost() && bypassUser === ALLOWED_EMAIL);
+  // Authentication check
+  const isAuthenticated = 
+    Boolean(adminSession && adminSession.email && ALLOWED_ADMIN_EMAILS.includes(adminSession.email.toLowerCase())) ||
+    Boolean(user && user.email && ALLOWED_ADMIN_EMAILS.includes(user.email.toLowerCase())) ||
+    Boolean(isLocalhost() && bypassUser && ALLOWED_ADMIN_EMAILS.includes(bypassUser.toLowerCase()));
+
   if (isAuthenticated) {
-    // Add a tiny floating logout button in the admin interface for convenience
+    const currentAdminEmail = adminSession?.email || user?.email || bypassUser || ALLOWED_ADMIN_EMAILS[0];
     return (
       <>
-        <div style={styles.floatingHeader}>
-          <span style={styles.userEmail}>
-            Admin: {user ? user.email : bypassUser} 
-            {!isConfigured && <span style={styles.bypassTag}>(Local Bypass)</span>}
+        <div className="admin-floating-pill" style={styles.floatingHeader}>
+          <span style={styles.userEmail} className="admin-email-text">
+            Admin: {currentAdminEmail}
+            {adminSession && <span style={styles.sessionTag}>(Verified Session)</span>}
+            {!isConfigured && isLocalhost() && !adminSession && <span style={styles.bypassTag}>(Local Bypass)</span>}
           </span>
           <button onClick={handleLogout} style={styles.logoutButton}>
             Log Out
@@ -132,7 +289,7 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
     );
   }
 
-  // Otherwise, render the Login Screen / Access Denied page
+  // Render Login Card
   return (
     <div style={styles.container}>
       <div style={styles.loginCard}>
@@ -148,8 +305,52 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
           </div>
         )}
 
+        {/* Email & Password Login Form */}
+        <form onSubmit={handleEmailLogin} style={styles.form}>
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Admin Email</label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter your administrator email"
+              style={styles.input}
+              required
+              disabled={isLoggingIn}
+            />
+          </div>
+
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter backend administrator password"
+              style={styles.input}
+              required
+              disabled={isLoggingIn}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoggingIn || !password}
+            style={isLoggingIn ? { ...styles.submitButton, opacity: 0.7 } : styles.submitButton}
+          >
+            {isLoggingIn ? 'Verifying with Server...' : 'Sign In with Password'}
+          </button>
+        </form>
+
+        {/* Optional Google Sign-In or Developer Bypass */}
         {isConfigured && auth ? (
-          <div>
+          <div style={{ marginTop: '20px' }}>
+            <div style={styles.divider}>
+              <span style={styles.dividerLine}></span>
+              <span style={styles.dividerText}>OR</span>
+              <span style={styles.dividerLine}></span>
+            </div>
+
             <button onClick={handleGoogleLogin} style={styles.googleButton}>
               <svg style={styles.googleSvg} viewBox="0 0 24 24">
                 <path
@@ -159,42 +360,26 @@ const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
               </svg>
               Sign in with Google
             </button>
-            {isLocalhost() && (
-              <div style={{ marginTop: '16px' }}>
-                <button onClick={handleBypassLogin} style={styles.bypassButton}>
-                  Bypass as Developer ({ALLOWED_EMAIL})
-                </button>
-              </div>
-            )}
           </div>
-        ) : (
-          isLocalhost() ? (
-            <div style={styles.bypassContainer}>
-              <p style={styles.bypassWarning}>
-                ⚠️ Firebase authentication client configuration not found. 
-              </p>
-              <button onClick={handleBypassLogin} style={styles.bypassButton}>
-                Bypass as Developer ({ALLOWED_EMAIL})
-              </button>
-            </div>
-          ) : (
-            <div style={styles.bypassContainer}>
-              <p style={styles.bypassWarning}>
-                ⚠️ Security Setup Error: Firebase configurations are not set on this server.
-              </p>
-            </div>
-          )
+        ) : null}
+
+        {isLocalhost() && (
+          <div style={{ marginTop: '16px' }}>
+            <button onClick={handleBypassLogin} style={styles.bypassButton}>
+              Bypass as Developer
+            </button>
+          </div>
         )}
 
         <div style={styles.footer}>
-          Secured with Firebase Google OAuth checks.
+          DealsOptimised Administrative Portal • Authorized Access Only
         </div>
       </div>
     </div>
   );
 };
 
-// Premium Styles for WOW Aesthetics (Glassmorphism, Neon glows, dark-theme layout)
+// Premium Styles
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
     display: 'flex',
@@ -227,35 +412,35 @@ const styles: { [key: string]: React.CSSProperties } = {
   },
   loginCard: {
     width: '100%',
-    maxWidth: '420px',
-    backgroundColor: 'rgba(16, 22, 38, 0.6)',
+    maxWidth: '430px',
+    backgroundColor: 'rgba(16, 22, 38, 0.75)',
     backdropFilter: 'blur(16px)',
     border: '1px solid rgba(255, 255, 255, 0.08)',
     borderRadius: '16px',
-    padding: '40px 32px',
+    padding: '36px 32px',
     boxShadow: '0 20px 40px rgba(0, 0, 0, 0.4)',
     textAlign: 'center',
     boxSizing: 'border-box'
   },
   logoContainer: {
-    marginBottom: '32px'
+    marginBottom: '24px'
   },
   lockIcon: {
-    fontSize: '48px',
-    marginBottom: '16px',
+    fontSize: '44px',
+    marginBottom: '12px',
     filter: 'drop-shadow(0 0 10px rgba(99, 102, 241, 0.5))'
   },
   title: {
-    fontSize: '28px',
+    fontSize: '26px',
     fontWeight: 700,
-    margin: '0 0 8px 0',
+    margin: '0 0 6px 0',
     background: 'linear-gradient(135deg, #f8fafc 0%, #a5b4fc 100%)',
     WebkitBackgroundClip: 'text',
     WebkitTextFillColor: 'transparent',
     letterSpacing: '-0.5px'
   },
   subtitle: {
-    fontSize: '14px',
+    fontSize: '13px',
     color: '#64748b',
     margin: 0
   },
@@ -263,8 +448,8 @@ const styles: { [key: string]: React.CSSProperties } = {
     backgroundColor: 'rgba(239, 68, 68, 0.15)',
     border: '1px solid rgba(239, 68, 68, 0.25)',
     borderRadius: '8px',
-    padding: '12px 16px',
-    marginBottom: '24px',
+    padding: '10px 14px',
+    marginBottom: '18px',
     textAlign: 'left'
   },
   errorText: {
@@ -273,17 +458,77 @@ const styles: { [key: string]: React.CSSProperties } = {
     margin: 0,
     lineHeight: 1.4
   },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '16px',
+    textAlign: 'left'
+  },
+  inputGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '6px'
+  },
+  label: {
+    fontSize: '12px',
+    fontWeight: 600,
+    color: '#94a3b8',
+    letterSpacing: '0.5px',
+    textTransform: 'uppercase'
+  },
+  input: {
+    width: '100%',
+    padding: '12px 14px',
+    fontSize: '14px',
+    backgroundColor: 'rgba(30, 41, 59, 0.6)',
+    border: '1px solid rgba(255, 255, 255, 0.1)',
+    borderRadius: '8px',
+    color: '#f8fafc',
+    outline: 'none',
+    boxSizing: 'border-box',
+    transition: 'border-color 0.2s ease'
+  },
+  submitButton: {
+    width: '100%',
+    padding: '13px',
+    marginTop: '6px',
+    backgroundColor: '#6366f1',
+    color: '#ffffff',
+    border: 'none',
+    borderRadius: '8px',
+    fontSize: '14px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    boxShadow: '0 4px 14px rgba(99, 102, 241, 0.4)'
+  },
+  divider: {
+    display: 'flex',
+    alignItems: 'center',
+    margin: '18px 0 16px 0'
+  },
+  dividerLine: {
+    flex: 1,
+    height: '1px',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)'
+  },
+  dividerText: {
+    padding: '0 12px',
+    fontSize: '11px',
+    color: '#64748b',
+    fontWeight: 600
+  },
   googleButton: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    height: '48px',
+    height: '44px',
     backgroundColor: '#ffffff',
     color: '#1e293b',
     border: 'none',
     borderRadius: '8px',
-    fontSize: '15px',
+    fontSize: '14px',
     fontWeight: 600,
     cursor: 'pointer',
     transition: 'all 0.2s ease',
@@ -292,36 +537,25 @@ const styles: { [key: string]: React.CSSProperties } = {
   googleSvg: {
     width: '18px',
     height: '18px',
-    marginRight: '12px'
-  },
-  bypassContainer: {
-    backgroundColor: 'rgba(234, 179, 8, 0.08)',
-    border: '1px solid rgba(234, 179, 8, 0.15)',
-    borderRadius: '8px',
-    padding: '16px',
-    textAlign: 'center'
-  },
-  bypassWarning: {
-    color: '#eab308',
-    fontSize: '12px',
-    margin: '0 0 12px 0',
-    lineHeight: 1.4
+    marginRight: '10px'
   },
   bypassButton: {
-    backgroundColor: '#6366f1',
-    color: '#ffffff',
-    border: 'none',
+    backgroundColor: 'transparent',
+    color: '#a5b4fc',
+    border: '1px solid rgba(165, 180, 252, 0.2)',
     borderRadius: '6px',
-    padding: '8px 16px',
-    fontSize: '13px',
-    fontWeight: 600,
+    padding: '8px 14px',
+    fontSize: '12px',
+    fontWeight: 500,
     cursor: 'pointer',
-    transition: 'all 0.2s ease'
+    transition: 'all 0.2s ease',
+    width: '100%'
   },
   footer: {
-    marginTop: '32px',
+    marginTop: '24px',
     fontSize: '11px',
-    color: '#475569'
+    color: '#64748b',
+    lineHeight: 1.4
   },
   floatingHeader: {
     position: 'fixed',
@@ -329,7 +563,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     right: '12px',
     display: 'flex',
     alignItems: 'center',
-    backgroundColor: 'rgba(16, 22, 38, 0.8)',
+    backgroundColor: 'rgba(16, 22, 38, 0.85)',
     backdropFilter: 'blur(8px)',
     border: '1px solid rgba(255, 255, 255, 0.1)',
     borderRadius: '30px',
@@ -342,6 +576,12 @@ const styles: { [key: string]: React.CSSProperties } = {
     color: '#94a3b8',
     marginRight: '12px',
     fontWeight: 500
+  },
+  sessionTag: {
+    color: '#34d399',
+    marginLeft: '6px',
+    fontSize: '11px',
+    fontWeight: 600
   },
   bypassTag: {
     color: '#eab308',

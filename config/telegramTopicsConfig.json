@@ -1,0 +1,36 @@
+{
+  "stocks": {
+    "channelId": "@dealsequity",
+    "chatId": "-1004332585915",
+    "channelType": "group_with_topics",
+    "topics": {
+      "high_conviction": 2,
+      "buy_trades": 3,
+      "sell_trades": 4,
+      "ingestion": 6,
+      "daily_insights": 2
+    },
+    "batching": {
+      "enabled": true,
+      "batchWindowMs": 5000,
+      "maxItemsPerMessage": 10
+    },
+    "alertThresholds": {
+      "minRatingForBuyAlert": 3,
+      "minDiscountPercent": 2,
+      "cooldownHours": 12
+    }
+  },
+  "deals": {
+    "channelId": "@dealshubglobal",
+    "chatId": "-1001888310864",
+    "channelType": "supergroup_forum",
+    "topics": {
+      "electronics": null,
+      "fashion": null,
+      "amazon": null,
+      "flipkart": null,
+      "general": null
+    }
+  }
+}

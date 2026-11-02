@@ -1621,7 +1621,12 @@ async function initializeDriver() {
 	}
 
 	const options = new chrome.Options();
-	options.addArguments('--headless=new');
+	const isHeadful = process.env.HEADFUL === 'true' || process.env.HEADLESS === 'false';
+	if (!isHeadful) {
+		options.addArguments('--headless=new');
+	} else {
+		logger.info('HEADFUL=true detected: running Chrome in full headful mode (Xvfb desktop rendering).');
+	}
 	options.addArguments('--no-sandbox');
 	options.addArguments('--disable-dev-shm-usage');
 	options.addArguments('--window-size=1920,1080');
@@ -1717,9 +1722,26 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 		} else {
 			logger.info('🚗 Using existing driver instance');
 		}
+		const maxBatchDurationMs = parseInt(process.env.MAX_BATCH_DURATION_MS, 10) || (40 * 60 * 1000);
+		const batchStartTime = Date.now();
+		const visitedHomepages = new Set();
 		let totalExtracted = 0, totalStored = 0, createdCount = 0, updatedCount = 0;
 		for (let pageIndex = 0; pageIndex < seedUrls.length; pageIndex++) {
 			const url = seedUrls[pageIndex];
+
+			// Graceful batch duration guard: stop taking new URLs if approaching 40 minutes
+			if (Date.now() - batchStartTime > maxBatchDurationMs) {
+				logger.warn(`⚠️ Maximum batch duration reached (${Math.round(maxBatchDurationMs / 60000)}m). Gracefully completing to persist extracted products.`, {
+					processedPages: pageIndex,
+					totalSeeds: seedUrls.length,
+					remainingSeeds: seedUrls.length - pageIndex
+				});
+				const unreached = seedUrls.slice(pageIndex);
+				for (const u of unreached) {
+					ctx.errors.push({ url: u, error: 'Batch time limit reached — delegated to background queue' });
+				}
+				break;
+			}
 
 			if (!(await isDriverAlive(driver))) {
 				logger.warn('WebDriver session lost — reinitializing', { pageIndex, url });
@@ -1732,7 +1754,8 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 			let platform = resolvePlatformFromUrl(url) || Object.keys(storeMap).find(key => url.toLowerCase().includes(key.toLowerCase())) || 'amazon';
 			let category = categoryKey;
 
-			if (platform === 'ajio' || platform === 'myntra') {
+			if ((platform === 'ajio' || platform === 'myntra') && !visitedHomepages.has(platform)) {
+				visitedHomepages.add(platform);
 				const homepage = platform === 'ajio' ? 'https://www.ajio.com/' : 'https://www.myntra.com/';
 				logger.info(`Navigating to ${platform} homepage first to establish session...`);
 				try {

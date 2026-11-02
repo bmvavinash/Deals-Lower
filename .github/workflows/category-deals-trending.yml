@@ -1,13 +1,17 @@
 name: '🔥 Category: Deals & Trending'
 on:
   schedule:
-    - cron: '50 */2 * * *'
+    - cron: '54 * * * *'
   workflow_dispatch:
     inputs:
       category:
         description: 'Category to scrape (overrides default)'
         required: false
         default: 'deals-trending'
+      target_query:
+        description: 'Specific subcategory or search query (leave blank for round-robin rotation)'
+        required: false
+        default: ''
 
 env:
   HEADFUL: 'true'
@@ -17,11 +21,12 @@ env:
   CLOUDFLARE_R2_BUCKET_NAME: ${{ secrets.CLOUDFLARE_R2_BUCKET_NAME }}
   CI: 'true'
   NODE_ENV: production
+  CUELINKS_API_KEY: ${{ secrets.CUELINKS_API_KEY }}
 
 jobs:
   category-deals-trending:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50
     concurrency:
       group: category-deals-trending
       cancel-in-progress: true
@@ -43,4 +48,5 @@ jobs:
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           CATEGORY: ${{ github.event.inputs.category || 'deals-trending' }}
+          TARGET_QUERY: ${{ github.event.inputs.target_query || '' }}
 

@@ -19,7 +19,10 @@ async function isDriverSessionValid(driver) {
 
 async function createHeadlessChromeDriver() {
   const options = new chrome.Options();
-  options.addArguments('--headless=new');
+  const isHeadful = process.env.HEADFUL === 'true' || process.env.HEADLESS === 'false';
+  if (!isHeadful) {
+    options.addArguments('--headless=new');
+  }
   options.addArguments('--no-sandbox');
   options.addArguments('--disable-dev-shm-usage');
   options.addArguments('--window-size=1920,1080');
@@ -29,7 +32,46 @@ async function createHeadlessChromeDriver() {
   options.addArguments('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36');
   options.excludeSwitches(['enable-automation']);
 
+  options.addArguments('--disable-gpu');
+  options.addArguments('--disable-setuid-sandbox');
+  options.addArguments('--disable-extensions');
+  options.addArguments('--disable-background-networking');
+  options.addArguments('--disable-default-apps');
+  options.addArguments('--disable-sync');
+  options.addArguments('--disable-translate');
+  options.addArguments('--disable-renderer-backgrounding');
+  options.addArguments('--disable-backgrounding-occluded-windows');
+  options.addArguments('--disable-background-timer-throttling');
+  options.addArguments('--mute-audio');
+  options.addArguments('--no-first-run');
+  options.addArguments('--blink-settings=imagesEnabled=false');
+  options.setUserPreferences({
+    'profile.managed_default_content_settings.images': 2,
+    'profile.default_content_setting_values.notifications': 2
+  });
+  options.setPageLoadStrategy('eager');
+  
+  if (process.platform === 'linux') {
+    const fs = require('fs');
+    const linuxBinaries = [
+      '/usr/bin/google-chrome',
+      '/usr/bin/google-chrome-stable',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/snap/bin/chromium'
+    ];
+    for (const bin of linuxBinaries) {
+      if (fs.existsSync(bin)) {
+        options.setChromeBinaryPath(bin);
+        break;
+      }
+    }
+  }
+
   const driver = await new Builder().forBrowser('chrome').setChromeOptions(options).build();
+  try {
+    await driver.manage().setTimeouts({ pageLoad: 25000, implicit: 0 });
+  } catch {}
   try {
     await driver.executeScript('Object.defineProperty(navigator, "webdriver", {get: () => undefined})');
   } catch {

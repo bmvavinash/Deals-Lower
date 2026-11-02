@@ -6,7 +6,14 @@ const path = require('path');
 const admin = require('firebase-admin');
 const { bannerDB, testBannerDB } = require('../../../database/firebaseDB/bannerDB');
 const { getModuleLogger } = require('../../../logger/logger');
-const { BannerExtractor } = require('../../../dataSources/bannerExtractor');
+// Lazy-load BannerExtractor to prevent importing selenium-webdriver and chromedriver on server boot
+let _BannerExtractor = null;
+function getBannerExtractorClass() {
+  if (!_BannerExtractor) {
+    _BannerExtractor = require('../../../dataSources/bannerExtractor').BannerExtractor;
+  }
+  return _BannerExtractor;
+}
 const { bannerUrlFixer } = require('../../../services/bannerUrlFixer');
 const bannerConfig = require('../../../config/bannerConfig');
 const { executionTracker } = require('../../../services/executionTracker');
@@ -1976,7 +1983,8 @@ const runScrapingTask = async (saleName, platform, category, urls) => {
 
   try {
     log(`Starting Selenium Chrome driver...`);
-    const extractor = new BannerExtractor({
+    const BannerExtractorClass = getBannerExtractorClass();
+    const extractor = new BannerExtractorClass({
       visibility: true, // Custom scraped sale banners active immediately per user's requests
       useExistingChrome: false,
       requiresLogin: false

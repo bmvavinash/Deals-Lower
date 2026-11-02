@@ -6,6 +6,7 @@
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const { getModuleLogger } = require('../logger/logger');
 const { createChromeDriver } = require('../utils/seleniumDriver');
 const { getProductDetails } = require('../scheduler');
@@ -37,9 +38,21 @@ async function main() {
 
     // Navigate to URL and resolve redirect
     logger.info(`Navigating to URL: ${url}`);
-    await driver.get(url);
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    const resolvedUrl = (await driver.getCurrentUrl()) || url;
+    try {
+      await driver.get(url);
+    } catch (navErr) {
+      if (navErr.name === 'TimeoutError' || (navErr.message && navErr.message.toLowerCase().includes('timeout'))) {
+        logger.warn(`Navigation timed out, stopping page loading and continuing with DOM: ${navErr.message}`);
+        try { await driver.executeScript('window.stop();'); } catch (_) {}
+      } else {
+        throw navErr;
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    let resolvedUrl = url;
+    try {
+      resolvedUrl = (await driver.getCurrentUrl()) || url;
+    } catch (_) {}
     logger.info(`URL resolved in browser`, { original: url, resolved: resolvedUrl });
 
     // Determine platform and code
@@ -51,6 +64,13 @@ async function main() {
       } catch (codeErr) {
         logger.warn(`Could not extract productCode via storeMap`, { error: codeErr.message });
       }
+    }
+
+    if (!productCode && storeKey) {
+      try {
+        const { extractProductCode } = require('../services/headlessProductExtractor');
+        productCode = extractProductCode(resolvedUrl, storeKey);
+      } catch (_) {}
     }
 
     if (productCode) {

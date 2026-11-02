@@ -1,32 +1,47 @@
+const admin = require('firebase-admin');
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const router = express.Router();
 const { productDealsDB } = require('../../../database/firebaseDB/productDealsDB');
 const { notificationTrackingDB } = require('../../../database/firebaseDB/notificationTrackingDB');
-const { runBulkUpdateAll } = require('../../../scripts/bulkUpdateAllPlatforms');
+// Lazy-load runBulkUpdateAll to prevent loading batchProductExtractor/puppeteer on server boot
+let _runBulkUpdateAll = null;
+function runBulkUpdateAll() {
+  if (!_runBulkUpdateAll) {
+    _runBulkUpdateAll = require('../../../scripts/bulkUpdateAllPlatforms').runBulkUpdateAll;
+  }
+  return _runBulkUpdateAll(...arguments);
+}
 const { getModuleLogger } = require('../../../logger/logger');
 const cacheService = require('../../../services/cacheService');
 const { getformattedDate, getISTTimestamp, getCode } = require('../../../utils/commonUtils');
 const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
-const { Builder } = require('selenium-webdriver');
-const chrome = require('selenium-webdriver/chrome');
+// selenium Builder removed (unused)
+// selenium chrome removed (unused)
 // require('chromedriver');
-const { getProductDetails } = require('../../../scheduler');
+// scheduler lazy-loaded on demand
 const { productStatus } = require('../../../config/const');
 const constants = require('../../../config/constants');
 const { getAccessToken } = require('../../../database/getAccessToken');
 const { firebaseget } = require('../../../database/firebaseget');
 const { firebasepost } = require('../../../database/firebasepost');
-const handleProductProcessingModule = require('../../../dataSources/handleProductProcessing');
-const processProduct = handleProductProcessingModule.processProduct || (async (driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl) => {
-  // Fallback: use getProductDetails directly if processProduct is not exported
-  const { getProductDetails } = require('../../../scheduler');
-  return await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl);
-});
+// Lazy-load processProduct to prevent loading scheduler & puppeteer on boot
+let _processProduct = null;
+async function processProduct() {
+  if (!_processProduct) {
+    const handleProductProcessingModule = require('../../../dataSources/handleProductProcessing');
+    _processProduct = handleProductProcessingModule.processProduct || (async (driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl) => {
+      const { getProductDetails } = require('../../../scheduler');
+      return await getProductDetails(driver, link, text, len, accessToken, jsonData, todayJsonData, postProduct, username, generateLink, shortUrl);
+    });
+  }
+  return await _processProduct(...arguments);
+}
 const { executionTracker } = require('../../../services/executionTracker');
 const { spawn } = require('child_process');
 const net = require('net');
+const { authenticateRequest } = require('./auth');
 
 const logger = getModuleLogger('deals-api');
 const TELEGRAM_LOCK_FILE = path.join(__dirname, '../../../.telegram-bot.lock');
@@ -34,6 +49,42 @@ const TELEGRAM_LOCK_FILE = path.join(__dirname, '../../../.telegram-bot.lock');
 // Lightweight In-Memory Search Index Cache
 let searchIndexCache = {};
 let isCacheLoaded = false;
+
+// Regex for blocked titles (access denied, bot verification, error pages)
+const BLOCKED_TITLE_REGEX = /^(access denied|oops!|something went wrong|robot check|page not found|blocked|challenge|403 forbidden|404 not found|amazon\.in)/i;
+
+/**
+ * Validates that a deal has a valid, non-placeholder image
+ */
+function hasValidDealImage(deal) {
+  if (!deal) return false;
+  let photo = deal.photo || deal.image || deal.img || '';
+  if (Array.isArray(photo) && photo.length > 0) photo = photo[0] || '';
+  if (!photo && Array.isArray(deal.images) && deal.images.length > 0) photo = deal.images[0] || '';
+  if (typeof photo !== 'string') return false;
+  photo = photo.trim();
+  return /^(https?:)?\/\//i.test(photo) && 
+         !photo.includes('no-image') && 
+         !photo.includes('placeholder') && 
+         !photo.startsWith('data:image');
+}
+
+/**
+ * Validates that a deal is eligible to be displayed across the platform
+ * Requires:
+ * 1. Valid title (not empty, not blocked/bot error)
+ * 2. Valid image URL (strictly required in all places)
+ * 3. Price present or marked out of stock
+ */
+function isValidDealForDisplay(deal) {
+  if (!deal) return false;
+  const title = (deal.title || deal.shortText || deal.productText || '').trim();
+  if (!title || title.length < 3) return false;
+  if (BLOCKED_TITLE_REGEX.test(title)) return false;
+  if (!hasValidDealImage(deal)) return false;
+  if (!deal.price && !deal.outOfStock && !deal.isOutOfStock) return false;
+  return true;
+}
 
 function initSearchIndexCache() {
   logger.info('🧠 [CACHE] Initializing in-memory search index cache...');
@@ -75,9 +126,19 @@ function isProcessRunning(pid) {
 }
 
 let globalDriver = null;
-const { createChromeDriver } = require('../../../utils/seleniumDriver');
+// Lazy-loaded seleniumDriver
+let _createChromeDriver = null;
+function createChromeDriver() {
+  if (!_createChromeDriver) {
+    _createChromeDriver = require('../../../utils/seleniumDriver').createChromeDriver;
+  }
+  return _createChromeDriver(...arguments);
+}
 
 async function getOrCreateDriver() {
+  if (process.env.RENDER) {
+    throw new Error('Chrome WebDriver is disabled on Render cloud to prevent container OOM crash');
+  }
   if (globalDriver) {
     try {
       // Test if the session is still valid
@@ -102,42 +163,485 @@ async function getOrCreateDriver() {
 }
 
 /**
+ * Helper to process a single URL in cloud environment using lightweight in-memory extraction
+ * and Cuelinks affiliate link conversion, with fallback to Firebase commandsQueue.
+ */
+async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleName = null } = {}) {
+  const { extractProductOnServer, extractProductCode } = require('../../../services/headlessProductExtractor');
+  const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
+
+  let detectedPlatform = null;
+  let productCode = null;
+  try {
+    detectedPlatform = resolvePlatformFromUrl(targetUrl);
+    productCode = extractProductCode(targetUrl, detectedPlatform);
+  } catch (e) {
+    // ignore
+  }
+
+  const isDynamicSite = detectedPlatform === 'flipkart' || detectedPlatform === 'ajio';
+
+  // 1. For static/server-parseable sites (Amazon, Myntra, etc.), attempt crash-free server-side extraction
+  if (!isDynamicSite) {
+    try {
+      const serverResult = await extractProductOnServer(targetUrl, { postProduct, saleName });
+      if (serverResult && serverResult.success) {
+        const pCode = serverResult.productCode;
+        const lowerdealUrl = serverResult.lowerdealUrl || `https://lowerdeal.com/p/${pCode}`;
+        const affiliateUrl = serverResult.affiliateUrl || serverResult.data?.links?.avinashbmv || serverResult.data?.links?.avinashbmvINR || targetUrl;
+        return {
+          originalUrl: targetUrl,
+          success: true,
+          status: 'success',
+          processedOn: 'server',
+          productCode: pCode,
+          lowerdealUrl,
+          affiliateUrl,
+          platform: serverResult.data?.storeType || 'unknown',
+          title: serverResult.data?.title || '',
+          price: serverResult.data?.price || null,
+          mrp: serverResult.data?.mrp || null,
+          discount: serverResult.data?.discount || '',
+          photo: serverResult.data?.photo || '',
+          outOfStock: Boolean(serverResult.outOfStock),
+          inStock: serverResult.inStock !== undefined ? serverResult.inStock : !serverResult.outOfStock,
+          availability: serverResult.availability || (serverResult.outOfStock ? 'OutOfStock' : 'InStock'),
+          data: serverResult.data,
+          isCuelinks: serverResult.isCuelinks,
+          message: serverResult.message || `Product [${pCode}] processed successfully on server!`
+        };
+      }
+    } catch (extractErr) {
+      logger.warn('Server headless extraction failed with error, falling back to Daemons check', { 
+        url: targetUrl, 
+        error: extractErr.message 
+      });
+    }
+  } else {
+    logger.info(`Platform is ${detectedPlatform} (requires full browser automation). Skipping static HTML fetch on Render and offloading directly to daemons.`);
+  }
+
+  // 2. Check heartbeats of both Daemons (Local residential PC vs Oracle Cloud VM)
+  let isLocalAlive = false;
+  let isOracleAlive = false;
+  let anyDaemonAlive = false;
+
+  try {
+    if (admin.apps.length) {
+      const db = admin.database();
+      const now = Date.now();
+      const [localSnap, oracleSnap, legacySnap] = await Promise.all([
+        db.ref('daemons/local').once('value'),
+        db.ref('daemons/oracle').once('value'),
+        db.ref('daemonHeartbeat').once('value')
+      ]);
+
+      const localVal = localSnap.val();
+      const oracleVal = oracleSnap.val();
+      const legacyVal = legacySnap.val();
+
+      if (localVal && localVal.timestamp) {
+        isLocalAlive = (now - new Date(localVal.timestamp).getTime()) < 60000;
+      }
+      if (oracleVal && oracleVal.timestamp) {
+        isOracleAlive = (now - new Date(oracleVal.timestamp).getTime()) < 60000;
+      }
+      if (legacyVal && legacyVal.timestamp) {
+        const legacyActive = (now - new Date(legacyVal.timestamp).getTime()) < 60000;
+        if (legacyActive) {
+          if (legacyVal.type === 'oracle' || legacyVal.platform === 'linux' || (legacyVal.hostname && legacyVal.hostname.includes('deals-backend'))) {
+            isOracleAlive = true;
+          } else {
+            isLocalAlive = true;
+          }
+        }
+      }
+      anyDaemonAlive = isLocalAlive || isOracleAlive;
+    }
+  } catch (hbErr) {
+    logger.warn('Failed to check daemon heartbeats', { error: hbErr.message });
+  }
+
+  if (admin.apps.length) {
+    const db = admin.database();
+    const queueRef = db.ref('commandsQueue');
+    const newCommandRef = queueRef.push();
+    
+    // Priority routing: Local daemon preferred if online (residential IP); fallback to Oracle Cloud VM (24/7 cloud runner)
+    let initialTarget = 'oracle';
+    if (isLocalAlive) {
+      initialTarget = 'local';
+    } else if (isOracleAlive) {
+      initialTarget = 'oracle';
+    } else {
+      initialTarget = 'all';
+    }
+
+    const safeUrl = targetUrl.replace(/"/g, '\\"');
+    const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
+    const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
+
+    await newCommandRef.set({
+      id: `process-product-${Date.now()}`,
+      command: cliCommand,
+      name: `Process Product (${targetUrl.substring(0, 50)}...)`,
+      productCode: productCode || null,
+      targetDaemon: initialTarget,
+      role: 'all',
+      status: 'pending',
+      targetUrl,
+      createdAt: new Date().toISOString(),
+      triggeredBy: 'api'
+    });
+
+    const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
+    let currentTarget = initialTarget;
+    let daemonResult = null;
+
+    // Phase 1: Wait loop with failover
+    if (anyDaemonAlive) {
+      const waitStart = Date.now();
+      let hasFailedOver = false;
+
+      while (Date.now() - waitStart < 8000) {
+        await new Promise(res => setTimeout(res, 1000));
+        const cmdSnap = await newCommandRef.once('value');
+        const cmdVal = cmdSnap.val();
+
+        if (cmdVal && (cmdVal.status === 'completed' || cmdVal.status === 'success')) {
+          daemonResult = cmdVal;
+          break;
+        }
+
+        // Failover to Oracle only if local daemon explicitly failed
+        if (currentTarget === 'local' && !hasFailedOver && cmdVal && cmdVal.status === 'failed') {
+          if (isOracleAlive) {
+            logger.info(`[FAILOVER] Local daemon failed execution. Reassigning task ${newCommandRef.key} to Oracle Cloud daemon.`);
+            hasFailedOver = true;
+            currentTarget = 'oracle';
+            try {
+              await newCommandRef.update({
+                targetDaemon: 'oracle',
+                status: 'pending',
+                failedOverFrom: 'local',
+                reassignedAt: new Date().toISOString()
+              });
+            } catch (reassignErr) {
+              logger.warn('Failed to reassign command in RTDB', reassignErr);
+            }
+          }
+        }
+
+        if (cmdVal && cmdVal.status === 'failed' && hasFailedOver) {
+          break;
+        }
+      }
+
+      if (daemonResult) {
+        let productDetails = null;
+        if (productCode) {
+          try {
+            const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
+            const [dealsSnap, prodDealsSnap] = await Promise.all([
+              db.ref(`deals/${safeKey}`).once('value'),
+              db.ref(`productdeals/${safeKey}`).once('value')
+            ]);
+            productDetails = dealsSnap.val() || prodDealsSnap.val();
+          } catch (_) {}
+        }
+
+        const executor = daemonResult.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+        return {
+          originalUrl: targetUrl,
+          success: true,
+          status: 'success',
+          processedOn: daemonResult.executorType === 'oracle' ? 'oracleDaemon' : 'localDaemon',
+          productCode,
+          lowerdealUrl,
+          title: productDetails?.title || '',
+          price: productDetails?.price || null,
+          photo: productDetails?.photo || '',
+          data: productDetails,
+          message: `Product [${productCode || 'deal'}] processed successfully via ${executor}!`
+        };
+      }
+    }
+
+    return {
+      originalUrl: targetUrl,
+      success: anyDaemonAlive,
+      status: anyDaemonAlive ? 'queued' : 'error',
+      queued: true,
+      queuedId: newCommandRef.key,
+      targetDaemon: currentTarget,
+      isDaemonAlive: anyDaemonAlive,
+      isLocalAlive,
+      isOracleAlive,
+      productCode,
+      lowerdealUrl,
+      processedOn: 'queue',
+      reason: anyDaemonAlive 
+        ? `Server extraction was unable to extract product. Task queued and dispatched to active ${currentTarget === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon'}.`
+        : 'Server extraction failed and both Local Daemon and Oracle Cloud VM are offline. Please ensure a daemon is running.',
+      message: anyDaemonAlive 
+        ? `Product processing queued in Firebase. Processing by ${currentTarget === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon'} in progress.`
+        : 'Unable to process on server and daemons are currently offline.'
+    };
+  }
+
+  return {
+    originalUrl: targetUrl,
+    success: false,
+    status: 'error',
+    message: 'Cloud server cannot process products directly and Firebase is not connected to queue tasks.'
+  };
+}
+
+/**
  * POST /api/deals/process-product
- * Process a product URL and save to database
- * Body: { url: string, postProduct: boolean }
+ * Process one or multiple product URLs and save to database
+ * Body: { url?: string, urls?: string | string[], postProduct?: boolean, saleName?: string }
  */
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
-    const { url, postProduct = false, saleName = null } = req.body;
+    // Strictly require administrator authentication on the API level
+    const authResult = authenticateRequest(req);
+    if (!authResult.authenticated) {
+      logger.warn('Unauthorized API request rejected on /deals/process-product', {
+        ip: req.ip,
+        error: authResult.error
+      });
+      return res.status(401).json({
+        success: false,
+        status: 'error',
+        error: authResult.error || 'Access Denied: Administrator authentication required via Bearer token or x-admin-email & x-admin-password headers.'
+      });
+    }
+
+    req.adminUser = authResult.user;
+    logger.info('Authenticated admin executing process-product', { email: authResult.user.email, authType: authResult.authType });
+
+    const { url: reqUrl, urls: reqUrls, postProduct = false, saleName = null } = req.body || {};
     
-    if (!url || typeof url !== 'string') {
+    // Extract all URLs from url or urls (string, array, or newline/comma separated)
+    let rawUrls = [];
+    if (Array.isArray(reqUrls)) {
+      rawUrls = reqUrls;
+    } else if (typeof reqUrls === 'string' && reqUrls.trim()) {
+      rawUrls = reqUrls.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
+    } else if (Array.isArray(reqUrl)) {
+      rawUrls = reqUrl;
+    } else if (typeof reqUrl === 'string' && reqUrl.trim()) {
+      rawUrls = reqUrl.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
+    }
+
+    const validUrls = rawUrls.map(u => {
+      let clean = String(u).trim();
+      if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+        clean = `https://${clean}`;
+      }
+      return clean;
+    }).filter(u => {
+      try {
+        const p = new URL(u);
+        return p.protocol === 'http:' || p.protocol === 'https:';
+      } catch {
+        return false;
+      }
+    });
+
+    if (validUrls.length === 0) {
       return res.status(400).json({
         success: false,
         status: 'error',
-        message: 'Product URL is required',
+        message: 'At least one valid product URL is required',
         error: 'Product URL is required'
       });
     }
 
-    logger.info('Processing product URL', { url, postProduct });
+    logger.info('Processing product URLs', { count: validUrls.length, postProduct, saleName });
 
-    // Get or create driver - try to use global driver first (same instance as Telegram bot)
-    if (global.driver) {
-      logger.info('Using existing global driver instance');
-      driver = global.driver;
-      try {
-        await driver.getCurrentUrl();
-        logger.info('Global driver is valid');
-      } catch (e) {
-        logger.warn('Global driver invalid, creating new one', { error: e.message });
+    // Cloud environment detection (Render free tier has 512MB RAM and no Chrome)
+    const isCloudEnv = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    if (isCloudEnv) {
+      logger.info('Cloud environment detected (Render/Hybrid). Running server-side headless extraction with Cuelinks API.', { count: validUrls.length, postProduct, saleName });
+
+      // Process up to 3 URLs concurrently
+      const CHUNK_SIZE = 3;
+      const results = [];
+      for (let i = 0; i < validUrls.length; i += CHUNK_SIZE) {
+        const chunk = validUrls.slice(i, i + CHUNK_SIZE);
+        const chunkResults = await Promise.all(
+          chunk.map(u => processProductUrlOnCloud(u, { postProduct, saleName }))
+        );
+        results.push(...chunkResults);
+      }
+
+      const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
+      const successful = results.filter(r => r.success);
+      const failed = results.filter(r => !r.success);
+      const firstResult = results[0] || {};
+      const queuedCount = results.filter(r => r.queued || r.status === 'queued').length;
+
+      let overallStatus = 'success';
+      if (successful.length === 0) {
+        overallStatus = queuedCount > 0 ? 'queued' : 'error';
+      } else if (failed.length > 0) {
+        overallStatus = 'partial';
+      }
+
+      let summaryMessage = `Processed ${successful.length}/${results.length} product(s) successfully.`;
+      if (failed.length > 0) {
+        const errorDetails = failed.map(f => {
+          const code = f.productCode ? `[${f.productCode}]` : '';
+          return `${code} ${f.error || f.message || f.reason || 'Failed'}`.trim();
+        }).join('; ');
+        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed or queued: ${errorDetails}`;
+      }
+
+      const responsePayload = {
+        success: successful.length > 0,
+        status: overallStatus,
+        total: results.length,
+        successfulCount: successful.length,
+        failedCount: failed.length,
+        queuedCount,
+        lowerdealUrl: lowerdealUrls[0] || null,
+        lowerdealUrls,
+        results,
+        message: summaryMessage
+      };
+
+      if (authResult.authenticated) {
+        responsePayload.authenticated = true;
+        responsePayload.authenticatedAs = authResult.user.email;
+        responsePayload.authType = authResult.authType;
+      }
+
+      // Top-level backward compatibility if single URL was passed
+      if (results.length === 1) {
+        responsePayload.success = Boolean(firstResult.success && !firstResult.queued);
+        responsePayload.status = firstResult.status || overallStatus;
+        responsePayload.productCode = firstResult.productCode;
+        responsePayload.data = firstResult.data;
+        responsePayload.processedOn = firstResult.processedOn;
+        responsePayload.isCuelinks = firstResult.isCuelinks;
+        responsePayload.queued = Boolean(firstResult.queued);
+        responsePayload.queuedId = firstResult.queuedId;
+        responsePayload.targetDaemon = firstResult.targetDaemon;
+        responsePayload.isDaemonAlive = firstResult.isDaemonAlive;
+        responsePayload.isLocalAlive = firstResult.isLocalAlive;
+        responsePayload.isOracleAlive = firstResult.isOracleAlive;
+        responsePayload.outOfStock = Boolean(firstResult.outOfStock);
+        responsePayload.inStock = firstResult.inStock !== undefined ? firstResult.inStock : !firstResult.outOfStock;
+        responsePayload.availability = firstResult.availability || (firstResult.outOfStock ? 'OutOfStock' : 'InStock');
+        if (!firstResult.success || firstResult.queued) {
+          responsePayload.reason = firstResult.reason || firstResult.error || firstResult.message;
+          responsePayload.error = firstResult.error || firstResult.message;
+        }
+        responsePayload.message = firstResult.message || responsePayload.message;
+      }
+
+      return res.json(responsePayload);
+    }
+
+    // If multiple URLs in local mode, process via cloud helper
+    if (validUrls.length > 1) {
+      const results = [];
+      for (const singleUrl of validUrls) {
+        const r = await processProductUrlOnCloud(singleUrl, { postProduct, saleName });
+        results.push(r);
+      }
+      const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
+      const successful = results.filter(r => r.success);
+      const failed = results.filter(r => !r.success);
+
+      let overallStatus = 'success';
+      if (successful.length === 0) {
+        overallStatus = 'error';
+      } else if (failed.length > 0) {
+        overallStatus = 'partial';
+      }
+
+      let summaryMessage = `Processed ${successful.length}/${results.length} product(s) successfully.`;
+      if (failed.length > 0) {
+        const errorDetails = failed.map(f => {
+          const code = f.productCode ? `[${f.productCode}]` : '';
+          return `${code} ${f.error || f.message || 'Failed'}`.trim();
+        }).join('; ');
+        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed: ${errorDetails}`;
+      }
+
+      const responsePayload = {
+        success: successful.length > 0,
+        status: overallStatus,
+        total: results.length,
+        successfulCount: successful.length,
+        failedCount: failed.length,
+        lowerdealUrl: lowerdealUrls[0] || null,
+        lowerdealUrls,
+        results,
+        message: summaryMessage
+      };
+      if (authResult.authenticated) {
+        responsePayload.authenticated = true;
+        responsePayload.authenticatedAs = authResult.user.email;
+        responsePayload.authType = authResult.authType;
+      }
+      return res.json(responsePayload);
+    }
+
+    // Single URL in local environment
+    const url = validUrls[0];
+
+    // Local environment: attempt local driver, fallback to queue if driver fails
+    try {
+      if (global.driver) {
+        logger.info('Using existing global driver instance');
+        driver = global.driver;
+        try {
+          await driver.getCurrentUrl();
+          logger.info('Global driver is valid');
+        } catch (e) {
+          logger.warn('Global driver invalid, creating new one', { error: e.message });
+          driver = await getOrCreateDriver();
+          global.driver = driver;
+        }
+      } else {
+        logger.info('No global driver found, creating new one');
         driver = await getOrCreateDriver();
         global.driver = driver;
       }
-    } else {
-      logger.info('No global driver found, creating new one');
-      driver = await getOrCreateDriver();
-      global.driver = driver;
+    } catch (driverErr) {
+      logger.warn('Local driver initialization failed, attempting Firebase queue fallback', { error: driverErr.message });
+      if (admin.apps.length) {
+        const db = admin.database();
+        const queueRef = db.ref('commandsQueue');
+        const newCommandRef = queueRef.push();
+        const safeUrl = url.replace(/"/g, '\\"');
+        const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
+        const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
+
+        await newCommandRef.set({
+          id: `process-product-${Date.now()}`,
+          command: cliCommand,
+          name: `Process Product (${url.substring(0, 50)}...)`,
+          role: 'all',
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          triggeredBy: 'dashboard'
+        });
+
+        return res.json({
+          success: true,
+          status: 'success',
+          queued: true,
+          queuedId: newCommandRef.key,
+          message: 'Local browser unavailable. Task queued in Firebase for Local Daemon.'
+        });
+      }
+      throw driverErr;
     }
 
     // Resolve URL in browser first (same as handleProductProcessing)
@@ -258,12 +762,27 @@ router.post('/process-product', async (req, res) => {
       message = 'Product processed successfully';
     }
 
+    const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
+
     res.json({
       success: status === 'success' || status === 'excluded',
       status,
       message,
       error,
       result: result,
+      productCode,
+      lowerdealUrl,
+      lowerdealUrls: lowerdealUrl ? [lowerdealUrl] : [],
+      results: [
+        {
+          originalUrl: url,
+          success: status === 'success' || status === 'excluded',
+          status,
+          productCode,
+          lowerdealUrl,
+          message
+        }
+      ],
       timestamp: new Date().toISOString()
     });
 
@@ -281,6 +800,84 @@ router.post('/process-product', async (req, res) => {
       error: error.message,
       timestamp: new Date().toISOString()
     });
+  }
+});
+
+/**
+ * GET /api/deals/queue-status/:commandId
+ * Poll the processing status of a queued product command from Firebase RTDB
+ */
+router.get('/queue-status/:commandId', async (req, res) => {
+  try {
+    const { commandId } = req.params;
+    if (!commandId) {
+      return res.status(400).json({ success: false, error: 'Command ID is required' });
+    }
+
+    if (!admin.apps.length) {
+      return res.status(503).json({ success: false, error: 'Database service not available' });
+    }
+
+    const db = admin.database();
+    const snap = await db.ref(`commandsQueue/${commandId}`).once('value');
+    const cmd = snap.val();
+
+    if (!cmd) {
+      return res.status(404).json({ success: false, error: 'Command not found in queue' });
+    }
+
+    // Dynamic failover check during client polling if local daemon stalled or failed
+    if (cmd.targetDaemon === 'local' && (cmd.status === 'pending' || cmd.status === 'failed')) {
+      const createdAt = new Date(cmd.createdAt || 0).getTime();
+      const isStale = (Date.now() - createdAt) > 25000;
+      if (cmd.status === 'failed' || isStale) {
+        try {
+          const oracleSnap = await db.ref('daemons/oracle').once('value');
+          const oracleVal = oracleSnap.val();
+          const isOracleAlive = oracleVal && (Date.now() - new Date(oracleVal.timestamp).getTime() < 60000);
+          if (isOracleAlive) {
+            logger.info(`[POLLING FAILOVER] Reassigning stalled/failed local command ${commandId} to Oracle Cloud.`);
+            await db.ref(`commandsQueue/${commandId}`).update({
+              targetDaemon: 'oracle',
+              status: 'pending',
+              failedOverFrom: 'local',
+              reassignedAt: new Date().toISOString()
+            });
+            cmd.targetDaemon = 'oracle';
+            cmd.status = 'pending';
+          }
+        } catch (_) {}
+      }
+    }
+
+    let productData = null;
+    const pCode = cmd.productCode;
+    if (cmd.status === 'completed' && pCode) {
+      try {
+        const safeKey = String(pCode).replace(/[.#$/\[\]]/g, '_');
+        const [dealsSnap, prodDealsSnap] = await Promise.all([
+          db.ref(`deals/${safeKey}`).once('value'),
+          db.ref(`productdeals/${safeKey}`).once('value')
+        ]);
+        productData = dealsSnap.val() || prodDealsSnap.val();
+      } catch (_) {}
+    }
+
+    return res.json({
+      success: true,
+      status: cmd.status, // 'pending' | 'running' | 'completed' | 'failed' | 'expired'
+      targetDaemon: cmd.targetDaemon || 'all',
+      executorId: cmd.executorId || null,
+      executorType: cmd.executorType || null,
+      productCode: pCode || null,
+      lowerdealUrl: pCode ? `https://lowerdeal.com/p/${pCode}` : null,
+      product: productData,
+      completedAt: cmd.completedAt || null,
+      error: cmd.error || null
+    });
+  } catch (err) {
+    logger.error('Error checking queue status', { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -737,6 +1334,29 @@ router.get('/test-connection', async (req, res) => {
 });
 
 /**
+ * GET/POST /api/deals/test-abnormal-alert
+ * Trigger abnormal price anomaly detection and dispatch test alert to @notifyavi
+ */
+router.all('/test-abnormal-alert', async (req, res) => {
+  try {
+    const { triggerDummyAlert, checkAndAlertAbnormalPrice } = require('../../../services/abnormalPriceAlertService');
+    let result;
+    if (req.body && (req.body.price || req.body.title)) {
+      result = await checkAndAlertAbnormalPrice(req.body);
+    } else {
+      result = await triggerDummyAlert();
+    }
+    res.json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    logger.error('Error in test-abnormal-alert endpoint:', { error: error.message });
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+/**
  * GET /api/deals/comparison/:matchId
  * Retrieve products matching the same matchId for price comparison
  */
@@ -951,16 +1571,11 @@ router.get('/', async (req, res, next) => {
       }
     }
     
-    // Convert to array and filter out completely empty items
+    // Convert to array and filter for display eligibility (valid title, valid image, valid price/stock)
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
       productCode: key,
       ...value
-    })).filter(deal => {
-      const hasAnyTitle = (deal.title && deal.title.trim() !== '') || 
-                          (deal.shortText && deal.shortText.trim() !== '') || 
-                          (deal.productText && deal.productText.trim() !== '');
-      return hasAnyTitle && deal.price;
-    });
+    })).filter(isValidDealForDisplay);
 
     // Filter by platform if specified
     if (platform) {
@@ -1355,7 +1970,7 @@ router.get('/search', async (req, res, next) => {
     };
     
     const fullDeals = await Promise.all(paginatedKeys.map(fetchDeal));
-    const validDeals = fullDeals.filter(d => d !== null);
+    const validDeals = fullDeals.filter(isValidDealForDisplay);
 
     res.json({
       success: true,
@@ -1398,10 +2013,14 @@ router.get('/sale/:saleName', async (req, res, next) => {
 
     let products = [];
     if (dealsSnap.exists()) {
-      Object.values(dealsSnap.val()).forEach(p => products.push(p));
+      Object.values(dealsSnap.val()).forEach(p => {
+        if (isValidDealForDisplay(p)) products.push(p);
+      });
     }
     if (staticSnap.exists()) {
-      Object.values(staticSnap.val()).forEach(p => products.push(p));
+      Object.values(staticSnap.val()).forEach(p => {
+        if (isValidDealForDisplay(p)) products.push(p);
+      });
     }
 
     // Sort descending by datetime if available
@@ -1485,10 +2104,10 @@ router.get('/:productCode', async (req, res, next) => {
       productKey = result?.key;
     }
 
-    if (!product) {
+    if (!product || !isValidDealForDisplay(product)) {
       return res.status(404).json({
         success: false,
-        error: 'Product not found',
+        error: !product ? 'Product not found' : 'Product unavailable or missing valid image',
         productCode
       });
     }
@@ -1680,6 +2299,34 @@ router.post('/:productCode/retrigger', async (req, res) => {
     }
 
     targetUrl = cleanProductUrl(targetUrl);
+
+    // If in cloud environment (Render), queue to Firebase commandsQueue instead of launching Chrome
+    const isCloudRetrigger = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    if (isCloudRetrigger && admin.apps.length) {
+      logger.info('Cloud environment detected on retrigger. Queueing to commandsQueue', { productCode, targetUrl });
+      const db = admin.database();
+      const queueRef = db.ref('commandsQueue');
+      const newCommandRef = queueRef.push();
+      const safeUrl = targetUrl.replace(/"/g, '\\"');
+      const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" false null`;
+
+      await newCommandRef.set({
+        id: `retrigger-${productCode}-${Date.now()}`,
+        command: cliCommand,
+        name: `Retrigger Product: ${productCode}`,
+        role: 'all',
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        triggeredBy: 'dashboard-retrigger'
+      });
+
+      return res.json({
+        success: true,
+        queued: true,
+        queuedId: newCommandRef.key,
+        message: 'Product retrigger task queued in Firebase for Local Daemon execution.'
+      });
+    }
     
     const driver = global.driver || await getOrCreateDriver();
     const { scrapeProduct } = require('../../../scrappers/amazon');

@@ -2,6 +2,7 @@ const { getModuleLogger } = require("../logger/logger");
 const { productDealsDB } = require("../database/firebaseDB/productDealsDB");
 const { amazonLinkGenerator } = require("../affiliate/amazonLinkGenerator");
 const { getExtrapeUrl } = require("../affiliate/extrape");
+const { isValidExtrapeUrl } = require("./cuelinksService");
 const constants = require("../config/constants");
 
 const logger = getModuleLogger('productUrlFixer');
@@ -92,7 +93,7 @@ class ProductUrlFixer {
       const expectedUrl = await this.generateCorrectUrl(product, platform, currentUrl);
       
       // Check if it's an Extrape URL (usually starts with extp.in or extrape.com)
-      const isExtrape = expectedUrl && (expectedUrl.includes('extp.in') || expectedUrl.includes('extrape.com'));
+      const isExtrape = expectedUrl && isValidExtrapeUrl(expectedUrl);
       
       if (expectedUrl && expectedUrl !== currentUrl) {
         if (isExtrape) {

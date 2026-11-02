@@ -1,7 +1,7 @@
 name: '🔄 Stale Products Update'
 on:
   schedule:
-    - cron: '0 */6 * * *'    # Every 6 hours to keep deals fresh
+    - cron: '*/30 * * * *'    # Every 30 minutes to continuously keep deals fresh
   workflow_dispatch:        # Allow manual trigger
 
 env:
@@ -12,11 +12,13 @@ env:
   CLOUDFLARE_R2_BUCKET_NAME: ${{ secrets.CLOUDFLARE_R2_BUCKET_NAME }}
   CI: 'true'
   NODE_ENV: production
+  NODE_OPTIONS: '--max-old-space-size=4096'
+  CUELINKS_API_KEY: ${{ secrets.CUELINKS_API_KEY }}
 
 jobs:
   stale-products-update:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 50
     concurrency:
       group: stale-products-update
       cancel-in-progress: true

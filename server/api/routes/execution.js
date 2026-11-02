@@ -4,6 +4,45 @@ const { executionTracker } = require('../../../services/executionTracker');
 const { getModuleLogger } = require('../../../logger/logger');
 
 const logger = getModuleLogger('execution-api');
+const { MASTER_CATEGORY_CATALOG } = require('../../../config/masterCategorySeeds');
+
+
+function getGhToken(customToken = null) {
+  if (customToken) return customToken;
+  const envToken = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || process.env.GH_TOKEN;
+  if (envToken) return envToken;
+  try {
+    const { execSync } = require('child_process');
+    const creds = execSync('git credential fill', {
+      input: 'protocol=https\nhost=github.com\n\n',
+      encoding: 'utf8',
+      timeout: 3000
+    });
+    const match = creds.match(/password=(.+)/);
+    if (match && match[1]) return match[1].trim();
+  } catch (_) {}
+  return null;
+}
+
+const GITHUB_WORKFLOW_MAP = {
+  'category-electronics': 'category-electronics.yml',
+  'category-fashion': 'category-fashion.yml',
+  'category-home-kitchen': 'category-home-kitchen.yml',
+  'category-beauty-personal-care': 'category-beauty.yml',
+  'category-beauty': 'category-beauty.yml',
+  'category-sports-fitness': 'category-sports-fitness.yml',
+  'category-baby-kids': 'category-baby-kids.yml',
+  'category-grocery': 'category-grocery.yml',
+  'category-automotive': 'category-automotive.yml',
+  'category-books-stationery': 'category-books-stationery.yml',
+  'category-deals-trending': 'category-deals-trending.yml',
+  'stale-products-update': 'stale-products-update.yml',
+  'favorites-check': 'favorites-check.yml',
+  'hot-deals-telegram': 'hot-deals-telegram.yml',
+  'banners-fetch': 'banners-fetch.yml',
+  'amazon-promo-cards-fetch': 'amazon-promo-cards-fetch.yml',
+  'render-keepalive': 'render-keepalive.yml'
+};
 
 /**
  * GET /api/execution/status
@@ -623,6 +662,263 @@ router.get('/logs', async (req, res) => {
     });
   } catch (error) {
     logger.error('Error getting execution logs', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+
+/**
+ * GET /api/execution/github-actions
+ * Returns live status of all tracked GitHub Actions, category rotation pointers, and catalog
+ */
+router.get('/github-actions', async (req, res) => {
+  try {
+    const admin = require('firebase-admin');
+    let db = null;
+    try {
+      db = admin.database();
+    } catch (_) {}
+
+    let githubActionsData = {};
+    let categoryPointersData = {};
+
+    if (db) {
+      try {
+        const dbUrl = db.app?.options?.databaseURL;
+        if (dbUrl) {
+          const [actionsRes, pointersRes] = await Promise.all([
+            fetch(`${dbUrl}/executionTracking/githubActions.json`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()).catch(() => null),
+            fetch(`${dbUrl}/schedulerState/categoryPointers.json`, { signal: AbortSignal.timeout(4000) }).then(r => r.json()).catch(() => null)
+          ]);
+          githubActionsData = actionsRes || {};
+          categoryPointersData = pointersRes || {};
+        }
+      } catch (restErr) {
+        // Fallback to RTDB
+      }
+
+      if (Object.keys(githubActionsData || {}).length === 0) {
+        try {
+          const [actionsSnap, pointersSnap] = await Promise.all([
+            db.ref('executionTracking/githubActions').once('value'),
+            db.ref('schedulerState/categoryPointers').once('value')
+          ]);
+          githubActionsData = actionsSnap.val() || {};
+          categoryPointersData = pointersSnap.val() || {};
+        } catch (dbErr) {
+          logger.warn('RTDB github-actions query fallback error', { error: dbErr.message });
+        }
+      }
+    }
+
+    // Convert actions object to normalized array
+    const actionsList = Object.entries(githubActionsData || {}).map(([key, item]) => {
+      const isCategory = key.startsWith('category-');
+      const categoryKey = isCategory ? key.replace('category-', '') : null;
+      const pointerInfo = categoryKey && categoryPointersData ? categoryPointersData[categoryKey] : null;
+
+      return {
+        id: key,
+        name: item.name || key,
+        workflow: item.workflow || key,
+        status: item.status || 'unknown',
+        source: item.source || 'github-actions',
+        runId: item.runId || null,
+        commitSha: item.commitSha || null,
+        startTime: item.startTime || null,
+        completedAt: item.completedAt || null,
+        duration: item.duration || 0,
+        summary: item.summary || {},
+        actionItems: item.actionItems || [],
+        metadata: item.metadata || {},
+        lastHeartbeat: item.lastHeartbeat || null,
+        localDaemonDelegated: item.localDaemonDelegated || false,
+        category: categoryKey,
+        currentPointer: pointerInfo?.pointer || 0,
+        lastQueries: pointerInfo?.lastQueries || item.metadata?.selectedQueries || []
+      };
+    });
+
+    // Sort descending by completion / start time
+    actionsList.sort((a, b) => {
+      const timeA = new Date(a.completedAt || a.startTime || 0).getTime();
+      const timeB = new Date(b.completedAt || b.startTime || 0).getTime();
+      return timeB - timeA;
+    });
+
+    const serverHasGhToken = !!getGhToken();
+
+    res.json({
+      success: true,
+      data: {
+        actions: actionsList,
+        categoryPointers: categoryPointersData || {},
+        catalog: MASTER_CATEGORY_CATALOG || {},
+        serverHasGhToken
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error getting github actions data', { error: error.message });
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/execution/github-actions/trigger
+ * Dispatches a GitHub Action workflow or enqueues to commandsQueue
+ */
+router.post('/github-actions/trigger', async (req, res) => {
+  try {
+    const {
+      category,
+      target_query,
+      actionName: reqActionName,
+      dispatchTarget = 'auto',
+      githubToken: customToken
+    } = req.body;
+
+    let actionName = reqActionName;
+    if (!actionName) {
+      if (category) {
+        actionName = `category-${category.toLowerCase()}`;
+      } else {
+        actionName = 'stale-products-update';
+      }
+    }
+
+    const workflowFile = GITHUB_WORKFLOW_MAP[actionName] || `${actionName}.yml`;
+    const ghToken = getGhToken(customToken);
+    const repo = process.env.GITHUB_REPOSITORY || 'bmvavinash/Deals-Lower';
+
+    const admin = require('firebase-admin');
+    let db = null;
+    try {
+      db = admin.database();
+    } catch (_) {}
+
+    let dispatchedVia = 'commands-queue';
+    let ghaSuccess = false;
+    let ghaError = null;
+
+    // 1. Try GitHub Actions REST API dispatch if token available and not explicitly forced to daemon
+    if (dispatchTarget !== 'commands-queue' && ghToken) {
+      try {
+        const url = `https://api.github.com/repos/${repo}/actions/workflows/${workflowFile}/dispatches`;
+        const payload = {
+          ref: 'main',
+          inputs: {}
+        };
+        if (category) payload.inputs.category = category;
+        if (target_query) payload.inputs.target_query = target_query;
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/vnd.github.v3+json',
+            'Authorization': `Bearer ${ghToken}`,
+            'Content-Type': 'application/json',
+            'User-Agent': 'DealsOptimised-Admin'
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(10000)
+        });
+
+        if (response.status === 204 || response.status === 200) {
+          ghaSuccess = true;
+          dispatchedVia = 'github-actions';
+        } else {
+          const errBody = await response.json().catch(() => ({}));
+          ghaError = errBody.message || `HTTP ${response.status}`;
+          logger.warn(`GitHub Actions API dispatch error for ${workflowFile}: ${ghaError}`);
+        }
+      } catch (err) {
+        ghaError = err.message;
+        logger.warn(`GitHub Actions API dispatch error for ${workflowFile}: ${ghaError}`);
+      }
+    }
+
+    // 2. Fallback to commandsQueue if GitHub Action dispatch did not run or was queued
+    let queuedCommandId = null;
+    if (!ghaSuccess || dispatchTarget === 'commands-queue') {
+      if (db) {
+        const queueRef = db.ref('commandsQueue');
+        const newCmdRef = queueRef.push();
+        queuedCommandId = newCmdRef.key;
+
+        let cmdStr = '';
+        if (actionName.startsWith('category-')) {
+          const cat = category || actionName.replace('category-', '');
+          cmdStr = target_query
+            ? `CATEGORY="${cat}" TARGET_QUERY="${target_query}" node actions/category-runner.js`
+            : `CATEGORY="${cat}" node actions/category-runner.js`;
+        } else if (actionName === 'stale-products-update') {
+          cmdStr = 'node actions/stale-products-runner.js';
+        } else if (actionName === 'favorites-check') {
+          cmdStr = 'node actions/favorites-runner.js';
+        } else if (actionName === 'banners-fetch') {
+          cmdStr = 'node actions/banners-runner.js';
+        } else if (actionName === 'amazon-promo-cards-fetch') {
+          cmdStr = 'node scripts/fetchAmazonPromoCards.js';
+        } else {
+          cmdStr = `node actions/${actionName}.js`;
+        }
+
+        await newCmdRef.set({
+          id: queuedCommandId,
+          name: `UI Trigger: ${actionName} [${target_query || 'rotating'}]`,
+          command: cmdStr,
+          status: 'pending',
+          role: 'bulk',
+          source: 'ui-admin-dispatch',
+          category: category || null,
+          targetQuery: target_query || null,
+          actionName,
+          createdAt: new Date().toISOString(),
+          triggeredBy: req.ip || 'Admin UI'
+        });
+        dispatchedVia = 'commands-queue';
+      }
+    }
+
+    // 3. Mark action as queued in Firebase RTDB executionTracking
+    if (db) {
+      try {
+        await db.ref(`executionTracking/githubActions/${actionName}`).update({
+          name: actionName,
+          status: 'queued',
+          lastHeartbeat: new Date().toISOString(),
+          lastTriggered: new Date().toISOString(),
+          targetQuery: target_query || 'rotating',
+          dispatchedVia,
+          triggeredBy: req.ip || 'Admin UI'
+        });
+      } catch (_) {}
+    }
+
+    const message = ghaSuccess
+      ? `Workflow "${workflowFile}" successfully dispatched on GitHub Actions!`
+      : queuedCommandId
+        ? `Queued task for "${actionName}" (ID: ${queuedCommandId}) to commandsQueue for Local/Oracle Daemon execution. ${ghaError ? '(GitHub API Notice: ' + ghaError + ')' : ''}`
+        : `Action "${actionName}" triggered successfully.`;
+
+    res.json({
+      success: true,
+      message,
+      dispatchedVia,
+      actionName,
+      workflowFile,
+      queuedCommandId,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error triggering github action', { error: error.message });
     res.status(500).json({
       success: false,
       error: error.message

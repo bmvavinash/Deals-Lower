@@ -1,68 +1,192 @@
+import { auth } from '../config/firebase';
 import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
 
 // ─────────────────────────────────────────────
 // Multi-Backend Resilient API Client
-// Primary  → Oracle Cloud (via Cloudflare Tunnel HTTPS) — faster, more RAM
-// Fallback → Render — kept alive via UptimeRobot ping every 10 min
+// Local dev  → /api (proxied by Vite to localhost:3003)
+// Production → https://dealsoptimised.onrender.com/api (Render Cloud)
 // ─────────────────────────────────────────────
 
-const PRIMARY_URL  = (import.meta as any).env?.VITE_PRIMARY_API_URL  || null;  // Oracle Cloud HTTPS
-const FALLBACK_URL = (import.meta as any).env?.VITE_FALLBACK_API_URL || null;  // Render HTTPS
-const LEGACY_URL   = (import.meta as any).env?.VITE_API_URL          || '/api'; // Legacy single-backend
+const isLocal = typeof window !== 'undefined' && (
+  window.location.hostname === 'localhost' ||
+  window.location.hostname === '127.0.0.1' ||
+  window.location.hostname.startsWith('192.168.')
+);
 
-// Determine which URL to use based on available env vars
-const API_BASE_URL = PRIMARY_URL || LEGACY_URL;
-
-// Track whether we are currently in fallback mode
-let usingFallback = false;
-let fallbackCheckedAt = 0;
-const FALLBACK_RETRY_MS = 2 * 60 * 1000; // Re-try primary every 2 minutes
+const API_BASE_URL = isLocal ? '/api' : 'https://dealsoptimised.onrender.com/api';
+const FALLBACK_URL = 'https://dealsoptimised.onrender.com/api';
 
 // Create the primary axios instance
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 12000,
+  timeout: 30000,
 });
 
-// ─────────────────────────────────────────────
-// Request interceptor: switch to fallback when in fallback mode
-// ─────────────────────────────────────────────
-api.interceptors.request.use((config) => {
-  if (usingFallback && FALLBACK_URL) {
-    config.baseURL = FALLBACK_URL;
-    // Periodically attempt to return to primary
-    if (Date.now() - fallbackCheckedAt > FALLBACK_RETRY_MS) {
-      usingFallback = false; // optimistically try primary again
+// Helper to decode JWT payload expiration
+function parseTokenExp(token: string): number | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length >= 2) {
+      const payload = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
+      return payload.exp || null;
     }
-  } else if (PRIMARY_URL) {
-    config.baseURL = PRIMARY_URL;
+  } catch {}
+  return null;
+}
+
+// Global broadcast to automatically log out user when session expires
+export function triggerSessionExpired(reason = 'Your session has expired. Please sign in again.') {
+  try {
+    localStorage.removeItem('admin_auth_session');
+    localStorage.removeItem('auth_bypass_user');
+  } catch {}
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('auth:session_expired', { detail: { reason } }));
   }
+}
+
+// Auto-refresh token mechanism using Firebase
+let refreshPromise: Promise<string | null> | null = null;
+export async function refreshAuthToken(): Promise<string | null> {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      if (auth && auth.currentUser) {
+        console.log('[Auth] Attempting background token refresh via Firebase...');
+        const newIdToken = await auth.currentUser.getIdToken(true);
+        if (newIdToken) {
+          const res = await axios.post(`${API_BASE_URL}/auth/firebase-session`, {
+            idToken: newIdToken,
+            email: auth.currentUser.email
+          }, { timeout: 10000 });
+
+          if (res.data?.token) {
+            const newSession = {
+              email: auth.currentUser.email,
+              token: res.data.token
+            };
+            localStorage.setItem('admin_auth_session', JSON.stringify(newSession));
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('auth:session_updated', { detail: newSession }));
+            }
+            console.log('[Auth] Backend session token refreshed successfully.');
+            return res.data.token;
+          }
+          return newIdToken;
+        }
+      }
+    } catch (e) {
+      console.warn('[Auth] Background token refresh failed:', e);
+    } finally {
+      refreshPromise = null;
+    }
+    return null;
+  })();
+
+  return refreshPromise;
+}
+
+// ─────────────────────────────────────────────
+// Request interceptor: attach auth token & resolve baseURL
+// ─────────────────────────────────────────────
+api.interceptors.request.use(async (config) => {
+  // 1. Attach token from admin session if available (with pre-expiration check)
+  try {
+    const saved = localStorage.getItem('admin_auth_session');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.token) {
+        const exp = parseTokenExp(parsed.token);
+        // Pre-emptive update if expiring within 60 seconds or already expired
+        if (exp && (exp - 60000) <= Date.now()) {
+          const refreshedToken = await refreshAuthToken();
+          if (refreshedToken) {
+            config.headers = config.headers || {};
+            config.headers['Authorization'] = `Bearer ${refreshedToken}`;
+            if (!config.baseURL) config.baseURL = API_BASE_URL;
+            return config;
+          }
+        } else {
+          config.headers = config.headers || {};
+          config.headers['Authorization'] = `Bearer ${parsed.token}`;
+          if (!config.baseURL) config.baseURL = API_BASE_URL;
+          return config;
+        }
+      }
+    }
+  } catch {
+    // ignore JSON error
+  }
+
+  // 2. Fallback: If no session token, attach active Firebase user ID token
+  if (!config.headers?.['Authorization'] && auth?.currentUser) {
+    try {
+      const idToken = await auth.currentUser.getIdToken();
+      if (idToken) {
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = `Bearer ${idToken}`;
+      }
+    } catch {
+      // ignore firebase token error
+    }
+  }
+
+  // 3. Fallback: Localhost developer bypass
+  if (!config.headers?.['Authorization'] && isLocal) {
+    try {
+      const bypass = localStorage.getItem('auth_bypass_user');
+      if (bypass) {
+        config.headers = config.headers || {};
+        config.headers['x-admin-email'] = bypass;
+        config.headers['x-admin-password'] = 'Avinash@123';
+      }
+    } catch {}
+  }
+
+  if (!config.baseURL) {
+    config.baseURL = API_BASE_URL;
+  }
+
   return config;
 });
 
 // ─────────────────────────────────────────────
-// Response interceptor: on network error, switch to fallback and retry once
+// Response interceptor: on network error, retry with fallback Render URL once
 // ─────────────────────────────────────────────
 api.interceptors.response.use(
   (response) => {
-    // Successful response — if we were in fallback, stay there until next check
     return response;
   },
   async (error) => {
-    const config = error.config as AxiosRequestConfig & { _retried?: boolean };
+    const config = error?.config as (AxiosRequestConfig & { _retried?: boolean; _authRetried?: boolean }) | undefined;
 
-    // Only attempt fallback if:
-    // 1. We have a fallback URL configured
-    // 2. This is a network/timeout error (not a 4xx/5xx API error)
-    // 3. We haven't already retried this request
-    const isNetworkError = !error.response;
-    if (FALLBACK_URL && isNetworkError && !config._retried) {
+    // Automatic Token Update or Automatic Logout on 401 Unauthorized
+    if (error?.response?.status === 401 && config && !config._authRetried) {
+      config._authRetried = true;
+      console.warn('[Auth] Received 401 Unauthorized. Attempting automatic token update...');
+
+      const newToken = await refreshAuthToken();
+      if (newToken) {
+        console.log('[Auth] Token automatically refreshed. Retrying original request...');
+        config.headers = config.headers || {};
+        config.headers['Authorization'] = `Bearer ${newToken}`;
+        return api.request(config);
+      }
+
+      // If token update is impossible or rejected, automatically log out
+      console.warn('[Auth] Credentials expired and cannot be auto-refreshed. Triggering automatic logout.');
+      triggerSessionExpired('Your session has expired. Please sign in again.');
+      return Promise.reject(error);
+    }
+
+    // Network error fallback to Render
+    const isNetworkError = Boolean(error && !error.response);
+    if (config && !config._retried && isNetworkError && FALLBACK_URL && config.baseURL !== FALLBACK_URL) {
       config._retried = true;
-      usingFallback = true;
-      fallbackCheckedAt = Date.now();
       config.baseURL = FALLBACK_URL;
-      console.warn('[API] Primary backend unreachable. Switching to fallback (Render).');
+      console.warn('[API] Request failed. Retrying with fallback (Render):', FALLBACK_URL);
       return api.request(config);
     }
 
@@ -90,8 +214,14 @@ export const dealsAPI = {
     api.post(`/deals/${encodeURIComponent(productCode)}/retrigger`, {}, { params: { db }, timeout: 120000 }),
   retriggerToday: (fields: string[], priority?: string) =>
     api.post('/deals/retrigger-today', { fields, priority }, { timeout: 120000 }),
-  processProduct: (url: string, postProduct: boolean = false) =>
-    api.post('/deals/process-product', { url, postProduct }, { timeout: 120000 }),
+  processProduct: (urlOrUrls: string | string[], postProduct: boolean = false, saleName?: string) => {
+    const payload = Array.isArray(urlOrUrls)
+      ? { urls: urlOrUrls, postProduct, saleName }
+      : { url: urlOrUrls, postProduct, saleName };
+    return api.post('/deals/process-product', payload, { timeout: 180000 });
+  },
+  checkQueueStatus: (commandId: string) =>
+    api.get(`/deals/queue-status/${encodeURIComponent(commandId)}`),
   updateProduct: (productCode: string, updates: any, db?: string) =>
     api.put(`/deals/${productCode}`, updates, { params: { db } }),
   deleteProduct: (productCode: string, db?: string) =>
@@ -103,7 +233,33 @@ export const stocksAPI = {
   getZerodha: () => api.get('/stocks/zerodha'),
   getXAlpha: () => api.get('/stocks/xalpha'),
   getRecommendations: () => api.get('/stocks/recommendations'),
-  getAll: () => api.get('/stocks')
+  getAll: () => api.get('/stocks'),
+  getEquitySignals: (params?: { action?: string; status?: string; source?: string }) =>
+    api.get('/stocks/equity/signals', { params }),
+  getEquityInsights: () => api.get('/stocks/equity/insights'),
+  extractWhatsApp: (port?: number) => api.post('/stocks/equity/extract-whatsapp', { port }),
+  extractSheets: (port?: number) => api.post('/stocks/equity/extract-sheets', { port }),
+  parseText: (data: { text: string; source?: string; saveToDB?: boolean }) =>
+    api.post('/stocks/equity/parse-text', data),
+  getClarifications: () => api.get('/stocks/equity/clarifications'),
+  resolveClarification: (data: { signalId: string; symbol: string; notes?: string }) =>
+    api.post('/stocks/equity/resolve-clarification', data),
+  getQuote: (symbol: string) => api.get(`/stocks/equity/quote/${symbol}`),
+  getNotifications: () => api.get('/stocks/equity/notifications'),
+  triggerCheck: () => api.post('/stocks/equity/trigger-check'),
+  refreshQuotes: (force?: boolean) => api.post('/stocks/equity/refresh-quotes', { force }),
+  getRefresherStatus: () => api.get('/stocks/equity/refresher-status'),
+  startRefresher: (intervalSeconds?: number) => api.post('/stocks/equity/refresher-start', { intervalSeconds }),
+  stopRefresher: () => api.post('/stocks/equity/refresher-stop'),
+  getTelegramConfig: () => api.get('/stocks/equity/telegram-config'),
+  saveTelegramConfig: (data: any) => api.post('/stocks/equity/telegram-config', data),
+  testTelegramTopic: (data: { topic: string; customText?: string }) => api.post('/stocks/equity/telegram-test', data),
+  getSchedulerStatus: () => api.get('/stocks/scheduler/status'),
+  startScheduler: () => api.post('/stocks/scheduler/start'),
+  stopScheduler: () => api.post('/stocks/scheduler/stop'),
+  triggerSchedulerWhatsApp: () => api.post('/stocks/scheduler/trigger-whatsapp'),
+  triggerSchedulerCMP: () => api.post('/stocks/scheduler/trigger-cmp'),
+  triggerSchedulerSheets: () => api.post('/stocks/scheduler/trigger-sheets')
 };
 
 // IPO API
@@ -182,7 +338,10 @@ export const executionAPI = {
   restartDaemon: () => api.post('/execution/daemon/restart'),
   getSchedulerConfig: () => api.get('/execution/scheduler/config'),
   saveSchedulerConfig: (config: any) => api.post('/execution/scheduler/config', config),
-  getLogs: (file?: string) => api.get('/execution/logs', { params: { file } })
+  getLogs: (file?: string) => api.get('/execution/logs', { params: { file } }),
+  getGithubActions: () => api.get('/execution/github-actions'),
+  triggerGithubAction: (data: { actionName?: string; category?: string; target_query?: string; dispatchTarget?: string; githubToken?: string }) => 
+    api.post('/execution/github-actions/trigger', data)
 };
 
 // Banners API
@@ -198,5 +357,14 @@ export const categoriesAPI = {
     api.post('/categories/custom', { categoryGroup, subcategoryName })
 };
 
-export default api;
+// Auth API
+export const authAPI = {
+  login: (email: string, password: string) =>
+    api.post('/auth/login', { email, password }),
+  firebaseSession: (idToken?: string, email?: string) =>
+    api.post('/auth/firebase-session', { idToken, email }),
+  verify: (token?: string) =>
+    api.post('/auth/verify', { token })
+};
 
+export default api;

@@ -5,7 +5,8 @@ import DealsPage from './pages/DealsPage';
 import BannersPage from './pages/BannersPage';
 import Banners from './pages/Banners';
 import MatchingConfigPage from './pages/MatchingConfigPage';
-import StocksPage from './pages/StocksPage';
+import EquityPage from './pages/EquityPage';
+import IpoPage from './pages/IpoPage';
 import LogsPage from './pages/LogsPage';
 import SchedulerPage from './pages/SchedulerPage';
 import AnalyticsPage from './pages/AnalyticsPage';
@@ -36,7 +37,9 @@ function App() {
               <Route path="/promo-tiles" element={<Banners defaultTab="tiles" />} />
               <Route path="/deals" element={<DealsPage />} />
               <Route path="/matching-config" element={<MatchingConfigPage />} />
-              <Route path="/stocks" element={<StocksPage />} />
+              <Route path="/stocks" element={<Navigate to="/stocks/equity" replace />} />
+              <Route path="/stocks/equity" element={<EquityPage />} />
+              <Route path="/stocks/ipo" element={<IpoPage />} />
               <Route path="/logs" element={<LogsPage />} />
               <Route path="/scheduler" element={<SchedulerPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />

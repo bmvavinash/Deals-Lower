@@ -16,8 +16,7 @@ start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" ^
   --no-default-browser-check ^
   --disable-background-timer-throttling ^
   --disable-backgrounding-occluded-windows ^
-  --disable-renderer-backgrounding ^
-  --disable-blink-features=AutomationControlled
+  --disable-renderer-backgrounding
 
 echo Chrome started successfully!
 echo.
@@ -27,4 +26,3 @@ echo 2. Run the application: node index.js
 echo 3. The application will use this Chrome instance for Amazon link generation
 echo.
 timeout /t 3 >nul
-
