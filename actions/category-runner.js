@@ -48,16 +48,17 @@ async function main() {
   }
 
   let isDone = false;
-  // Safety internal watchdog timer: 45 minutes (matching the 50-minute workflow ceiling)
+  // Safety internal watchdog timer: default 85 minutes (matching 90-minute workflow ceiling)
+  const timeoutMinutes = parseInt(process.env.TIMEOUT_MINUTES, 10) || 85;
   const timeoutId = setTimeout(async () => {
     if (isDone) return;
-    console.error(`[${new Date().toISOString()}] WATCHDOG TIMEOUT: category-runner reached 45 minutes. Gracefully finalizing.`);
+    console.error(`[${new Date().toISOString()}] WATCHDOG TIMEOUT: category-runner reached ${timeoutMinutes} minutes. Gracefully finalizing.`);
     try {
-      await githubActionLogger.failAction(actionName, new Error('Runner reached 45-minute watchdog ceiling'));
-      await executionTracker.completeBulkExecution({ status: 'timeout', error: 'Runner reached 45-minute ceiling' });
+      await githubActionLogger.failAction(actionName, new Error(`Runner reached ${timeoutMinutes}-minute watchdog ceiling`));
+      await executionTracker.completeBulkExecution({ status: 'timeout', error: `Runner reached ${timeoutMinutes}-minute ceiling` });
     } catch (_) {}
     process.exit(0);
-  }, 45 * 60 * 1000);
+  }, timeoutMinutes * 60 * 1000);
 
   // Start tracking across logging systems with rich metadata
   await githubActionLogger.startAction(actionName, {

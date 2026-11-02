@@ -26,7 +26,7 @@ env:
 jobs:
   category-home-kitchen:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 90
     concurrency:
       group: category-home-kitchen
       cancel-in-progress: true
@@ -49,4 +49,6 @@ jobs:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           CATEGORY: ${{ github.event.inputs.category || 'home-kitchen' }}
           TARGET_QUERY: ${{ github.event.inputs.target_query || '' }}
+          TIMEOUT_MINUTES: '85'
+          MAX_BATCH_DURATION_MS: '4800000'
 
