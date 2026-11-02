@@ -1,34 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
-// Lazy-loaded getGoogleSheetRecommendations to prevent blocking server boot
-let _cachedGoogleSheetRecommendations = null;
-function getGoogleSheetRecommendations() {
-  if (!_cachedGoogleSheetRecommendations) {
-    _cachedGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
-  }
-  return _cachedGoogleSheetRecommendations(...arguments);
-}
+const getGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
 const { getAllSignals, updateSignal, getPendingClarifications, resolveClarification, saveSignals } = require('../../../database/stocksMultiDB');
 const { getLiveQuote, evaluateSignalWithCMP } = require('../../../services/marketQuoteService');
 const { parseStockMessage } = require('../../../services/stockSignalParser');
 const { generateBestInsights } = require('../../../services/stockInsightsAggregator');
-// Lazy-load WhatsApp & Google Sheet live scrapers to avoid importing puppeteer on server boot
-let _extractActiveWhatsAppChat = null;
-function extractActiveWhatsAppChat() {
-  if (!_extractActiveWhatsAppChat) {
-    _extractActiveWhatsAppChat = require('../../../services/whatsappLiveExtractor').extractActiveWhatsAppChat;
-  }
-  return _extractActiveWhatsAppChat(...arguments);
-}
-
-let _extractGoogleSheetSignals = null;
-function extractGoogleSheetSignals() {
-  if (!_extractGoogleSheetSignals) {
-    _extractGoogleSheetSignals = require('../../../services/googleSheetLiveExtractor').extractGoogleSheetSignals;
-  }
-  return _extractGoogleSheetSignals(...arguments);
-}
+const { extractActiveWhatsAppChat } = require('../../../services/whatsappLiveExtractor');
+const { extractGoogleSheetSignals } = require('../../../services/googleSheetLiveExtractor');
 const { 
   checkAndTriggerSignalNotification, 
   evaluateAllSignalAlerts, 
@@ -61,30 +40,12 @@ const logger = getModuleLogger('stocks-api');
 router.get('/equity/signals', async (req, res, next) => {
   try {
     const { action, status, source } = req.query;
-    const rawSignals = await getAllSignals({ action, status, source });
-
-    // Refresh live CMP for top 30 active signals
-    const enriched = await Promise.all(
-      rawSignals.slice(0, 30).map(async (sig) => {
-        try {
-          const quote = await getLiveQuote(sig.symbol);
-          const evaluated = evaluateSignalWithCMP(sig, quote) || sig;
-
-          // Pure read-only endpoint: alerts are evaluated exclusively by scheduled CMP refresher
-          return evaluated;
-        } catch (e) {
-          return sig;
-        }
-      })
-    );
-
-    // Combine with remaining signals without blocking
-    const combined = [...enriched, ...rawSignals.slice(30)];
+    const signals = await getAllSignals({ action, status, source });
 
     res.json({
       success: true,
-      count: combined.length,
-      data: combined,
+      count: signals.length,
+      data: signals,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
