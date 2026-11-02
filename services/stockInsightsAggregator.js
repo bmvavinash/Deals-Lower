@@ -29,10 +29,8 @@ async function generateBestInsights() {
     }
     symbolMap.get(symKey).push(sig);
 
-    // Fetch quote
-    const quote = await getLiveQuote(sig.symbol);
-    const evaluated = evaluateSignalWithCMP(sig, quote) || sig;
-    refreshedSignals.push(evaluated);
+    // Use stored CMP quote from Multi-DB (kept updated by background refresher)
+    refreshedSignals.push(sig);
   }
 
   const actionableInsights = [];

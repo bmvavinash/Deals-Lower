@@ -40,30 +40,12 @@ const logger = getModuleLogger('stocks-api');
 router.get('/equity/signals', async (req, res, next) => {
   try {
     const { action, status, source } = req.query;
-    const rawSignals = await getAllSignals({ action, status, source });
-
-    // Refresh live CMP for top 30 active signals
-    const enriched = await Promise.all(
-      rawSignals.slice(0, 30).map(async (sig) => {
-        try {
-          const quote = await getLiveQuote(sig.symbol);
-          const evaluated = evaluateSignalWithCMP(sig, quote) || sig;
-
-          // Pure read-only endpoint: alerts are evaluated exclusively by scheduled CMP refresher
-          return evaluated;
-        } catch (e) {
-          return sig;
-        }
-      })
-    );
-
-    // Combine with remaining signals without blocking
-    const combined = [...enriched, ...rawSignals.slice(30)];
+    const signals = await getAllSignals({ action, status, source });
 
     res.json({
       success: true,
-      count: combined.length,
-      data: combined,
+      count: signals.length,
+      data: signals,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

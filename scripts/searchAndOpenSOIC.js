@@ -70,17 +70,37 @@ async function searchAndOpenSOIC() {
   const soicItem = searchResults.find(r => r.title.toLowerCase().includes('soic') || r.snippet.toLowerCase().includes('soic'));
 
   if (soicItem) {
-    console.log(`\nFound SOIC matching item at index ${soicItem.idx}: "${soicItem.title}"! Clicking it...`);
-    await waPage.evaluate((idx) => {
-      const side = document.querySelector('#side') || document.body;
-      const rows = Array.from(side.querySelectorAll('div[role="listitem"], div[role="row"], div[data-testid="cell-frame-container"]'));
-      if (rows[idx]) {
-        rows[idx].click();
+    console.log(`\nFound SOIC matching item: "${soicItem.title}". Finding element and clicking with Puppeteer native mouse...`);
+    
+    // Find all span/div elements matching the title and click natively
+    const elements = await waPage.$$('span[title*="SOIC"], span[title*="soic"], div[data-testid="cell-frame-container"]');
+    let clickedNatively = false;
+    for (const el of elements) {
+      const title = await waPage.evaluate(node => node.getAttribute('title') || node.innerText || '', el);
+      if (title.toLowerCase().includes('soic')) {
+        console.log(`Clicking element natively with title: "${title.substring(0, 30)}"...`);
+        const box = await el.boundingBox();
+        if (box) {
+          await waPage.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+          clickedNatively = true;
+          break;
+        } else {
+          await el.click();
+          clickedNatively = true;
+          break;
+        }
       }
-    }, soicItem.idx);
+    }
 
-    console.log('Clicked chat. Waiting 3 seconds for #main to load...');
-    await new Promise(r => setTimeout(r, 3000));
+    if (!clickedNatively) {
+      console.log('Falling back to keyboard navigation: Pressing ArrowDown and Enter...');
+      await waPage.keyboard.press('ArrowDown');
+      await new Promise(r => setTimeout(r, 500));
+      await waPage.keyboard.press('Enter');
+    }
+
+    console.log('Waiting 4 seconds for #main to load...');
+    await new Promise(r => setTimeout(r, 4000));
 
     // Check #main header
     const activeChat = await waPage.evaluate(() => {

@@ -324,7 +324,21 @@ function startMasterScheduler(options = {}) {
     runCMPRefresherJob().catch(() => {});
   }, 5000);
 
-  return { success: true, status: 'started', state: getSchedulerState() };
+  const state = getSchedulerState();
+  syncSchedulerStateToFirebase(state);
+  return { success: true, status: 'started', state };
+}
+
+/**
+ * Sync scheduler state to Firebase RTDB so cloud & frontend instances stay coordinated
+ */
+function syncSchedulerStateToFirebase(state) {
+  try {
+    const admin = require('firebase-admin');
+    if (admin.apps && admin.apps.length > 0) {
+      admin.database().ref('stocks/scheduler').set(JSON.parse(JSON.stringify(state))).catch(() => {});
+    }
+  } catch (_) {}
 }
 
 /**
@@ -346,19 +360,31 @@ function stopMasterScheduler() {
   schedulerState.sheetsSync.lastStatus = 'stopped';
 
   logger.info('🛑 Stocks Master Scheduler stopped.');
-  return { success: true, status: 'stopped', state: getSchedulerState() };
+  const state = getSchedulerState();
+  syncSchedulerStateToFirebase(state);
+  return { success: true, status: 'stopped', state };
 }
 
 /**
  * Get comprehensive scheduler status and metrics
  */
 function getSchedulerState() {
+  if (!isSchedulerRunning) {
+    try {
+      startMasterScheduler();
+    } catch (e) {
+      logger.warn('Auto-starting master scheduler on state inquiry', { error: e.message });
+    }
+  }
+
   const telegramState = getTelegramIngestionStatus();
-  return {
+  const state = {
     ...schedulerState,
     isIndianMarketOpen: isIndianMarketOpen(),
     telegramIngestionStatus: telegramState
   };
+  syncSchedulerStateToFirebase(state);
+  return state;
 }
 
 module.exports = {
