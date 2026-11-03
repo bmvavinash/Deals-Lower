@@ -239,13 +239,7 @@ safeMount('/cuelinks', './routes/cuelinks');
 // Background Services & Heavy Schedulers
 // Gated strictly: NEVER run heavy schedulers, Chrome pollers, or daemon auto-starters on API server
 // This protects the 512MB RAM budget on Render and frees 100% CPU/RAM on Oracle Cloud for instant API throughput
-const isApiOnlyServer = Boolean(
-  process.env.RENDER || 
-  process.env.ORACLE_CLOUD || 
-  process.env.IS_API_SERVER || 
-  process.env.PORT === '3001' || 
-  process.env.NODE_ENV === 'production'
-);
+const isApiOnlyServer = process.env.ENABLE_BACKGROUND_SCHEDULER !== 'true';
 
 try {
   if (admin.apps.length && !isApiOnlyServer) {
