@@ -29,14 +29,15 @@ if (!defaultApp) {
       serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
     } catch (e) {
       console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
-      throw e;
+      // Missing credentials handled gracefully
+
     }
   }
   const databaseURL = DB_Name === 'lowerdealhub' 
     ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app`
     : `https://${DB_Name}-default-rtdb.firebaseio.com`;
     
-  admin.initializeApp({
+  if (serviceAccount) admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
     databaseURL: databaseURL
   });
@@ -98,7 +99,7 @@ router.post('/execute', async (req, res) => {
         const process = exec(commandObj.command, { cwd: path.join(__dirname, '../../../') }, (error, stdout, stderr) => {
             if (error) {
                 console.error(`Error executing ${id}:`, error);
-                return;
+          
             }
             console.log(`Command ${id} completed. Stdout: ${stdout}`);
         });

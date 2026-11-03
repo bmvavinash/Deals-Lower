@@ -1,4 +1,4 @@
-var { google } = require("googleapis");
+// Lazy-loaded googleapis
 const fs = require("fs");
 const path = require("path");
 const admin = require("firebase-admin");
@@ -75,6 +75,7 @@ function getAccessToken(env="prod",extract="Telegram",extractData="Telegram") {
       ];
 
       // Authenticate a JWT client with the service account.
+      const { google } = require("googleapis");
       const jwtClient = new google.auth.JWT(
         serviceAccount.client_email,
         null,

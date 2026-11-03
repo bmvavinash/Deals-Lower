@@ -67,9 +67,10 @@ app.all(['/health', '/api/health'], (req, res) => {
 
 // FAST BIND: Bind port immediately on container boot so Render and cron-job.org get instant 200 OK
 let serverInstance = null;
-if (require.main === module) {
+if (!app._listening) {
+  app._listening = true;
   serverInstance = app.listen(PORT, '0.0.0.0', () => {
-    logger.info(`⚡ API Server immediately bound and listening on port ${PORT}`, {
+    logger.info(`⚡ API Server immediately bound and listening on 0.0.0.0:${PORT}`, {
       port: PORT,
       environment: constants.env,
       timestamp: new Date().toISOString()

@@ -34,7 +34,8 @@ try {
         serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
       } catch (e) {
         console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
-        throw e;
+        // Missing credentials handled gracefully
+        return;
       }
     }
     const dbUrl = DB_Name === 'lowerdealhub' 

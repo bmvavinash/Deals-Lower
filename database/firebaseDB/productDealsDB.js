@@ -28,7 +28,8 @@ if (!defaultApp) {
 			serviceAccount = require(`${constants.pathToFile}/${filePath}.json`);
 		} catch (e) {
 			console.error(`Firebase credentials file not found at ${constants.pathToFile}/${filePath}.json and no FIREBASE_SERVICE_ACCOUNT_JSON env variable provided.`);
-			throw e;
+			// Missing credentials handled gracefully
+			return;
 		}
 	}
 	const dbUrl = DB_Name === 'lowerdealhub' 
@@ -43,7 +44,7 @@ if (!defaultApp) {
 	console.log(`Firebase already initialized for ${DB_Name}`);
 }
 
-const db = admin.database();
+const db = admin.apps.length ? admin.database() : null;
 
 function generateAmazonAffiliateUrl(url, productCode = null) {
     try {
