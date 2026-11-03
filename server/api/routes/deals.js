@@ -1496,21 +1496,10 @@ router.get('/', async (req, res, next) => {
       queryDate = !isNoCache ? cacheService.get(latestDateCacheKey) : null;
       
       if (!queryDate) {
-        logger.info('No date specified, finding most recent date with deals...');
-        try {
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 6000));
-          const latestSnapshot = await Promise.race([ref.orderByChild('datetime').limitToLast(1).once('value'), timeoutPromise]);
-          const latestVal = latestSnapshot.val() || {};
-          const latestKey = Object.keys(latestVal)[0];
-          
-          if (latestKey && latestVal[latestKey]) {
-            queryDate = latestVal[latestKey].date;
-            logger.info(`Found latest date: ${queryDate}.`);
-            cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000); // cache for 2 minutes
-          }
-        } catch (findErr) {
-          logger.warn('Finding latest date timed out, continuing without date', { error: findErr.message });
-        }
+        // Fast & safe default: use today's formatted date (avoids unindexed full-table DB scans that crash memory)
+        queryDate = getformattedDate();
+        cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000);
+        logger.info(`Defaulting query date to today: ${queryDate}`);
       } else {
         logger.info(`Using cached latest date: ${queryDate}`);
       }
@@ -1557,18 +1546,28 @@ router.get('/', async (req, res, next) => {
         logger.info(`Using cached raw deals for date ${queryDate}`);
       }
     } else {
-      // Fallback if no deals at all in the DB (query last 300 items)
-      logger.info('No deals found to determine latest date, querying default pool.');
-      const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
+      // Fallback: Query recent items by primary key (fast, indexed, never causes OOM)
+      logger.info('Querying default pool by primary key.');
+      const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
       try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 8000));
-        const snapshot = await Promise.race([ref.orderByChild('datetime').limitToLast(poolSize).once('value'), timeoutPromise]);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 5000));
+        const snapshot = await Promise.race([ref.limitToLast(poolSize).once('value'), timeoutPromise]);
         deals = snapshot.val() || {};
       } catch (poolErr) {
         deals = {};
       }
     }
     
+    // Fast safety fallback: if no deals found for queryDate, grab recent items by key
+    if (!deals || Object.keys(deals).length === 0) {
+      try {
+        const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 4000));
+        const snapshot = await Promise.race([ref.limitToLast(poolSize).once('value'), timeoutPromise]);
+        deals = snapshot.val() || {};
+      } catch (_) {}
+    }
+
     // Convert to array and filter for display eligibility (valid title, valid image, valid price/stock)
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
       productCode: key,
