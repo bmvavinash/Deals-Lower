@@ -1,0 +1,54 @@
+name: Oracle Cloud VM Keep-Alive Ping
+
+on:
+  schedule:
+    # Trigger every 15 minutes to generate continuous incoming network I/O
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: oracle-keepalive
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Ping Oracle VM Health Endpoint
+        run: |
+          echo "Pinging Oracle Cloud VM to prevent idle reclamation and verify runner health..."
+          
+          # 1. Primary: Cloudflare Tunnel endpoint
+          RESPONSE=$(curl -s -S -L \
+            --connect-timeout 15 \
+            --max-time 30 \
+            --retry 2 \
+            --retry-delay 5 \
+            -H "User-Agent: DealsOptimised-KeepAlive/1.0" \
+            -H "Accept: application/json" \
+            "https://flavor-prediction-pittsburgh-brief.trycloudflare.com/health" || echo "")
+            
+          echo "Cloudflare Tunnel Response: $RESPONSE"
+
+          # 2. Check if primary succeeded
+          if echo "$RESPONSE" | grep -q '"status":"ok"'; then
+            echo "✅ Oracle Cloud VM is active, healthy, and responsive via Cloudflare Tunnel."
+          else
+            echo "⚠️ Cloudflare tunnel unreachable or returned non-standard payload. Testing direct IP port 3001..."
+            DIRECT_RESPONSE=$(curl -s -S -L \
+              --connect-timeout 10 \
+              --max-time 20 \
+              -H "User-Agent: DealsOptimised-KeepAlive/1.0" \
+              -H "Accept: application/json" \
+              "http://140.245.249.227:3001/health" || echo "")
+            echo "Direct IP Response: $DIRECT_RESPONSE"
+            
+            if echo "$DIRECT_RESPONSE" | grep -q '"status":"ok"'; then
+              echo "✅ Oracle Cloud VM responded directly via port 3001."
+            else
+              echo "ℹ️ Direct port not reachable from runner; pinging port 22 SSH handshake..."
+              nc -z -v -w 5 140.245.249.227 22 && echo "✅ Oracle Cloud VM port 22 is online." || echo "❌ Oracle VM port 22 unreachable."
+            fi
+          fi
