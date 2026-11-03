@@ -68,7 +68,7 @@ app.all(['/health', '/api/health'], (req, res) => {
 // FAST BIND: Bind port immediately on container boot so Render and cron-job.org get instant 200 OK
 let serverInstance = null;
 if (require.main === module) {
-  serverInstance = app.listen(PORT, () => {
+  serverInstance = app.listen(PORT, '0.0.0.0', () => {
     logger.info(`⚡ API Server immediately bound and listening on port ${PORT}`, {
       port: PORT,
       environment: constants.env,
@@ -237,8 +237,12 @@ safeMount('/cuelinks', './routes/cuelinks');
 
 // Background Services
 try {
-  const { notificationQueue } = require('../../services/NotificationQueueService');
-  notificationQueue.startWorker();
+  if (admin.apps.length && !process.env.RENDER) {
+    const { notificationQueue } = require('../../services/NotificationQueueService');
+    notificationQueue.startWorker();
+  } else {
+    logger.info('Cloud environment (Render) detected. Skipping background Notification Queue Worker on API server.');
+  }
 } catch (error) {
   logger.error('Failed to start Notification Queue Worker', { error: error.message });
 }

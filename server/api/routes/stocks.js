@@ -1,13 +1,13 @@
 const express = require('express');
 const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
-const getGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
+// Lazy-loaded getGoogleSheetRecommendations
 const { getAllSignals, updateSignal, getPendingClarifications, resolveClarification, saveSignals } = require('../../../database/stocksMultiDB');
 const { getLiveQuote, evaluateSignalWithCMP } = require('../../../services/marketQuoteService');
 const { parseStockMessage } = require('../../../services/stockSignalParser');
 const { generateBestInsights } = require('../../../services/stockInsightsAggregator');
-const { extractActiveWhatsAppChat } = require('../../../services/whatsappLiveExtractor');
-const { extractGoogleSheetSignals } = require('../../../services/googleSheetLiveExtractor');
+// Lazy-loaded extractActiveWhatsAppChat
+// Lazy-loaded extractGoogleSheetSignals
 const { 
   checkAndTriggerSignalNotification, 
   evaluateAllSignalAlerts, 
@@ -80,6 +80,7 @@ router.get('/equity/insights', async (req, res, next) => {
 router.post('/equity/extract-whatsapp', async (req, res, next) => {
   try {
     const port = req.body.port ? parseInt(req.body.port, 10) : 9223;
+    const { extractActiveWhatsAppChat } = require('../../../services/whatsappLiveExtractor');
     const result = await extractActiveWhatsAppChat({ port });
     res.json(result);
   } catch (error) {
@@ -95,6 +96,7 @@ router.post('/equity/extract-whatsapp', async (req, res, next) => {
 router.post('/equity/extract-sheets', async (req, res, next) => {
   try {
     const port = req.body.port ? parseInt(req.body.port, 10) : 9223;
+    const { extractGoogleSheetSignals } = require('../../../services/googleSheetLiveExtractor');
     const result = await extractGoogleSheetSignals({ port });
     res.json(result);
   } catch (error) {
@@ -339,6 +341,7 @@ router.get('/recommendations', async (req, res, next) => {
     }
 
     try {
+      const getGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
       const recommendations = await getGoogleSheetRecommendations();
       return res.json({
         success: true,
