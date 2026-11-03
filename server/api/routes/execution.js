@@ -6,6 +6,24 @@ const { getModuleLogger } = require('../../../logger/logger');
 const logger = getModuleLogger('execution-api');
 const { MASTER_CATEGORY_CATALOG } = require('../../../config/masterCategorySeeds');
 
+
+function getGhToken(customToken = null) {
+  if (customToken) return customToken;
+  const envToken = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || process.env.GH_TOKEN;
+  if (envToken) return envToken;
+  try {
+    const { execSync } = require('child_process');
+    const creds = execSync('git credential fill', {
+      input: 'protocol=https\nhost=github.com\n\n',
+      encoding: 'utf8',
+      timeout: 3000
+    });
+    const match = creds.match(/password=(.+)/);
+    if (match && match[1]) return match[1].trim();
+  } catch (_) {}
+  return null;
+}
+
 const GITHUB_WORKFLOW_MAP = {
   'category-electronics': 'category-electronics.yml',
   'category-fashion': 'category-fashion.yml',
@@ -731,7 +749,7 @@ router.get('/github-actions', async (req, res) => {
       return timeB - timeA;
     });
 
-    const serverHasGhToken = !!(process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || process.env.GH_TOKEN);
+    const serverHasGhToken = !!getGhToken();
 
     res.json({
       success: true,
@@ -776,7 +794,7 @@ router.post('/github-actions/trigger', async (req, res) => {
     }
 
     const workflowFile = GITHUB_WORKFLOW_MAP[actionName] || `${actionName}.yml`;
-    const ghToken = customToken || process.env.GITHUB_TOKEN || process.env.GITHUB_PAT || process.env.GH_TOKEN;
+    const ghToken = getGhToken(customToken);
     const repo = process.env.GITHUB_REPOSITORY || 'bmvavinash/Deals-Lower';
 
     const admin = require('firebase-admin');

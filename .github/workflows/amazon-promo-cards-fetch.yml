@@ -55,6 +55,9 @@ jobs:
         run: xvfb-run --auto-servernum node actions/amazon-promo-cards-runner.js
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          USERS_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.USERS_FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_KEY: ${{ secrets.TELEGRAM_BOT_KEY }}
+          DEALS_GLOBAL_BOT_KEY: ${{ secrets.DEALS_GLOBAL_BOT_KEY }}
 
       - name: Commit and push updated promo cards (if changed)
         continue-on-error: true
