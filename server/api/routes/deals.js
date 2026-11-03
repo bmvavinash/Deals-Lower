@@ -964,8 +964,8 @@ router.get('/matches', async (req, res) => {
     }
     
     if (Object.keys(pDeals).length === 0) {
-      logger.info('Cache cold for productdeals matches, scanning recent 1000 productdeals...');
-      const pDealsSnapshot = await productDealsDB.productdealsRef.orderByChild('datetime').limitToLast(1000).once('value');
+      logger.info('Cache cold for productdeals matches, scanning recent 200 productdeals...');
+      const pDealsSnapshot = await productDealsDB.productdealsRef.limitToLast(200).once('value');
       pDeals = pDealsSnapshot.val() || {};
     }
     
@@ -1511,27 +1511,31 @@ router.get('/', async (req, res, next) => {
       deals = !isNoCache ? cacheService.get(rawDealsCacheKey) : null;
       
       if (!deals) {
-        logger.info(`Fetching deals from Firebase (target: ${targetDb}, date: ${queryDate || 'recent'})...`);
         const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
+        logger.info(`Fetching recent deals from Firebase (target: ${targetDb}, poolSize: ${poolSize})...`);
         try {
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 4000));
-          // Bounded query: when explicit date is passed, query with limitToLast; otherwise query directly by primary key
-          const snapshotPromise = date 
-            ? ref.orderByChild('date').equalTo(queryDate).limitToLast(poolSize).once('value')
-            : ref.limitToLast(poolSize).once('value');
-          const snapshot = await Promise.race([snapshotPromise, timeoutPromise]);
+          // Direct server-side limit on primary key: fast (<50ms), strictly bounded (<100KB), zero OOM risk
+          const snapshot = await ref.limitToLast(poolSize).once('value');
           deals = snapshot.val() || {};
           if (deals && Object.keys(deals).length > 0) {
+            // If explicit date query was requested, filter the retrieved bounded pool in memory
+            if (date) {
+              const filtered = {};
+              for (const [k, v] of Object.entries(deals)) {
+                if (v && v.date === queryDate) {
+                  filtered[k] = v;
+                }
+              }
+              // Only use filtered if we matched items, else keep recent pool
+              if (Object.keys(filtered).length > 0) {
+                deals = filtered;
+              }
+            }
             cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
           }
         } catch (fetchErr) {
-          logger.warn('Date query failed or timed out, falling back to recent items by primary key', { error: fetchErr.message });
-          try {
-            const fallbackSnap = await ref.limitToLast(poolSize).once('value');
-            deals = fallbackSnap.val() || {};
-          } catch (_) {
-            deals = {};
-          }
+          logger.warn('Direct limitToLast deals query failed:', { error: fetchErr.message });
+          deals = {};
         }
       } else {
         logger.info(`Using cached raw deals for date ${queryDate}`);
