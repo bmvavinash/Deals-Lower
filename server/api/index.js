@@ -275,10 +275,10 @@ try {
     }
   };
 
-  // First ping after 20 seconds, then recurring every 3 minutes (prevents Render idle hibernation)
-  setTimeout(sendSelfPing, 20 * 1000);
-  const keepAliveTimer = setInterval(sendSelfPing, 3 * 60 * 1000);
-  logger.info('Autonomous Keep-Alive Self-Ping scheduled every 3 minutes.');
+  // Recurring every 4 minutes (external monitors & GitHub Actions provide initial pings)
+  const keepAliveTimer = setInterval(sendSelfPing, 4 * 60 * 1000);
+  if (keepAliveTimer.unref) keepAliveTimer.unref();
+  logger.info('Autonomous Keep-Alive Self-Ping scheduled every 4 minutes.');
 } catch (keepAliveErr) {
   logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
 }

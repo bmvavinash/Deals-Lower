@@ -110,10 +110,8 @@ function initSearchIndexCache() {
   });
 }
 
-// Pre-warm the cache, but skip on Render to prevent OOM
-if (!process.env.RENDER) {
-  setTimeout(initSearchIndexCache, 2000);
-}
+// Search index cache pre-warm disabled on boot to prevent OOM
+// Cached on demand during search queries
 
 function isProcessRunning(pid) {
   if (!pid || Number.isNaN(pid)) return false;
@@ -2433,38 +2431,6 @@ router.post('/retrigger-today', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
-// Pre-warm cache on startup
-setTimeout(async () => {
-  if (process.env.DISABLE_CACHE_PREWARM === 'true' || process.env.RENDER === 'true') {
-    logger.info('Startup cache pre-warming skipped (running on Render or pre-warm disabled).');
-    return;
-  }
-  try {
-    logger.info('Pre-warming deals cache on startup...');
-    const targetDbs = ['deals', 'productdeals'];
-    for (const targetDb of targetDbs) {
-      const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
-      const latestSnapshot = await ref.orderByChild('datetime').limitToLast(1).once('value');
-      const latestVal = latestSnapshot.val() || {};
-      const latestKey = Object.keys(latestVal)[0];
-      if (latestKey && latestVal[latestKey]) {
-        const queryDate = latestVal[latestKey].date;
-        const latestDateCacheKey = `latest_date_${targetDb}`;
-        cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000);
-        
-        logger.info(`Pre-fetching raw deals for ${targetDb} on date ${queryDate}...`);
-        const snapshot = await ref.orderByChild('date').equalTo(queryDate).once('value');
-        const deals = snapshot.val() || {};
-        const rawDealsCacheKey = `raw_deals_${targetDb}_${queryDate}`;
-        cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
-        logger.info(`Deals cache pre-warmed for ${targetDb} (Count: ${Object.keys(deals).length}).`);
-      }
-    }
-  } catch (err) {
-    logger.warn('Failed to pre-warm deals cache:', { error: err.message });
-  }
-}, 5000);
 
 module.exports = router;
 
