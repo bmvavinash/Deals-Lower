@@ -176,8 +176,17 @@ function startCommandListener() {
       const watchdogTimer = setTimeout(async () => {
         if (hasFinished) return;
         hasFinished = true;
-        logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" exceeded max runtime. Killing process...`);
-        try { child.kill('SIGKILL'); } catch (_) {}
+        logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" exceeded max runtime. Killing process tree...`);
+        try {
+          if (child && child.pid) {
+            if (process.platform === 'win32') {
+              exec(`taskkill /F /T /PID ${child.pid} >nul 2>&1`);
+            } else {
+              exec(`pkill -P ${child.pid} >/dev/null 2>&1; kill -9 ${child.pid} >/dev/null 2>&1 || true`);
+            }
+          }
+          child.kill('SIGKILL');
+        } catch (_) {}
         try {
           await queueRef.child(key).update({
             status: 'failed',

@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const puppeteer = require('puppeteer');
+// Lazy-load puppeteer inside handler to prevent 512MB RAM exhaustion on boot
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
@@ -108,6 +108,7 @@ const connectToBrowser = async () => {
     await ensureChromeRunning();
     
     // Connect to Chrome
+    const puppeteer = require('puppeteer');
     const browser = await puppeteer.connect({
       browserURL: 'http://localhost:9222',
       defaultViewport: null,

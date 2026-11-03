@@ -31,6 +31,7 @@ async function main() {
   logger.info(`Starting single product processing`, { url, postProduct, saleName });
 
   let driver = null;
+  let exitCode = 0;
   try {
     const driverResult = await createChromeDriver();
     driver = driverResult.driver;
@@ -109,19 +110,25 @@ async function main() {
       console.log(`[SUCCESS] Listing/search page extraction completed for: ${resolvedUrl}`);
     }
 
-    process.exit(0);
+    exitCode = 0;
   } catch (err) {
     logger.error(`Error in processSingleProduct`, { error: err.message, stack: err.stack });
     console.error(`[ERROR] Processing failed: ${err.message}`);
-    process.exit(1);
+    exitCode = 1;
   } finally {
     if (driver) {
       try {
         await driver.quit();
+        logger.info('Cleanly closed WebDriver browser instance and freed memory.');
       } catch (quitErr) {
-        // ignore quit error
+        logger.warn('Error closing WebDriver session:', quitErr.message);
       }
+      driver = null;
     }
+    if (global.gc) {
+      try { global.gc(); } catch (_) {}
+    }
+    process.exit(exitCode);
   }
 }
 

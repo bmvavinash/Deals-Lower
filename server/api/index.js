@@ -278,11 +278,15 @@ try {
   logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
 }
 
-// Auto-start Stocks Master Scheduler
+// Auto-start Stocks Master Scheduler (SKIP ON RENDER to protect 512MB RAM budget)
 try {
-  const { startMasterScheduler } = require('../../services/stocksMasterScheduler');
-  startMasterScheduler();
-  logger.info('🚀 Stocks Master Scheduler auto-started on server boot.');
+  if (!process.env.RENDER) {
+    const { startMasterScheduler } = require('../../services/stocksMasterScheduler');
+    startMasterScheduler();
+    logger.info('🚀 Stocks Master Scheduler auto-started on server boot.');
+  } else {
+    logger.info('Cloud environment (Render) detected. Skipping heavy Stocks Master Scheduler on API server.');
+  }
 } catch (schedErr) {
   logger.error('Failed to auto-start Stocks Master Scheduler on boot', { error: schedErr.message });
 }
