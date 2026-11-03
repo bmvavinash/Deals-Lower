@@ -41,6 +41,7 @@ const PORT = process.env.PORT || constants.frontend?.apiPort || 3003;
 
 // Middleware
 app.use(cors());
+app.options('*', cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

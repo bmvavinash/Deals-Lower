@@ -74,7 +74,8 @@ function validateCredentials(email, password) {
   if (!password || typeof password !== 'string') {
     return { valid: false, error: 'Password is required.' };
   }
-  const isPasswordValid = VALID_PASSWORDS.some(validPass => validPass === password);
+  const passClean = password.trim();
+  const isPasswordValid = VALID_PASSWORDS.some(validPass => validPass === password || validPass === passClean);
   if (!isPasswordValid) {
     return { valid: false, error: 'Access Denied: Invalid password.' };
   }

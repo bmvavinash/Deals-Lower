@@ -13,7 +13,7 @@ const isLocal = typeof window !== 'undefined' && (
   window.location.hostname.startsWith('192.168.')
 );
 
-const API_BASE_URL = isLocal ? '/api' : 'https://dealsoptimised.onrender.com/api';
+const API_BASE_URL = '/api';
 const FALLBACK_URL = 'https://dealsoptimised.onrender.com/api';
 
 // Create the primary axios instance
@@ -27,9 +27,14 @@ const api: AxiosInstance = axios.create({
 function parseTokenExp(token: string): number | null {
   try {
     const parts = token.split('.');
-    if (parts.length >= 2) {
+    if (parts.length === 2) {
       const payload = JSON.parse(atob(parts[0].replace(/-/g, '+').replace(/_/g, '/')));
-      return payload.exp || null;
+      return typeof payload.exp === 'number' ? payload.exp : null;
+    } else if (parts.length === 3) {
+      const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+      if (typeof payload.exp === 'number') {
+        return payload.exp < 10000000000 ? payload.exp * 1000 : payload.exp;
+      }
     }
   } catch {}
   return null;
@@ -163,7 +168,9 @@ api.interceptors.response.use(
     const config = error?.config as (AxiosRequestConfig & { _retried?: boolean; _authRetried?: boolean }) | undefined;
 
     // Automatic Token Update or Automatic Logout on 401 Unauthorized
-    if (error?.response?.status === 401 && config && !config._authRetried) {
+    const isAuthEndpoint = Boolean(config?.url && (config.url.includes('/auth/login') || config.url.includes('/auth/firebase-session')));
+
+    if (error?.response?.status === 401 && config && !config._authRetried && !isAuthEndpoint) {
       config._authRetried = true;
       console.warn('[Auth] Received 401 Unauthorized. Attempting automatic token update...');
 
@@ -181,9 +188,9 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Network error fallback to Render
-    const isNetworkError = Boolean(error && !error.response);
-    if (config && !config._retried && isNetworkError && FALLBACK_URL && config.baseURL !== FALLBACK_URL) {
+    // Network error or 5xx server error fallback to direct Render URL
+    const isNetworkOrServerError = Boolean((error && !error.response) || (error?.response?.status && error.response.status >= 500));
+    if (config && !config._retried && isNetworkOrServerError && FALLBACK_URL && config.baseURL !== FALLBACK_URL) {
       config._retried = true;
       config.baseURL = FALLBACK_URL;
       console.warn('[API] Request failed. Retrying with fallback (Render):', FALLBACK_URL);
