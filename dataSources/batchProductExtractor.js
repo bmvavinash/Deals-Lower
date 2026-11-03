@@ -1722,7 +1722,7 @@ async function runBatch(seedUrls = [], sourceType = 'website', categoryKey = '',
 		} else {
 			logger.info('🚗 Using existing driver instance');
 		}
-		const maxBatchDurationMs = parseInt(process.env.MAX_BATCH_DURATION_MS, 10) || (40 * 60 * 1000);
+		const maxBatchDurationMs = parseInt(process.env.MAX_BATCH_DURATION_MS, 10) || (80 * 60 * 1000);
 		const batchStartTime = Date.now();
 		const visitedHomepages = new Set();
 		let totalExtracted = 0, totalStored = 0, createdCount = 0, updatedCount = 0;

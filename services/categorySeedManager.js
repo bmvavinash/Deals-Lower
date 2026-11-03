@@ -52,7 +52,7 @@ class CategorySeedManager {
     // (e.g., 4 stores => 3 rotating + 2 core = 5 queries = 20 seeds;
     //        2 stores => 8 rotating + 2 core = 10 queries = 20 seeds)
     const storeCount = (supportedStores && supportedStores.length) ? supportedStores.length : 2;
-    const targetSeedsPerRun = 20;
+    const targetSeedsPerRun = parseInt(process.env.TARGET_SEEDS_PER_RUN, 10) || 24;
     const targetQueries = Math.max(3, Math.floor(targetSeedsPerRun / storeCount));
     const dynamicBatchSize = Math.max(2, targetQueries - coreQueries.length);
     const effectiveBatchSize = (rotatingBatchSize !== null && rotatingBatchSize !== undefined)
@@ -114,7 +114,8 @@ class CategorySeedManager {
     }
 
     // Safety ceiling: Cap at 24 seeds per run to guarantee completion well under timeout
-    const finalSeeds = seeds.slice(0, 24);
+    const maxSeedsLimit = parseInt(process.env.MAX_SEEDS_LIMIT, 10) || 32;
+    const finalSeeds = seeds.slice(0, maxSeedsLimit);
 
     logger.info(`Resolved ${finalSeeds.length} seed URLs for ${category} (${selectedQueries.length} queries across ${supportedStores.join(', ')})`, {
       selectedQueries,
