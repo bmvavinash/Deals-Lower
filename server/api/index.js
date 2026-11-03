@@ -54,8 +54,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// Immediate Health Check Endpoint (Responds in < 1ms to Render port detection & cron-job.org)
-app.all(['/health', '/api/health'], (req, res) => {
+// Immediate Health Check Endpoint (Responds in < 1ms to Render port detection, root health check, & cron-job.org)
+app.all(['/', '/health', '/api/health', '/ping'], (req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.status(200).json({ 
     status: 'ok', 
