@@ -1511,34 +1511,25 @@ router.get('/', async (req, res, next) => {
       deals = !isNoCache ? cacheService.get(rawDealsCacheKey) : null;
       
       if (!deals) {
-        logger.info(`Fetching raw deals from Firebase for date ${queryDate}...`);
+        logger.info(`Fetching deals from Firebase (target: ${targetDb}, date: ${queryDate || 'recent'})...`);
+        const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
         try {
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 8000));
-          const snapshotPromise = ref.orderByChild('date').equalTo(queryDate).once('value');
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 4000));
+          // Bounded query: when explicit date is passed, query with limitToLast; otherwise query directly by primary key
+          const snapshotPromise = date 
+            ? ref.orderByChild('date').equalTo(queryDate).limitToLast(poolSize).once('value')
+            : ref.limitToLast(poolSize).once('value');
           const snapshot = await Promise.race([snapshotPromise, timeoutPromise]);
           deals = snapshot.val() || {};
-          cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000); // Cache raw data for 10 minutes
-        } catch (fetchErr) {
-          logger.warn('Firebase query failed or timed out, trying REST API fallback', { error: fetchErr.message });
-          const config = require('../../../config/config');
-          const constants = require('../../../config/constants');
-          const dbname = constants.postingTypesConfig[constants.type].DB;
-          let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
-          const baseUrl = DB_Name === 'lowerdealhub' 
-            ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${targetDb}.json`
-            : `https://${DB_Name}-default-rtdb.firebaseio.com/${targetDb}.json`;
-          const apiUrl = `${baseUrl}?orderBy="date"&equalTo="${queryDate}"`;
-          const controller = new AbortController();
-          const fetchTimeout = setTimeout(() => controller.abort(), 8000);
-          try {
-            const response = await fetch(apiUrl, { signal: controller.signal });
-            clearTimeout(fetchTimeout);
-            if (!response.ok) throw new Error(`REST API failed: ${response.statusText}`);
-            deals = await response.json() || {};
+          if (deals && Object.keys(deals).length > 0) {
             cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
-          } catch (restErr) {
-            clearTimeout(fetchTimeout);
-            logger.error('REST API fallback failed', { error: restErr.message });
+          }
+        } catch (fetchErr) {
+          logger.warn('Date query failed or timed out, falling back to recent items by primary key', { error: fetchErr.message });
+          try {
+            const fallbackSnap = await ref.limitToLast(poolSize).once('value');
+            deals = fallbackSnap.val() || {};
+          } catch (_) {
             deals = {};
           }
         }
