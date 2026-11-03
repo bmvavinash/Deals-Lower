@@ -14,7 +14,9 @@ const isLocal = typeof window !== 'undefined' && (
 );
 
 const API_BASE_URL = '/api';
-const FALLBACK_URL = 'https://dealsoptimised.onrender.com/api';
+export const ORACLE_DIRECT_URL = 'http://140.245.249.227:3001/api';
+export const RENDER_FALLBACK_URL = 'https://dealsoptimised.onrender.com/api';
+const FALLBACK_URL = RENDER_FALLBACK_URL;
 
 // Create the primary axios instance
 const api: AxiosInstance = axios.create({
@@ -188,13 +190,25 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Network error or 5xx server error fallback to direct Render URL
+    // Network error or 5xx server error fallback between Oracle Cloud and Render
     const isNetworkOrServerError = Boolean((error && !error.response) || (error?.response?.status && error.response.status >= 500));
-    if (config && !config._retried && isNetworkOrServerError && FALLBACK_URL && config.baseURL !== FALLBACK_URL) {
+    if (config && !config._retried && isNetworkOrServerError) {
       config._retried = true;
-      config.baseURL = FALLBACK_URL;
-      console.warn('[API] Request failed. Retrying with fallback (Render):', FALLBACK_URL);
-      return api.request(config);
+      const currentBase = config.baseURL || API_BASE_URL;
+
+      // Primary (Oracle Cloud via /api or direct) failed -> Fall back to Render
+      if (currentBase === API_BASE_URL || currentBase.includes('140.245.249.227') || currentBase.includes('localhost')) {
+        config.baseURL = RENDER_FALLBACK_URL;
+        console.warn('[API] Primary Oracle Cloud request failed. Gracefully redirecting to Render fallback:', RENDER_FALLBACK_URL);
+        return api.request(config);
+      }
+
+      // If Render was attempted and failed -> Fall back to Oracle Cloud (/api)
+      if (currentBase.includes('onrender.com')) {
+        config.baseURL = API_BASE_URL;
+        console.warn('[API] Render fallback request failed. Redirecting back to Oracle Cloud (/api):', API_BASE_URL);
+        return api.request(config);
+      }
     }
 
     return Promise.reject(error);

@@ -236,69 +236,81 @@ safeMount('/affiliates', './routes/affiliates');
 safeMount('/auth', './routes/auth');
 safeMount('/cuelinks', './routes/cuelinks');
 
-// Background Services
+// Background Services & Heavy Schedulers
+// Gated strictly: NEVER run heavy schedulers, Chrome pollers, or daemon auto-starters on API server
+// This protects the 512MB RAM budget on Render and frees 100% CPU/RAM on Oracle Cloud for instant API throughput
+const isApiOnlyServer = Boolean(
+  process.env.RENDER || 
+  process.env.ORACLE_CLOUD || 
+  process.env.IS_API_SERVER || 
+  process.env.PORT === '3001' || 
+  process.env.NODE_ENV === 'production'
+);
+
 try {
-  if (admin.apps.length && !process.env.RENDER) {
+  if (admin.apps.length && !isApiOnlyServer) {
     const { notificationQueue } = require('../../services/NotificationQueueService');
     notificationQueue.startWorker();
   } else {
-    logger.info('Cloud environment (Render) detected. Skipping background Notification Queue Worker on API server.');
+    logger.info('API server / Cloud environment detected. Skipping background Notification Queue Worker.');
   }
 } catch (error) {
   logger.error('Failed to start Notification Queue Worker', { error: error.message });
 }
 
-// Autonomous Keep-Alive Self-Ping (Prevents Render free tier from hibernating)
-try {
-  const publicUrl = process.env.RENDER_EXTERNAL_URL || 'https://dealsoptimised.onrender.com';
-  const https = require('https');
-  const http = require('http');
+// Autonomous Keep-Alive Self-Ping (Prevents Render free tier from hibernating - ONLY needed on Render)
+if (process.env.RENDER) {
+  try {
+    const publicUrl = process.env.RENDER_EXTERNAL_URL || 'https://dealsoptimised.onrender.com';
+    const https = require('https');
+    const http = require('http');
 
-  const sendSelfPing = () => {
-    try {
-      const pingUrl = `${publicUrl.replace(/\/+$/, '')}/health`;
-      const client = pingUrl.startsWith('https') ? https : http;
-      const req = client.get(pingUrl, {
-        headers: { 'User-Agent': 'DealsOptimised-SelfPing/1.0' },
-        timeout: 10000
-      }, (res) => {
-        logger.info(`Keep-alive self-ping sent to ${pingUrl}`, { status: res.statusCode });
-      });
-      req.on('error', (err) => {
-        logger.warn('Keep-alive self-ping warning (will retry next interval)', { error: err.message });
-      });
-      req.on('timeout', () => {
-        req.destroy();
-      });
-    } catch (pingErr) {
-      logger.warn('Keep-alive self-ping warning', { error: pingErr.message });
-    }
-  };
+    const sendSelfPing = () => {
+      try {
+        const pingUrl = `${publicUrl.replace(/\/+$/, '')}/health`;
+        const client = pingUrl.startsWith('https') ? https : http;
+        const req = client.get(pingUrl, {
+          headers: { 'User-Agent': 'DealsOptimised-SelfPing/1.0' },
+          timeout: 10000
+        }, (res) => {
+          logger.info(`Keep-alive self-ping sent to ${pingUrl}`, { status: res.statusCode });
+        });
+        req.on('error', (err) => {
+          logger.warn('Keep-alive self-ping warning (will retry next interval)', { error: err.message });
+        });
+        req.on('timeout', () => {
+          req.destroy();
+        });
+      } catch (pingErr) {
+        logger.warn('Keep-alive self-ping warning', { error: pingErr.message });
+      }
+    };
 
-  // Recurring every 4 minutes (external monitors & GitHub Actions provide initial pings)
-  const keepAliveTimer = setInterval(sendSelfPing, 4 * 60 * 1000);
-  if (keepAliveTimer.unref) keepAliveTimer.unref();
-  logger.info('Autonomous Keep-Alive Self-Ping scheduled every 4 minutes.');
-} catch (keepAliveErr) {
-  logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
+    // Recurring every 4 minutes (external monitors & GitHub Actions provide initial pings)
+    const keepAliveTimer = setInterval(sendSelfPing, 4 * 60 * 1000);
+    if (keepAliveTimer.unref) keepAliveTimer.unref();
+    logger.info('Autonomous Keep-Alive Self-Ping scheduled every 4 minutes on Render.');
+  } catch (keepAliveErr) {
+    logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
+  }
 }
 
-// Auto-start Stocks Master Scheduler (SKIP ON RENDER to protect 512MB RAM budget)
+// Auto-start Stocks Master Scheduler (SKIP ON API SERVERS to protect RAM & CPU)
 try {
-  if (!process.env.RENDER) {
+  if (!isApiOnlyServer) {
     const { startMasterScheduler } = require('../../services/stocksMasterScheduler');
     startMasterScheduler();
     logger.info('🚀 Stocks Master Scheduler auto-started on server boot.');
   } else {
-    logger.info('Cloud environment (Render) detected. Skipping heavy Stocks Master Scheduler on API server.');
+    logger.info('API server mode detected. Skipping heavy Stocks Master Scheduler to free 100% CPU/RAM for API requests.');
   }
 } catch (schedErr) {
   logger.error('Failed to auto-start Stocks Master Scheduler on boot', { error: schedErr.message });
 }
 
-// Auto-start Local Daemon if offline on API startup (SKIP ON RENDER)
+// Auto-start Local Daemon if offline on API startup (SKIP ON CLOUD / API SERVERS)
 try {
-  if (admin.apps.length && !process.env.RENDER) {
+  if (admin.apps.length && !isApiOnlyServer) {
     const db = admin.database();
     const heartbeatRef = db.ref('daemonHeartbeat');
     heartbeatRef.once('value', (snapshot) => {
@@ -323,6 +335,8 @@ try {
         logger.info('💖 Local Daemon is already active and healthy.');
       }
     });
+  } else {
+    logger.info('API server mode detected. Skipping Local Daemon auto-start helper (managed externally via PM2).');
   }
 } catch (daemonError) {
   logger.error('Failed to auto-start Local Daemon helper', { error: daemonError.message });
@@ -347,5 +361,37 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
+
+// ============================================
+// GRACEFUL RESOURCE CLEANUP & SHUTDOWN
+// Frees RAM and CPU after request execution and on shutdown
+// ============================================
+const memoryCleanupTimer = setInterval(() => {
+  try {
+    if (global.gc) {
+      global.gc();
+    }
+  } catch (_) {}
+}, 10 * 60 * 1000);
+if (memoryCleanupTimer.unref) memoryCleanupTimer.unref();
+
+const gracefulShutdown = (signal) => {
+  logger.info(`Received ${signal}. Gracefully cleaning up API server resources...`);
+  if (serverInstance && serverInstance.close) {
+    serverInstance.close(() => {
+      logger.info('HTTP server closed cleanly.');
+      process.exit(0);
+    });
+    // Hard kill after 5 seconds if connections hang
+    setTimeout(() => {
+      process.exit(0);
+    }, 5000).unref();
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 module.exports = app;

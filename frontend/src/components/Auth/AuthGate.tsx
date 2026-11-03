@@ -8,7 +8,7 @@ interface AuthGateProps {
 }
 
 // Authorized administrator emails per user requirement
-const ALLOWED_ADMIN_EMAILS = ['avinash1bmv@gmail.com', 'avi2bmv@gmail.com', 'gupta4aventis@gmail.com', 'gupta4aventis'];
+const ALLOWED_ADMIN_EMAILS = ['avinash1bmv@gmail.com', 'avi2bmv@gmail.com', 'gupta4aventis@gmail.com', 'gupta4aventis', 'jahnavi.anila99@gmail.com', 'bmvavinash@gmail.com', 'avideploy@gmail.com'];
 
 const AuthGate: React.FC<AuthGateProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
