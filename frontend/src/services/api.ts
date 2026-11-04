@@ -112,7 +112,7 @@ api.interceptors.request.use(async (config) => {
           if (refreshedToken) {
             config.headers = config.headers || {};
             config.headers['Authorization'] = `Bearer ${refreshedToken}`;
-            if (!config.baseURL) config.baseURL = API_BASE_URL;
+            if (!config.baseURL) config.baseURL = ORACLE_CLOUD_HTTPS_URL;
             return config;
           }
         } else {
@@ -197,7 +197,7 @@ api.interceptors.response.use(
       const currentBase = config.baseURL || API_BASE_URL;
 
       // Primary (Oracle Cloud via /api or direct) failed -> Fall back to Render
-      if (currentBase === API_BASE_URL || currentBase.includes('140.245.249.227') || currentBase.includes('localhost')) {
+      if (currentBase.includes('trycloudflare.com') || currentBase.includes('140.245.249.227') || currentBase === '/api') {
         config.baseURL = RENDER_FALLBACK_URL;
         console.warn('[API] Primary Oracle Cloud request failed. Gracefully redirecting to Render fallback:', RENDER_FALLBACK_URL);
         return api.request(config);

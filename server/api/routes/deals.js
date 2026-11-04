@@ -297,75 +297,8 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     let currentTarget = initialTarget;
     let daemonResult = null;
 
-    // Phase 1: Wait loop with failover
-    if (anyDaemonAlive) {
-      const waitStart = Date.now();
-      let hasFailedOver = false;
-
-      while (Date.now() - waitStart < 8000) {
-        await new Promise(res => setTimeout(res, 1000));
-        const cmdSnap = await newCommandRef.once('value');
-        const cmdVal = cmdSnap.val();
-
-        if (cmdVal && (cmdVal.status === 'completed' || cmdVal.status === 'success')) {
-          daemonResult = cmdVal;
-          break;
-        }
-
-        // Failover to Oracle only if local daemon explicitly failed
-        if (currentTarget === 'local' && !hasFailedOver && cmdVal && cmdVal.status === 'failed') {
-          if (isOracleAlive) {
-            logger.info(`[FAILOVER] Local daemon failed execution. Reassigning task ${newCommandRef.key} to Oracle Cloud daemon.`);
-            hasFailedOver = true;
-            currentTarget = 'oracle';
-            try {
-              await newCommandRef.update({
-                targetDaemon: 'oracle',
-                status: 'pending',
-                failedOverFrom: 'local',
-                reassignedAt: new Date().toISOString()
-              });
-            } catch (reassignErr) {
-              logger.warn('Failed to reassign command in RTDB', reassignErr);
-            }
-          }
-        }
-
-        if (cmdVal && cmdVal.status === 'failed' && hasFailedOver) {
-          break;
-        }
-      }
-
-      if (daemonResult) {
-        let productDetails = null;
-        if (productCode) {
-          try {
-            const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
-            const [dealsSnap, prodDealsSnap] = await Promise.all([
-              db.ref(`deals/${safeKey}`).once('value'),
-              db.ref(`productdeals/${safeKey}`).once('value')
-            ]);
-            productDetails = dealsSnap.val() || prodDealsSnap.val();
-          } catch (_) {}
-        }
-
-        const executor = daemonResult.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
-        return {
-          originalUrl: targetUrl,
-          success: true,
-          status: 'success',
-          processedOn: daemonResult.executorType === 'oracle' ? 'oracleDaemon' : 'localDaemon',
-          productCode,
-          lowerdealUrl,
-          title: productDetails?.title || '',
-          price: productDetails?.price || null,
-          photo: productDetails?.photo || '',
-          data: productDetails,
-          message: `Product [${productCode || 'deal'}] processed successfully via ${executor}!`
-        };
-      }
-    }
-
+    // Return queued response immediately (<150ms) to prevent HTTP connection timeouts and network errors.
+    // The frontend Dashboard polls checkQueueStatus(queuedId) in background for real-time extraction progress.
     return {
       originalUrl: targetUrl,
       success: anyDaemonAlive,
@@ -527,7 +460,7 @@ router.post('/process-product', async (req, res) => {
 
       // Top-level backward compatibility if single URL was passed
       if (results.length === 1) {
-        responsePayload.success = Boolean(firstResult.success && !firstResult.queued);
+        responsePayload.success = Boolean(firstResult.success || firstResult.queued);
         responsePayload.status = firstResult.status || overallStatus;
         responsePayload.productCode = firstResult.productCode;
         responsePayload.data = firstResult.data;
@@ -542,7 +475,7 @@ router.post('/process-product', async (req, res) => {
         responsePayload.outOfStock = Boolean(firstResult.outOfStock);
         responsePayload.inStock = firstResult.inStock !== undefined ? firstResult.inStock : !firstResult.outOfStock;
         responsePayload.availability = firstResult.availability || (firstResult.outOfStock ? 'OutOfStock' : 'InStock');
-        if (!firstResult.success || firstResult.queued) {
+        if (!firstResult.success && !firstResult.queued) {
           responsePayload.reason = firstResult.reason || firstResult.error || firstResult.message;
           responsePayload.error = firstResult.error || firstResult.message;
         }

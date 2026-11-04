@@ -4,7 +4,7 @@
 function resolvePlatformFromUrl(url) {
   const lower = (url || '').toLowerCase();
   if (lower.includes('amazon.') || lower.includes('amzn.')) return 'amazon';
-  if (lower.includes('flipkart.') || lower.includes('shopsy.') || lower.includes('fkrt.co')) return 'flipkart';
+  if (lower.includes('flipkart.') || lower.includes('shopsy.') || lower.includes('fkrt.') || lower.includes('fkrt.co')) return 'flipkart';
   if (lower.includes('ajio.')) return 'ajio';
   if (lower.includes('myntra.') || lower.includes('myntr.')) return 'myntra';
   return null;
