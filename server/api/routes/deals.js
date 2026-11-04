@@ -951,7 +951,7 @@ router.get('/matches', async (req, res) => {
     logger.info('Registry cache cold. Performing full database scan for matched products...');
     
     // 1. Fetch all deals (since only ~92 have competitorMatches, we must scan the database)
-    const recentDealsSnapshot = await productDealsDB.dealsRef.once('value');
+    const recentDealsSnapshot = await productDealsDB.dealsRef.limitToLast(200).once('value');
     const recentDeals = recentDealsSnapshot.val() || {};
     
     // 2. Fetch latest date productdeals from raw deals cache if available, otherwise fetch recent ones
@@ -1466,6 +1466,40 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  * List all deals with optional filters
  * Query params: dealType (hotDeal|productDeal), platform, limit, offset
  */
+/**
+ * Safely fetches recent deals from Firebase without downloading the entire 70,000-item table.
+ * For 'productdeals', uses shallow=true REST API to get only the last N keys and child reads.
+ * For 'deals', uses limitToLast(poolSize) directly.
+ */
+async function fetchSafeBoundedDeals(ref, targetDb, poolSize = 50) {
+  try {
+    if (targetDb === 'productdeals') {
+      const dbName = constants.postingTypesConfig?.[constants.type]?.DB || 'DB1';
+      const DB_Name = config.DATABASE_CONFIG?.[`${dbName}_NAME`] || 'lowerdealhub';
+      const url = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/productdeals.json?shallow=true`;
+      const shallowRes = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const allKeysObj = await shallowRes.json();
+      const allKeys = Object.keys(allKeysObj || {});
+      const targetKeys = allKeys.slice(-poolSize);
+      const snaps = await Promise.all(targetKeys.map(k => ref.child(k).once('value')));
+      const result = {};
+      for (const s of snaps) {
+        if (s && s.exists()) result[s.key] = s.val();
+      }
+      return result;
+    } else {
+      const snap = await Promise.race([
+        ref.limitToLast(poolSize).once('value'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 4000))
+      ]);
+      return snap.val() || {};
+    }
+  } catch (err) {
+    logger.warn('fetchSafeBoundedDeals warning:', { error: err.message, targetDb });
+    return {};
+  }
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0, sortBy, order, nocache } = req.query;
@@ -1512,55 +1546,34 @@ router.get('/', async (req, res, next) => {
       
       if (!deals) {
         const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
-        logger.info(`Fetching recent deals from Firebase (target: ${targetDb}, poolSize: ${poolSize})...`);
-        try {
-          // Direct server-side limit on primary key: fast (<50ms), strictly bounded (<100KB), zero OOM risk
-          const snapshot = await ref.limitToLast(poolSize).once('value');
-          deals = snapshot.val() || {};
-          if (deals && Object.keys(deals).length > 0) {
-            // If explicit date query was requested, filter the retrieved bounded pool in memory
-            if (date) {
-              const filtered = {};
-              for (const [k, v] of Object.entries(deals)) {
-                if (v && v.date === queryDate) {
-                  filtered[k] = v;
-                }
-              }
-              // Only use filtered if we matched items, else keep recent pool
-              if (Object.keys(filtered).length > 0) {
-                deals = filtered;
+        logger.info(`Fetching recent deals (target: ${targetDb}, poolSize: ${poolSize})...`);
+        deals = await fetchSafeBoundedDeals(ref, targetDb, poolSize);
+        if (deals && Object.keys(deals).length > 0) {
+          if (date) {
+            const filtered = {};
+            for (const [k, v] of Object.entries(deals)) {
+              if (v && v.date === queryDate) {
+                filtered[k] = v;
               }
             }
-            cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
+            if (Object.keys(filtered).length > 0) {
+              deals = filtered;
+            }
           }
-        } catch (fetchErr) {
-          logger.warn('Direct limitToLast deals query failed:', { error: fetchErr.message });
-          deals = {};
+          cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
         }
       } else {
         logger.info(`Using cached raw deals for date ${queryDate}`);
       }
     } else {
-      // Fallback: Query recent items by primary key (fast, indexed, never causes OOM)
-      logger.info('Querying default pool by primary key.');
       const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
-      try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 5000));
-        const snapshot = await Promise.race([ref.limitToLast(poolSize).once('value'), timeoutPromise]);
-        deals = snapshot.val() || {};
-      } catch (poolErr) {
-        deals = {};
-      }
+      deals = await fetchSafeBoundedDeals(ref, targetDb, poolSize);
     }
     
-    // Fast safety fallback: if no deals found for queryDate, grab recent items by key
+    // Fast safety fallback: if no deals found for queryDate, grab recent items safely
     if (!deals || Object.keys(deals).length === 0) {
-      try {
-        const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 4000));
-        const snapshot = await Promise.race([ref.limitToLast(poolSize).once('value'), timeoutPromise]);
-        deals = snapshot.val() || {};
-      } catch (_) {}
+      const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
+      deals = await fetchSafeBoundedDeals(ref, targetDb, poolSize);
     }
 
     // Convert to array and filter for display eligibility (valid title, valid image, valid price/stock)
@@ -1866,7 +1879,8 @@ router.post('/bulk-refresh-timestamps', async (req, res) => {
       const targetDb = src === 'deals' ? 'deals' : 'productdeals';
       const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
 
-      const snapshot = await ref.once('value');
+      const fetchLimit = Math.min(Number(limit) || 100, 200);
+      const snapshot = await ref.limitToLast(fetchLimit).once('value');
       const data = snapshot.val() || {};
       let items = Object.entries(data).map(([key, value]) => ({
         key,

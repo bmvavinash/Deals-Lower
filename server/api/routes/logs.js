@@ -30,7 +30,7 @@ router.get('/', async (req, res, next) => {
     if (logsRef) {
       try {
         // Add timeout to Firebase query
-        const firebasePromise = logsRef.once('value');
+        const firebasePromise = logsRef.limitToLast(100).once('value');
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Firebase timeout')), 3000)
         );
@@ -351,7 +351,7 @@ router.get('/stats', async (req, res, next) => {
     const logsRef = getFirebaseLogsRef();
     if (logsRef) {
       try {
-        const firebasePromise = logsRef.once('value');
+        const firebasePromise = logsRef.limitToLast(100).once('value');
         const timeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Firebase timeout')), 3000)
         );
