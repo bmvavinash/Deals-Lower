@@ -23,6 +23,7 @@ const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
 // scheduler lazy-loaded on demand
 const { productStatus } = require('../../../config/const');
 const constants = require('../../../config/constants');
+const config = require('../../../config/config.js');
 const { getAccessToken } = require('../../../database/getAccessToken');
 const { firebaseget } = require('../../../database/firebaseget');
 const { firebasepost } = require('../../../database/firebasepost');
