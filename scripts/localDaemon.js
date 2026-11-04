@@ -170,8 +170,9 @@ function startCommandListener() {
 
       logger.info(`⚙️ Running command on [${daemonType.toUpperCase()}]: "${commandData.command}"`);
 
-      // Execute script locally with a 15-minute watchdog timer to prevent hangs
-      const watchdogTimeoutMs = 15 * 60 * 1000;
+      // Adaptive watchdog: 3.5 minutes for single product extraction, 15 minutes for bulk updates
+      const isSingleProduct = commandData.command && commandData.command.includes('processSingleProduct.js');
+      const watchdogTimeoutMs = isSingleProduct ? 3.5 * 60 * 1000 : 15 * 60 * 1000;
       let hasFinished = false;
       const watchdogTimer = setTimeout(async () => {
         if (hasFinished) return;

@@ -37,6 +37,11 @@ async function main() {
     driver = driverResult.driver;
     logger.info(`WebDriver initialized (${driverResult.mode} mode)`);
 
+    // Guard against hanging on heavy SPA network sockets / ads
+    try {
+      await driver.manage().setTimeouts({ pageLoad: 35000, script: 30000 });
+    } catch (_) {}
+
     // Navigate to URL and resolve redirect
     logger.info(`Navigating to URL: ${url}`);
     try {
