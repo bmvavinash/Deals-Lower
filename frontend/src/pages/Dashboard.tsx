@@ -16,6 +16,14 @@ const Dashboard: React.FC = () => {
   const [postProduct, setPostProduct] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedLowerdealUrls, setProcessedLowerdealUrls] = useState<string[]>([]);
+  const [extractionStatus, setExtractionStatus] = useState<{
+    status: 'idle' | 'queued' | 'running' | 'completed' | 'failed';
+    title?: string;
+    price?: string | number;
+    executor?: string;
+    message?: string;
+    productCode?: string;
+  }>({ status: 'idle' });
   
   // Product code search and CRUD state
   const [productCode, setProductCode] = useState('');
@@ -51,6 +59,7 @@ const Dashboard: React.FC = () => {
 
     setIsProcessing(true);
     setProcessedLowerdealUrls([]);
+    setExtractionStatus({ status: 'running', message: 'Submitting request to API server...' });
     addNotification({ type: 'info', message: 'Processing started...', source: 'Process Product', page: 'Dashboard' });
 
     try {
@@ -72,6 +81,12 @@ const Dashboard: React.FC = () => {
       if (response.data.status === 'queued' && response.data.queuedId) {
         const queuedId = response.data.queuedId;
         const targetDaemonName = response.data.targetDaemon === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+        setExtractionStatus({
+          status: 'queued',
+          executor: targetDaemonName,
+          message: `Task queued on ${targetDaemonName}. Scraper is initializing headless browser to extract live details...`,
+          productCode: response.data.productCode
+        });
         addNotification({
           type: 'info',
           message: `Product queued on ${targetDaemonName}. Output link is ready below while scraper extracts full details in background...`,
@@ -89,12 +104,30 @@ const Dashboard: React.FC = () => {
             const statusRes = await dealsAPI.checkQueueStatus(queuedId);
             const statusData = statusRes.data;
 
+            if (statusData.status === 'running') {
+              const runner = statusData.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+              setExtractionStatus(prev => ({
+                ...prev,
+                status: 'running',
+                executor: runner,
+                message: `Actively running on ${runner}. Parsing live product page, prices, and images...`
+              }));
+            }
+
             if (statusData.status === 'completed') {
               clearInterval(pollTimer);
               setIsProcessing(false);
               const prodTitle = statusData.product?.title || statusData.productCode || 'Deal';
               const prodPrice = statusData.product?.price ? ` - ₹${statusData.product.price}` : '';
               const executorLabel = statusData.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+              setExtractionStatus({
+                status: 'completed',
+                title: prodTitle,
+                price: statusData.product?.price,
+                executor: executorLabel,
+                message: 'Product is ready in the database! Live deal verified.',
+                productCode: statusData.productCode
+              });
               addNotification({
                 type: 'success',
                 message: `Product extracted successfully (${prodTitle}${prodPrice}) via ${executorLabel}!`,
@@ -113,6 +146,10 @@ const Dashboard: React.FC = () => {
             if (statusData.status === 'failed') {
               clearInterval(pollTimer);
               setIsProcessing(false);
+              setExtractionStatus({
+                status: 'failed',
+                message: `Scraper execution failed: ${statusData.error || 'Unknown error'}`
+              });
               addNotification({
                 type: 'error',
                 message: `Scraper execution failed: ${statusData.error || 'Unknown error'}`,
@@ -125,6 +162,10 @@ const Dashboard: React.FC = () => {
             if (attempts >= maxAttempts) {
               clearInterval(pollTimer);
               setIsProcessing(false);
+              setExtractionStatus({
+                status: 'running',
+                message: 'Processing is taking longer than 150s. Scraper is still working in background; link will be ready once saved.'
+              });
               addNotification({
                 type: 'warning',
                 message: 'Processing is taking longer than 150s. Your Lowerdeal link is active below, and details will update when finished.',
@@ -144,6 +185,13 @@ const Dashboard: React.FC = () => {
         return; // Retain isProcessing = true while polling
       }
 
+      setExtractionStatus({
+        status: 'completed',
+        title: response.data.data?.title || response.data.productCode || 'Product',
+        price: response.data.data?.price,
+        executor: 'Cloud Direct',
+        message: 'Product processed and saved to database successfully!'
+      });
       addNotification({
         type,
         message: response.data.message || 'Product(s) processed successfully',
@@ -152,6 +200,10 @@ const Dashboard: React.FC = () => {
       });
       setIsProcessing(false);
     } catch (error: any) {
+      setExtractionStatus({
+        status: 'failed',
+        message: error.response?.data?.error || error.message || 'Failed to process product(s)'
+      });
       addNotification({
         type: 'error',
         message: error.response?.data?.error || error.message || 'Failed to process product(s)',
@@ -343,18 +395,95 @@ const Dashboard: React.FC = () => {
             {isProcessing ? 'Processing...' : 'Submit'}
           </button>
 
+          {/* Real-time Extraction Status & DB Indicator */}
+          {extractionStatus.status !== 'idle' && (
+            <div style={{
+              marginTop: '15px',
+              padding: '14px 18px',
+              borderRadius: '8px',
+              border: '1px solid ' + (
+                extractionStatus.status === 'completed' ? '#81c784' :
+                extractionStatus.status === 'failed' ? '#e57373' : '#64b5f6'
+              ),
+              backgroundColor: (
+                extractionStatus.status === 'completed' ? '#e8f5e9' :
+                extractionStatus.status === 'failed' ? '#ffebee' : '#e3f2fd'
+              ),
+              color: '#333'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '24px' }}>
+                  {extractionStatus.status === 'completed' ? '✅' :
+                   extractionStatus.status === 'failed' ? '❌' : '⏳'}
+                </span>
+                <div style={{ flex: 1 }}>
+                  <div style={{
+                    fontWeight: 'bold',
+                    fontSize: '15px',
+                    color: extractionStatus.status === 'completed' ? '#2e7d32' : extractionStatus.status === 'failed' ? '#c62828' : '#1565c0'
+                  }}>
+                    {extractionStatus.status === 'completed' && 'Product Ready in Database! 🎉'}
+                    {(extractionStatus.status === 'queued' || extractionStatus.status === 'running') && 'Extraction in Progress... ⏳'}
+                    {extractionStatus.status === 'failed' && 'Extraction Failed ❌'}
+                  </div>
+                  <div style={{ fontSize: '13px', marginTop: '3px', color: '#555' }}>
+                    {extractionStatus.message}
+                  </div>
+                  {extractionStatus.status === 'completed' && extractionStatus.title && (
+                    <div style={{ fontSize: '13px', marginTop: '6px', fontWeight: 'bold', color: '#1b5e20', backgroundColor: '#c8e6c9', padding: '6px 10px', borderRadius: '4px', display: 'inline-block' }}>
+                      📦 {extractionStatus.title} {extractionStatus.price ? `• ₹${extractionStatus.price}` : ''}
+                      {extractionStatus.executor ? ` (${extractionStatus.executor})` : ''}
+                    </div>
+                  )}
+                  {(extractionStatus.status === 'queued' || extractionStatus.status === 'running') && (
+                    <div style={{ fontSize: '12px', marginTop: '6px', color: '#e65100', fontWeight: 'bold' }}>
+                      ⚠️ Scraper is writing product data & images to database. Opening the link before extraction finishes will show "product unavailable".
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Lowerdeal URLs Display */}
           {processedLowerdealUrls.length > 0 && (
-            <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#e8f5e9', border: '1px solid #c8e6c9', borderRadius: '6px' }}>
-              <h4 style={{ margin: '0 0 10px 0', color: '#2e7d32' }}>
-                🛒 Generated Lowerdeal URL{processedLowerdealUrls.length > 1 ? 's' : ''} ({processedLowerdealUrls.length}):
-              </h4>
+            <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h4 style={{ margin: 0, color: '#333' }}>
+                  🛒 Generated Lowerdeal URL{processedLowerdealUrls.length > 1 ? 's' : ''} ({processedLowerdealUrls.length}):
+                </h4>
+                {extractionStatus.status === 'completed' && (
+                  <span style={{ fontSize: '12px', backgroundColor: '#4CAF50', color: 'white', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                    Live in DB ✓
+                  </span>
+                )}
+                {(extractionStatus.status === 'queued' || extractionStatus.status === 'running') && (
+                  <span style={{ fontSize: '12px', backgroundColor: '#ff9800', color: 'white', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
+                    Scraping... ⏳
+                  </span>
+                )}
+              </div>
               <ul style={{ margin: 0, paddingLeft: '20px' }}>
                 {processedLowerdealUrls.map((ldUrl, idx) => (
-                  <li key={idx} style={{ marginBottom: '6px', wordBreak: 'break-all' }}>
-                    <a href={ldUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#1565c0', fontWeight: 'bold' }}>
+                  <li key={idx} style={{ marginBottom: '8px', wordBreak: 'break-all' }}>
+                    <a
+                      href={ldUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        color: extractionStatus.status === 'completed' ? '#1b5e20' : '#1565c0',
+                        fontWeight: 'bold',
+                        fontSize: '14px',
+                        textDecoration: 'underline'
+                      }}
+                    >
                       {ldUrl}
                     </a>
+                    {extractionStatus.status === 'completed' && (
+                      <span style={{ marginLeft: '10px', fontSize: '12px', color: '#2e7d32', fontWeight: 'bold' }}>
+                        👉 Ready to view!
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

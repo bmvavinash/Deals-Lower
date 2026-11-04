@@ -124,7 +124,9 @@ const configRef = db.ref('schedulerConfig');
 function startCommandListener() {
   logger.info(`🚀 Sequential Queue listener started for [${daemonType.toUpperCase()}] (role: [${runnerRole.toUpperCase()}])`);
 
-  const pendingExecutionQueue = [];
+  // Two-tier FIFO queue: Interactive single products get priority, but remain strictly FIFO
+  const priorityExecutionQueue = [];
+  const normalExecutionQueue = [];
   let isBusyExecuting = false;
   let currentlyExecutingKey = null;
 
@@ -245,13 +247,11 @@ function startCommandListener() {
   };
 
   const triggerNext = async () => {
-    if (isBusyExecuting || pendingExecutionQueue.length === 0) return;
+    if (isBusyExecuting) return;
+    const item = priorityExecutionQueue.shift() || normalExecutionQueue.shift();
+    if (!item) return;
+
     isBusyExecuting = true;
-    const item = pendingExecutionQueue.shift();
-    if (!item) {
-      isBusyExecuting = false;
-      return;
-    }
     const { key, commandData } = item;
     currentlyExecutingKey = key;
     try {
@@ -285,17 +285,20 @@ function startCommandListener() {
     }
 
     // 3. Avoid duplicate enqueueing if already executing or already in queue
-    if (currentlyExecutingKey === key || pendingExecutionQueue.some(item => item.key === key)) {
+    if (currentlyExecutingKey === key || 
+        priorityExecutionQueue.some(item => item.key === key) || 
+        normalExecutionQueue.some(item => item.key === key)) {
       return;
     }
 
     // 4. Cooldown check / Expiration check for offline triggers
     const createdAt = new Date(commandData.createdAt).getTime();
     const now = Date.now();
-    const expirationThresholdMs = 30 * 60 * 1000;
+    const isSingleProduct = commandData.command && commandData.command.includes('processSingleProduct.js');
+    const expirationThresholdMs = isSingleProduct ? 10 * 60 * 1000 : 20 * 60 * 1000;
     
     if (!processStaleCommands && (now - createdAt > expirationThresholdMs)) {
-      logger.warn(`⚠️ Skipping stale trigger command ${commandData.id || key} (older than 30 mins)`);
+      logger.warn(`⚠️ Skipping stale trigger command ${commandData.id || key} (older than ${isSingleProduct ? 10 : 20} mins)`);
       try {
         await queueRef.child(key).update({
           status: 'expired',
@@ -308,12 +311,17 @@ function startCommandListener() {
       return;
     }
 
-    // Enqueue for sequential execution with priority for interactive API commands
-    logger.info(`📥 Enqueuing command for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
-    if (commandData.triggeredBy === 'api' || commandData.priority === 1) {
-      pendingExecutionQueue.unshift({ key, commandData });
+    // Two-tier FIFO queue: Interactive single products get priority, but run FIFO among themselves
+    const isInteractive = commandData.triggeredBy === 'api' || 
+                          commandData.priority === 1 || 
+                          isSingleProduct;
+
+    if (isInteractive) {
+      logger.info(`⚡ Enqueuing [HIGH-PRIORITY FIFO] for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
+      priorityExecutionQueue.push({ key, commandData });
     } else {
-      pendingExecutionQueue.push({ key, commandData });
+      logger.info(`📥 Enqueuing [NORMAL FIFO] for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
+      normalExecutionQueue.push({ key, commandData });
     }
     triggerNext();
   };
