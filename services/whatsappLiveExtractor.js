@@ -1,7 +1,8 @@
 const puppeteer = require('puppeteer');
 const { parseStockMessage } = require('./stockSignalParser');
 const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
-const { saveRawMessage, saveSignals } = require('../database/stocksMultiDB');
+const { saveRawMessage, saveSignals, memoryDB } = require('../database/stocksMultiDB');
+const { dispatchWhatsAppAdvisoryAlert } = require('./genericTelegramDispatcher');
 const { getModuleLogger } = require('../logger/logger');
 
 const logger = getModuleLogger('whatsappLiveExtractor');
@@ -185,8 +186,33 @@ async function extractActiveWhatsAppChat(options = {}) {
           };
           // 3. Fetch live CMP
           const quote = await getLiveQuote(sig.symbol);
-          const evaluated = evaluateSignalWithCMP(truthSig, quote);
-          extractedSignals.push(evaluated || truthSig);
+          const evaluated = evaluateSignalWithCMP(truthSig, quote) || truthSig;
+
+          // 4. Check if this advisory is brand new or an update to notify users immediately
+          const id = `WA_SOIC_${truthSig.symbol.toUpperCase()}`;
+          const existing = memoryDB.signals ? memoryDB.signals[id] : null;
+          const msgHash = `${truthSig.symbol}_${truthSig.action}_${truthSig.entryPrice || truthSig.entryMax}_${truthSig.rating || 0}_${(truthSig.rawText || '').trim()}`;
+
+          const isNewOrUpdatedWA = !existing ||
+            (existing.lastNotifiedMsgHash !== msgHash && (
+              existing.action !== truthSig.action ||
+              existing.entryPrice !== truthSig.entryPrice ||
+              existing.rating !== truthSig.rating ||
+              existing.rawText !== truthSig.rawText
+            ));
+
+          if (isNewOrUpdatedWA) {
+            evaluated.lastNotifiedMsgHash = msgHash;
+            evaluated.lastNotifiedStatus = evaluated.status;
+            evaluated.lastNotifiedAt = new Date().toISOString();
+
+            logger.info(`📢 New/Updated WhatsApp advisory detected for ${evaluated.symbol}. Dispatching Telegram alert...`);
+            dispatchWhatsAppAdvisoryAlert(evaluated).catch(err => {
+              logger.warn('Failed to dispatch WhatsApp advisory alert:', { error: err.message });
+            });
+          }
+
+          extractedSignals.push(evaluated);
         }
       }
     }

@@ -43,6 +43,9 @@ interface StockSignal {
   clarificationReason?: string;
   isExpired?: boolean;
   isReinitiated?: boolean;
+  previousStatus?: string;
+  lastStatusChangedAt?: string;
+  statusChanged?: boolean;
   hasMultipleSources?: boolean;
   sourcesBreakdown?: SourceBreakdownItem[];
   sourceOfTruth?: string | null;
@@ -1572,6 +1575,14 @@ const EquityPage: React.FC = () => {
                             <span className={`badge-status ${sig.isExpired ? 'expired' : (sig.status?.toLowerCase() || 'active')}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
                               {sig.isExpired ? '⛔ BUY EXPIRED' : (sig.statusReason || sig.status)}
                             </span>
+                            {sig.previousStatus && sig.previousStatus !== sig.status && (
+                              <span
+                                className="state-changed-pill"
+                                title={`State transitioned from ${sig.previousStatus} to ${sig.status}${sig.lastStatusChangedAt ? ' at ' + new Date(sig.lastStatusChangedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}`}
+                              >
+                                🔄 Was: {sig.previousStatus}
+                              </span>
+                            )}
                             {sig.isExpired && (
                               <span className="expired-pill" title="WhatsApp exit issued. Buy is expired unless reinitiated in WhatsApp.">
                                 🛑 Exit Active
@@ -1714,6 +1725,16 @@ const EquityPage: React.FC = () => {
                             <span className={`badge-status ${sig.isExpired ? 'expired' : statusClass}`}>
                               {sig.isExpired ? '⛔ Buy Expired (WhatsApp Exit)' : (sig.statusReason || sig.status)}
                             </span>
+                            {sig.previousStatus && sig.previousStatus !== sig.status && (
+                              <div style={{ marginTop: '4px' }}>
+                                <span
+                                  className="state-changed-pill"
+                                  title={`State transitioned from ${sig.previousStatus} to ${sig.status}${sig.lastStatusChangedAt ? ' at ' + new Date(sig.lastStatusChangedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}`}
+                                >
+                                  🔄 Was: {sig.previousStatus}
+                                </span>
+                              </div>
+                            )}
                           </td>
                           <td>
                             <div style={{ fontSize: '12px', color: '#4b5563', lineHeight: 1.3 }}>

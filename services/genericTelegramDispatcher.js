@@ -295,12 +295,52 @@ async function dispatchGroupedTradeAlerts(alerts, domain = 'stocks') {
   };
 }
 
+/**
+ * Dispatch notification for a new or updated WhatsApp advisory (1st Priority Source of Truth)
+ */
+async function dispatchWhatsAppAdvisoryAlert(signal, domain = 'stocks') {
+  if (!signal || !signal.symbol) return { success: false };
+
+  const symbol = signal.symbol.toUpperCase();
+  const action = (signal.action || '').toUpperCase();
+  const rating = Number(signal.rating || 0);
+  const cmp = signal.currentCMP ? `₹${signal.currentCMP}` : 'Fetching...';
+  const level = signal.entryPrice || signal.entryMax || signal.entryMin || signal.target1 || '-';
+  const isExit = action.includes('SELL') || action.includes('EXIT');
+
+  let category = isExit ? 'sell_trades' : (rating >= 4 || signal.isSourceOfTruth ? 'high_conviction' : 'buy_trades');
+  const dest = resolveDestination(domain, category);
+  if (!dest.isConfigured) return { success: false, reason: 'NOT_CONFIGURED' };
+
+  const badgeEmoji = isExit ? '🚨' : rating >= 4 ? '⭐' : '🟢';
+  let title = isExit ? `WHATSAPP EXIT ADVISORY: ${symbol}` : `NEW WHATSAPP ADVISORY: ${symbol}`;
+  if (signal.rawText && /rating\s+upgrade|upgraded\s+to/i.test(signal.rawText)) {
+    title = `⭐ WHATSAPP RATING / RANGE UPGRADE: ${symbol}`;
+  }
+
+  let text = `${badgeEmoji} *${title}*\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `• *Stock*: *${symbol}* (${signal.companyName || symbol})\n` +
+    `• *Action*: *${action}*\n` +
+    `• *Advisory Level*: ₹${level}\n` +
+    `• *Live CMP*: ${cmp}\n` +
+    (rating ? `• *Star Rating*: ⭐ ${rating}\n` : '') +
+    (signal.sender ? `• *Advisor*: ${signal.sender.trim()}\n` : '') +
+    `• *Raw Advisory*:\n_${(signal.rawText || '').trim()}_\n` +
+    `━━━━━━━━━━━━━━━━━━━━━━\n` +
+    `👑 _1st Priority Source of Truth (SOIC Research)_\n` +
+    `🕒 _${new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata' })}_`;
+
+  return await sendRawTelegramMessage(dest.targetChatId, text, dest.threadId);
+}
+
 module.exports = {
   getTelegramConfig,
   saveTelegramConfig,
   resolveDestination,
   sendSingleAlert,
   dispatchGroupedTradeAlerts,
+  dispatchWhatsAppAdvisoryAlert,
   sendRawTelegramMessage,
   DEALS_CHANNEL_IDENTIFIERS,
   STOCKS_CHANNEL_IDENTIFIERS

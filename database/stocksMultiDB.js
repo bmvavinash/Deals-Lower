@@ -274,6 +274,10 @@ async function saveSignals(signals) {
 
     // UPSERT: If record already exists under this deterministic ID, update it rather than recreating it
     const existing = memoryDB.signals[id];
+    const newStatus = status || (existing ? existing.status : 'ACTIVE');
+    const prevStatus = existing ? existing.status : null;
+    const isStateChanged = Boolean(existing && prevStatus && newStatus && prevStatus !== newStatus);
+
     const record = {
       ...(existing || {}),
       ...sig,
@@ -288,8 +292,14 @@ async function saveSignals(signals) {
       target1: finalTarget1 !== undefined && finalTarget1 !== null ? finalTarget1 : (existing ? existing.target1 : null),
       stopLoss: finalStopLoss !== undefined && finalStopLoss !== null ? finalStopLoss : (existing ? existing.stopLoss : null),
       rating: sig.rating !== null && sig.rating !== undefined ? sig.rating : (existing ? existing.rating : null),
-      status: status || (existing ? existing.status : 'ACTIVE'),
+      status: newStatus,
       statusReason: statusReason || (existing ? existing.statusReason : null),
+      previousStatus: isStateChanged ? prevStatus : (existing ? existing.previousStatus : null),
+      lastStatusChangedAt: isStateChanged ? new Date().toISOString() : (existing ? existing.lastStatusChangedAt : null),
+      statusChanged: isStateChanged,
+      lastNotifiedStatus: existing ? existing.lastNotifiedStatus : null,
+      lastNotifiedAt: existing ? existing.lastNotifiedAt : null,
+      lastNotifiedMsgHash: existing ? existing.lastNotifiedMsgHash : null,
       isExpired,
       isReinitiated,
       currentCMP: sig.currentCMP || (existing ? existing.currentCMP : null),
