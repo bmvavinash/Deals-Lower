@@ -263,45 +263,12 @@ try {
   logger.error('Failed to start Notification Queue Worker', { error: error.message });
 }
 
-// Autonomous Keep-Alive Self-Ping (Prevents Render free tier from hibernating - ONLY needed on Render)
-if (process.env.RENDER) {
-  try {
-    const publicUrl = process.env.RENDER_EXTERNAL_URL || 'https://dealsoptimised.onrender.com';
-    const https = require('https');
-    const http = require('http');
-
-    const sendSelfPing = () => {
-      try {
-        const pingUrl = `${publicUrl.replace(/\/+$/, '')}/health`;
-        const client = pingUrl.startsWith('https') ? https : http;
-        const req = client.get(pingUrl, {
-          headers: { 'User-Agent': 'DealsOptimised-SelfPing/1.0' },
-          timeout: 10000
-        }, (res) => {
-          logger.info(`Keep-alive self-ping sent to ${pingUrl}`, { status: res.statusCode });
-        });
-        req.on('error', (err) => {
-          logger.warn('Keep-alive self-ping warning (will retry next interval)', { error: err.message });
-        });
-        req.on('timeout', () => {
-          req.destroy();
-        });
-      } catch (pingErr) {
-        logger.warn('Keep-alive self-ping warning', { error: pingErr.message });
-      }
-    };
-
-    // Initial ping after 30 seconds to establish connection, then recurring every 4 minutes
-    const initialPingTimer = setTimeout(sendSelfPing, 30 * 1000);
-    if (initialPingTimer.unref) initialPingTimer.unref();
-
-    const keepAliveTimer = setInterval(sendSelfPing, 4 * 60 * 1000);
-    if (keepAliveTimer.unref) keepAliveTimer.unref();
-    logger.info('Autonomous Keep-Alive Self-Ping scheduled every 4 minutes on Render (with 30s initial ping).');
-  } catch (keepAliveErr) {
-    logger.error('Failed to initialize keep-alive self-ping', { error: keepAliveErr.message });
-  }
-}
+// External keep-alive is handled continuously from outside by:
+// 1. Oracle Cloud VM PM2 daemon (render-keepalive) pinging /health every 3 minutes
+// 2. cron-job.org external monitoring service
+// Internal loopback pings from inside the container are strictly disabled because hairpin TLS
+// handshakes on single-vCPU containers saturate sockets and cause 5-second health-check timeouts.
+logger.info('API server keep-alive managed by external Oracle VM & cron-job.org pingers.');
 
 // Auto-start Stocks Master Scheduler (SKIP ON API SERVERS to protect RAM & CPU)
 try {
@@ -380,7 +347,7 @@ const memoryCleanupTimer = setInterval(() => {
       global.gc();
     }
   } catch (_) {}
-}, 10 * 60 * 1000);
+}, 2 * 60 * 1000);
 if (memoryCleanupTimer.unref) memoryCleanupTimer.unref();
 
 const gracefulShutdown = (signal) => {

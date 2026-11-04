@@ -112,7 +112,7 @@ api.interceptors.request.use(async (config) => {
           if (refreshedToken) {
             config.headers = config.headers || {};
             config.headers['Authorization'] = `Bearer ${refreshedToken}`;
-            if (!config.baseURL) config.baseURL = ORACLE_CLOUD_HTTPS_URL;
+            if (!config.baseURL) config.baseURL = API_BASE_URL;
             return config;
           }
         } else {
