@@ -462,7 +462,14 @@ router.post('/process-product', async (req, res) => {
     logger.info('Processing product URLs', { count: validUrls.length, postProduct, saleName });
 
     // Cloud environment detection (Render free tier has 512MB RAM and no Chrome)
-    const isCloudEnv = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    const isCloudEnv = Boolean(
+      process.env.RENDER || 
+      process.env.HYBRID_EXECUTION === 'true' || 
+      process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+      process.env.NODE_ENV === 'production' ||
+      process.env.IS_API_SERVER === 'true' ||
+      !process.env.ENABLE_LOCAL_BROWSER
+    );
     if (isCloudEnv) {
       logger.info('Cloud environment detected (Render/Hybrid). Running server-side headless extraction with Cuelinks API.', { count: validUrls.length, postProduct, saleName });
 
