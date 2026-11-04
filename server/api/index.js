@@ -1,4 +1,5 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+process.env.IS_API_SERVER = 'true';
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');

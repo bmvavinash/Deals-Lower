@@ -39,7 +39,6 @@ async function processProduct() {
   }
   return await _processProduct(...arguments);
 }
-const { executionTracker } = require('../../../services/executionTracker');
 const { spawn } = require('child_process');
 const net = require('net');
 const { authenticateRequest } = require('./auth');

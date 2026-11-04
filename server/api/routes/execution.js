@@ -86,7 +86,7 @@ router.get('/status', async (req, res) => {
  */
 router.get('/analytics', async (req, res) => {
   try {
-    const analytics = executionTracker.getAnalytics();
+    const analytics = await executionTracker.getAnalytics();
     res.json({
       success: true,
       data: analytics,
@@ -108,7 +108,7 @@ router.get('/analytics', async (req, res) => {
 router.get('/history', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const history = executionTracker.getHistory(limit);
+    const history = await executionTracker.getHistory(limit);
     res.json({
       success: true,
       data: history,
