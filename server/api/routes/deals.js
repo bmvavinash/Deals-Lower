@@ -220,24 +220,33 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     logger.info(`Platform is ${detectedPlatform} (requires full browser automation). Skipping static HTML fetch on Render and offloading directly to daemons.`);
   }
 
-  // 2. Check heartbeats of both Daemons (Local residential PC vs Oracle Cloud VM)
-  let isLocalAlive = false;
-  let isOracleAlive = false;
-  let anyDaemonAlive = false;
+  // 2. Check heartbeats of Daemons with strict 800ms timeout to guarantee instant sub-second response
+  let isLocalAlive = true;
+  let isOracleAlive = true;
+  let anyDaemonAlive = true;
+
+  const withTimeout = (promise, ms, fallback) =>
+    Promise.race([
+      promise,
+      new Promise(resolve => setTimeout(() => resolve(fallback), ms))
+    ]);
 
   try {
     if (admin.apps.length) {
       const db = admin.database();
       const now = Date.now();
-      const [localSnap, oracleSnap, legacySnap] = await Promise.all([
-        db.ref('daemons/local').once('value'),
-        db.ref('daemons/oracle').once('value'),
-        db.ref('daemonHeartbeat').once('value')
+      const hbPromise = Promise.all([
+        db.ref('daemons/local').once('value').catch(() => null),
+        db.ref('daemons/oracle').once('value').catch(() => null),
+        db.ref('daemonHeartbeat').once('value').catch(() => null)
       ]);
 
-      const localVal = localSnap.val();
-      const oracleVal = oracleSnap.val();
-      const legacyVal = legacySnap.val();
+      const snaps = await withTimeout(hbPromise, 800, [null, null, null]);
+      const [localSnap, oracleSnap, legacySnap] = snaps || [];
+
+      const localVal = localSnap ? (typeof localSnap.val === 'function' ? localSnap.val() : localSnap) : null;
+      const oracleVal = oracleSnap ? (typeof oracleSnap.val === 'function' ? oracleSnap.val() : oracleSnap) : null;
+      const legacyVal = legacySnap ? (typeof legacySnap.val === 'function' ? legacySnap.val() : legacySnap) : null;
 
       if (localVal && localVal.timestamp) {
         isLocalAlive = (now - new Date(localVal.timestamp).getTime()) < 60000;
@@ -267,20 +276,13 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     const newCommandRef = queueRef.push();
     
     // Priority routing: Local daemon preferred if online (residential IP); fallback to Oracle Cloud VM (24/7 cloud runner)
-    let initialTarget = 'oracle';
-    if (isLocalAlive) {
-      initialTarget = 'local';
-    } else if (isOracleAlive) {
-      initialTarget = 'oracle';
-    } else {
-      initialTarget = 'all';
-    }
+    let initialTarget = isLocalAlive ? 'local' : (isOracleAlive ? 'oracle' : 'all');
 
     const safeUrl = targetUrl.replace(/"/g, '\\"');
     const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
     const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
 
-    await newCommandRef.set({
+    const commandPayload = {
       id: `process-product-${Date.now()}`,
       command: cliCommand,
       name: `Process Product (${targetUrl.substring(0, 50)}...)`,
@@ -291,7 +293,10 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
       targetUrl,
       createdAt: new Date().toISOString(),
       triggeredBy: 'api'
-    });
+    };
+
+    // Write to Firebase commandsQueue with 1.5s timeout; never block client HTTP connection
+    await withTimeout(newCommandRef.set(commandPayload), 1500, null);
 
     const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
     let currentTarget = initialTarget;
