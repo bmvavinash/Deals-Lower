@@ -177,7 +177,7 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     // ignore
   }
 
-  const isDynamicSite = detectedPlatform === 'flipkart' || detectedPlatform === 'ajio';
+  const isDynamicSite = detectedPlatform === 'flipkart' || detectedPlatform === 'ajio' || detectedPlatform === 'jiomart' || detectedPlatform === 'reliance';
 
   // 1. For static/server-parseable sites (Amazon, Myntra, etc.), attempt crash-free server-side extraction
   if (!isDynamicSite) {
@@ -193,6 +193,7 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
           status: 'success',
           processedOn: 'server',
           productCode: pCode,
+          productNumber: serverResult.productNumber || serverResult.data?.productNumber || null,
           lowerdealUrl,
           affiliateUrl,
           platform: serverResult.data?.storeType || 'unknown',
@@ -398,6 +399,78 @@ async function autoCreateBundleIfNeeded(results, validUrls, options = {}) {
   }
 }
 
+
+/**
+ * Stitches multiline/wrapped URLs, strips line numbering, decodes and sanitizes URLs
+ */
+function extractAndFixUrls(rawInput) {
+  if (!rawInput) return [];
+  let textChunks = [];
+  if (Array.isArray(rawInput)) {
+    for (const item of rawInput) {
+      if (typeof item === 'string') textChunks.push(item);
+      else if (item && typeof item === 'object' && item.url) textChunks.push(String(item.url));
+    }
+  } else if (typeof rawInput === 'string') {
+    textChunks.push(rawInput);
+  }
+
+  const collectedUrls = [];
+  for (const chunk of textChunks) {
+    if (!chunk || typeof chunk !== 'string') continue;
+    const rawLines = chunk.split(/[\r\n]+/);
+    let currentAssembledUrl = '';
+    for (const rawLine of rawLines) {
+      let line = rawLine.trim();
+      if (!line) continue;
+      // Strip leading numbering like "1 ", "2. ", "3) "
+      line = line.replace(/^\d+[\.\s\:\-\)]+/, '').trim();
+      if (!line) continue;
+
+      const startsWithScheme = /^https?:\/\//i.test(line);
+      const startsWithDomain = /^(www\.|amazon\.|amzn\.|flipkart\.|fkrt\.|ajio\.|myntra\.|myntr\.|jiomart\.|reliancedigital\.)/i.test(line);
+      const isNewUrl = startsWithScheme || startsWithDomain;
+
+      if (isNewUrl) {
+        if (currentAssembledUrl) collectedUrls.push(currentAssembledUrl);
+        currentAssembledUrl = line;
+      } else if (currentAssembledUrl) {
+        if (currentAssembledUrl.endsWith('/') && line.startsWith('/')) {
+          currentAssembledUrl += line.slice(1);
+        } else {
+          currentAssembledUrl += line;
+        }
+      } else {
+        currentAssembledUrl = line;
+      }
+    }
+    if (currentAssembledUrl) collectedUrls.push(currentAssembledUrl);
+  }
+
+  const finalUrls = [];
+  for (const raw of collectedUrls) {
+    const tokens = raw.split(/[\s,]+/);
+    for (let token of tokens) {
+      token = token.trim();
+      if (!token) continue;
+      token = token.replace(/^[<"'([{\s]+|[>"')\]}\s]+$/g, '');
+      token = token.replace(/[;,.]\s*$/, '');
+      if (!token.startsWith('http://') && !token.startsWith('https://')) {
+        token = 'https://' + token;
+      }
+      try {
+        const parsed = new URL(token);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          if (parsed.hostname.includes('.')) {
+            finalUrls.push(parsed.href);
+          }
+        }
+      } catch (_) {}
+    }
+  }
+  return [...new Set(finalUrls)];
+}
+
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
@@ -420,34 +493,9 @@ router.post('/process-product', async (req, res) => {
 
     const { url: reqUrl, urls: reqUrls, postProduct = false, saleName = null } = req.body || {};
     
-    // Extract all URLs from url or urls (string, array, or newline/comma separated)
-    let rawUrls = [];
-    if (Array.isArray(reqUrls)) {
-      rawUrls = reqUrls;
-    } else if (typeof reqUrls === 'string' && reqUrls.trim()) {
-      rawUrls = reqUrls.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
-    } else if (Array.isArray(reqUrl)) {
-      rawUrls = reqUrl;
-    } else if (typeof reqUrl === 'string' && reqUrl.trim()) {
-      rawUrls = reqUrl.split(/[\r\n,]+/).map(u => u.trim()).filter(Boolean);
-    }
-
-    const validUrls = rawUrls.map(u => {
-      let clean = String(u).trim();
-      if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
-        clean = `https://${clean}`;
-      }
-      return clean;
-    }).filter(u => {
-      try {
-        const p = new URL(u);
-        return p.protocol === 'http:' || p.protocol === 'https:';
-      } catch {
-        return false;
-      }
-    });
-
-    if (validUrls.length === 0) {
+    // Extract and fix all URLs (stitches broken multiline URLs, removes line numbers, trims tokens)
+    const validUrls = extractAndFixUrls([reqUrls, reqUrl]);
+if (validUrls.length === 0) {
       return res.status(400).json({
         success: false,
         status: 'error',
@@ -473,8 +521,13 @@ router.post('/process-product', async (req, res) => {
       // Process URLs in strict sequence to guarantee chronological push IDs in Firebase RTDB (FIFO order)
       const results = [];
       for (const singleUrl of validUrls) {
-        const r = await processProductUrlOnCloud(singleUrl, { postProduct, saleName });
-        results.push(r);
+        try {
+          const r = await processProductUrlOnCloud(singleUrl, { postProduct, saleName });
+          results.push(r || { originalUrl: singleUrl, success: false, status: 'error', error: 'Empty response' });
+        } catch (itemErr) {
+          logger.error('Error processing single URL on cloud', { url: singleUrl, error: itemErr.message });
+          results.push({ originalUrl: singleUrl, success: false, status: 'error', error: itemErr.message, message: itemErr.message });
+        }
       }
 
       const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
@@ -518,7 +571,7 @@ router.post('/process-product', async (req, res) => {
         queuedId: queuedIds[0] || null,
         queuedIds,
         queuedItems,
-        targetDaemon: queuedItems[0]?.targetDaemon || (isLocalAlive ? 'local' : 'oracle'),
+        targetDaemon: queuedItems[0]?.targetDaemon || firstResult.targetDaemon || (firstResult.isLocalAlive ? 'local' : 'oracle') || 'local',
         lowerdealUrl: lowerdealUrls[0] || null,
         lowerdealUrls,
         bundleId: autoBundle ? autoBundle.bundleId : null,
@@ -550,8 +603,8 @@ router.post('/process-product', async (req, res) => {
         responsePayload.queuedId = firstResult.queuedId;
         responsePayload.targetDaemon = firstResult.targetDaemon;
         responsePayload.isDaemonAlive = firstResult.isDaemonAlive;
-        responsePayload.isLocalAlive = firstResult.isLocalAlive;
-        responsePayload.isOracleAlive = firstResult.isOracleAlive;
+        responsePayload.isLocalAlive = firstResult.isLocalAlive !== undefined ? Boolean(firstResult.isLocalAlive) : true;
+        responsePayload.isOracleAlive = firstResult.isOracleAlive !== undefined ? Boolean(firstResult.isOracleAlive) : true;
         responsePayload.outOfStock = Boolean(firstResult.outOfStock);
         responsePayload.inStock = firstResult.inStock !== undefined ? firstResult.inStock : !firstResult.outOfStock;
         responsePayload.availability = firstResult.availability || (firstResult.outOfStock ? 'OutOfStock' : 'InStock');
@@ -569,8 +622,13 @@ router.post('/process-product', async (req, res) => {
     if (validUrls.length > 1) {
       const results = [];
       for (const singleUrl of validUrls) {
-        const r = await processProductUrlOnCloud(singleUrl, { postProduct, saleName });
-        results.push(r);
+        try {
+          const r = await processProductUrlOnCloud(singleUrl, { postProduct, saleName });
+          results.push(r || { originalUrl: singleUrl, success: false, status: 'error', error: 'Empty response' });
+        } catch (itemErr) {
+          logger.error('Error processing single URL on cloud', { url: singleUrl, error: itemErr.message });
+          results.push({ originalUrl: singleUrl, success: false, status: 'error', error: itemErr.message, message: itemErr.message });
+        }
       }
       const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
       const successful = results.filter(r => r.success);
@@ -595,6 +653,8 @@ router.post('/process-product', async (req, res) => {
         summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed or queued: ${errorDetails}`;
       }
 
+      const firstResult = results[0] || {};
+      const productNumbers = results.map(r => r.productNumber).filter(Boolean);
       const localAutoBundle = await autoCreateBundleIfNeeded(results, validUrls, {
         saleName,
         force: Boolean(req.body && req.body.createBundle)
@@ -611,11 +671,15 @@ router.post('/process-product', async (req, res) => {
         queuedId: queuedIds[0] || null,
         queuedIds,
         queuedItems,
+        targetDaemon: queuedItems[0]?.targetDaemon || firstResult.targetDaemon || (firstResult.isLocalAlive ? 'local' : 'oracle') || 'local',
         lowerdealUrl: lowerdealUrls[0] || null,
         lowerdealUrls,
         bundleId: localAutoBundle ? localAutoBundle.bundleId : null,
         bundleUrl: localAutoBundle ? localAutoBundle.bundleUrl : null,
         bundle: localAutoBundle || null,
+        productCode: firstResult.productCode || null,
+        productNumber: firstResult.productNumber || productNumbers[0] || null,
+        productNumbers,
         results,
         message: summaryMessage
       };

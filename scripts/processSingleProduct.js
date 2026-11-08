@@ -82,12 +82,35 @@ async function main() {
     if (productCode) {
       logger.info(`Detected single product: [${storeKey || 'Unknown'}] code=${productCode}`);
       
-      const accessToken = await getAccessToken();
-      const jsonDataResult = await firebaseget();
-      const jsonData = jsonDataResult?.data || jsonDataResult || {};
-      const todayJsonDataResult = await firebaseget(true);
-      const todayJsonData = todayJsonDataResult?.data || todayJsonDataResult || {};
-      const len = jsonDataResult?.len || 0;
+      let accessToken = '';
+      try { accessToken = await getAccessToken(); } catch (_) {}
+
+      // Fast single product lookup: Fetch only this product instead of downloading 126k+ deals
+      let jsonData = {};
+      let todayJsonData = {};
+      let len = 0;
+      try {
+        const admin = require('firebase-admin');
+        if (admin.apps.length) {
+          const prodSnap = await admin.database().ref(`deals/${productCode}`).once('value');
+          if (prodSnap.exists()) {
+            const pVal = prodSnap.val();
+            jsonData[productCode] = pVal;
+            const todayStr = new Date().toISOString().split('T')[0];
+            if (pVal && pVal.date === todayStr) {
+              todayJsonData[productCode] = pVal;
+            }
+          }
+        } else {
+          const jsonDataResult = await firebaseget();
+          jsonData = jsonDataResult?.data || jsonDataResult || {};
+          const todayJsonDataResult = await firebaseget(true);
+          todayJsonData = todayJsonDataResult?.data || todayJsonDataResult || {};
+        }
+      } catch (dbErr) {
+        logger.warn('Direct product check failed, using fallback', { error: dbErr.message });
+      }
+      len = Object.keys(jsonData).length;
 
       const errorContext = {};
       const result = await getProductDetails(

@@ -7,6 +7,7 @@ function resolvePlatformFromUrl(url) {
   if (lower.includes('flipkart.') || lower.includes('shopsy.') || lower.includes('fkrt.') || lower.includes('fkrt.co')) return 'flipkart';
   if (lower.includes('ajio.')) return 'ajio';
   if (lower.includes('myntra.') || lower.includes('myntr.')) return 'myntra';
+  if (lower.includes('jiomart.') || lower.includes('reliancedigital.') || lower.includes('jio.')) return 'jiomart';
   return null;
 }
 
