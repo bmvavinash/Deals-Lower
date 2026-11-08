@@ -1,13 +1,12 @@
 const express = require('express');
 const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
-const getGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
-const { getAllSignals, updateSignal, getPendingClarifications, resolveClarification, saveSignals } = require('../../../database/stocksMultiDB');
+// Lazy-loaded getGoogleSheetRecommendations (heavy module)
+const { getAllSignals, updateSignal, getPendingClarifications, resolveClarification, saveSignals, memoryDB } = require('../../../database/stocksMultiDB');
 const { getLiveQuote, evaluateSignalWithCMP } = require('../../../services/marketQuoteService');
 const { parseStockMessage } = require('../../../services/stockSignalParser');
 const { generateBestInsights } = require('../../../services/stockInsightsAggregator');
-const { extractActiveWhatsAppChat } = require('../../../services/whatsappLiveExtractor');
-const { extractGoogleSheetSignals } = require('../../../services/googleSheetLiveExtractor');
+// Lazy-loaded extractActiveWhatsAppChat and extractGoogleSheetSignals to respect 512MB RAM cloud budget
 const { 
   checkAndTriggerSignalNotification, 
   evaluateAllSignalAlerts, 
@@ -49,7 +48,17 @@ router.get('/equity/signals', async (req, res, next) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    logger.error('Error fetching equity signals', { error: error.message });
+    logger.error('Error fetching equity signals, returning memory fallback', { error: error.message });
+    try {
+      const fallbackList = Object.values(memoryDB.signals || {});
+      return res.json({
+        success: true,
+        count: fallbackList.length,
+        data: fallbackList,
+        fallback: true,
+        timestamp: new Date().toISOString()
+      });
+    } catch (_) {}
     next(error);
   }
 });
@@ -68,7 +77,17 @@ router.get('/equity/insights', async (req, res, next) => {
       timestamp: new Date().toISOString()
     });
   } catch (error) {
-    logger.error('Error generating equity insights', { error: error.message });
+    logger.error('Error generating equity insights, returning memory fallback', { error: error.message });
+    try {
+      const fallbackInsights = memoryDB.insights || [];
+      return res.json({
+        success: true,
+        count: fallbackInsights.length,
+        data: fallbackInsights,
+        fallback: true,
+        timestamp: new Date().toISOString()
+      });
+    } catch (_) {}
     next(error);
   }
 });
@@ -79,6 +98,7 @@ router.get('/equity/insights', async (req, res, next) => {
  */
 router.post('/equity/extract-whatsapp', async (req, res, next) => {
   try {
+    const { extractActiveWhatsAppChat } = require('../../../services/whatsappLiveExtractor');
     const port = req.body.port ? parseInt(req.body.port, 10) : 9223;
     const result = await extractActiveWhatsAppChat({ port });
     res.json(result);
@@ -94,6 +114,7 @@ router.post('/equity/extract-whatsapp', async (req, res, next) => {
  */
 router.post('/equity/extract-sheets', async (req, res, next) => {
   try {
+    const { extractGoogleSheetSignals } = require('../../../services/googleSheetLiveExtractor');
     const port = req.body.port ? parseInt(req.body.port, 10) : 9223;
     const result = await extractGoogleSheetSignals({ port });
     res.json(result);
@@ -339,6 +360,7 @@ router.get('/recommendations', async (req, res, next) => {
     }
 
     try {
+      const getGoogleSheetRecommendations = require('../../../Stock/Scheduler/getGoogleSheetRecommendations');
       const recommendations = await getGoogleSheetRecommendations();
       return res.json({
         success: true,
