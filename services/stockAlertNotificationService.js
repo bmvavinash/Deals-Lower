@@ -1,5 +1,5 @@
 const { getModuleLogger } = require('../logger/logger');
-const { saveNotification, getNotifications, isAlertOnCooldown, recordAlertSent } = require('../database/stocksMultiDB');
+const { saveNotification, getNotifications, isAlertOnCooldown, recordAlertSent, updateSignal } = require('../database/stocksMultiDB');
 const { sendSingleAlert, dispatchGroupedTradeAlerts } = require('./genericTelegramDispatcher');
 
 const logger = getModuleLogger('stockAlertNotificationService');
@@ -8,7 +8,9 @@ const logger = getModuleLogger('stockAlertNotificationService');
 const COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 /**
- * Check a signal against CMP and construct an alert record if conditions are met
+ * Check a signal against CMP and construct an alert record ONLY if conditions trigger a STATE CHANGE.
+ * User Rule: "I don't require the old messages which are already in the Same state(buy or Sell).
+ *             I require notifications Only if the state changes."
  * @param {object} signal - Signal object enriched with currentCMP, status, etc.
  * @param {object} options - { sendImmediately: boolean }
  * @returns {object|null} Notification object if condition met, null otherwise
@@ -21,75 +23,123 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
   const symbol = signal.symbol.toUpperCase();
   const cmp = Number(signal.currentCMP);
   const action = (signal.action || '').toUpperCase();
-  const status = signal.status;
-  const isExpired = signal.isExpired === true || status === 'EXPIRED';
+  const currentStatus = signal.status;
+  const prevStatus = signal.previousStatus || null;
+  const lastNotifiedStatus = signal.lastNotifiedStatus || null;
+  const isExpired = signal.isExpired === true || currentStatus === 'EXPIRED';
 
-  let shouldNotify = false;
+  // =========================================================================
+  // CRITICAL USER INSTRUCTION:
+  // "I don't require the old messages which are already in the Same state(buy or Sell).
+  //  I require notifications Only if the state changes."
+  // =========================================================================
+  if (lastNotifiedStatus && lastNotifiedStatus === currentStatus) {
+    // Exactly the same state as last notified -> SILENCE! No duplicate notification.
+    return null;
+  }
+
+  let isStateChange = false;
   let notificationType = null;
   let alertTitle = '';
   let alertMessage = '';
 
-  // Condition 1: Target / Exit Price Triggered (SELL / EXIT)
-  if (status === 'TRIGGERED' || (action.includes('SELL') || action.includes('EXIT'))) {
+  // 1. Transition into TRIGGERED (Sell / Exit level achieved)
+  if (currentStatus === 'TRIGGERED' || (action.includes('SELL') || action.includes('EXIT'))) {
     const exitLevel = Number(signal.entryPrice || signal.entryMin || signal.target1);
     if (exitLevel && cmp >= exitLevel) {
-      const gainAboveExit = (((cmp - exitLevel) / exitLevel) * 100).toFixed(1);
-      shouldNotify = true;
-      notificationType = 'EXIT_TRIGGERED';
-      alertTitle = `TARGET / EXIT LEVEL MET: ${symbol}`;
-      alertMessage = `*${symbol}* (${signal.companyName || symbol}) has crossed recommended exit price!\n` +
-        `• Recommended Level: ₹${exitLevel}\n` +
-        `• *Current Live CMP*: ₹${cmp} (+${gainAboveExit}% above exit) ✅\n` +
-        `• Call: *${signal.action}*\n` +
-        `• Source: _${signal.source || 'Advisory'}_`;
+      if (lastNotifiedStatus !== 'TRIGGERED') {
+        const gainAboveExit = (((cmp - exitLevel) / exitLevel) * 100).toFixed(1);
+        isStateChange = true;
+        notificationType = 'EXIT_TRIGGERED';
+        alertTitle = `🎯 STATE CHANGE: ${symbol} REACHED EXIT LEVEL`;
+        alertMessage = `*${symbol}* (${signal.companyName || symbol}) has crossed recommended exit price!\n` +
+          `• Transition: *${prevStatus || 'MONITORING'}* ➔ *TRIGGERED* ✅\n` +
+          `• Recommended Exit: ₹${exitLevel}\n` +
+          `• *Current Live CMP*: ₹${cmp} (+${gainAboveExit}% above exit)\n` +
+          `• Call: *${signal.action}*\n` +
+          `• Source: _${signal.source || 'Advisory'}_`;
+      }
     }
   }
 
-  // Condition 2: Buy Zone Entered (BUY)
-  // Strict quality filter: Must NOT be expired, must be 3★+ or WhatsApp Source of Truth,
-  // and CMP must be at least 2% below buy ceiling to prevent marginal false alarms
-  if (!shouldNotify && !isExpired && (status === 'IN_BUY_RANGE' || action === 'BUY')) {
+  // 2. Transition into BUY ZONE (IN_BUY_RANGE)
+  if (!isStateChange && !isExpired && (currentStatus === 'IN_BUY_RANGE' || action === 'BUY')) {
     const rating = Number(signal.rating || 0);
     const isHighOrMediumConviction = rating >= 3 || signal.isSourceOfTruth;
+    const buyCeiling = Number(signal.entryMax || signal.entryPrice);
 
-    if (isHighOrMediumConviction) {
-      const buyCeiling = Number(signal.entryMax || signal.entryPrice);
-      if (buyCeiling && cmp <= (buyCeiling * 0.98)) {
+    if (isHighOrMediumConviction && buyCeiling && cmp <= (buyCeiling * 0.98)) {
+      if (lastNotifiedStatus !== 'IN_BUY_RANGE') {
         const discount = (((buyCeiling - cmp) / buyCeiling) * 100).toFixed(1);
-        shouldNotify = true;
+        isStateChange = true;
         notificationType = 'BUY_ZONE_ENTERED';
-        alertTitle = `BUY OPPORTUNITY IN RANGE: ${symbol}`;
-        alertMessage = `*${symbol}* (${signal.companyName || symbol}) is currently within buying range!\n` +
+        alertTitle = `🟢 STATE CHANGE: ${symbol} ENTERED BUY ZONE`;
+        alertMessage = `*${symbol}* (${signal.companyName || symbol}) has dipped into active buying range!\n` +
+          `• Transition: *${prevStatus || 'ABOVE_ENTRY'}* ➔ *IN_BUY_RANGE* 🚀\n` +
           `• Buy Ceiling: ₹${buyCeiling}\n` +
-          `• *Current Live CMP*: ₹${cmp} (${discount}% discount) 🚀\n` +
+          `• *Current Live CMP*: ₹${cmp} (${discount}% discount)\n` +
           (signal.rating ? `• ⭐ Star Rating: ${signal.rating}\n` : '') +
           `• Source: _${signal.source || 'Advisory'}_`;
       }
     }
   }
 
-  // Condition 3: Target 1 / Target 2 Hit
-  if (!shouldNotify && (status === 'TGT1_HIT' || status === 'TGT2_HIT')) {
-    shouldNotify = true;
-    notificationType = status;
-    alertTitle = `TARGET ACHIEVED: ${symbol}`;
-    alertMessage = `*${symbol}* (${signal.companyName || symbol}) has achieved target level!\n` +
-      `• *Current Live CMP*: ₹${cmp}\n` +
-      `• Status: ${signal.statusReason || status}\n` +
-      `• Source: _${signal.source || 'Advisory'}_`;
+  // 3. Approaching Buy Zone Alert (Within 1.5% of Buy Ceiling)
+  if (!isStateChange && !isExpired && action === 'BUY') {
+    const buyCeiling = Number(signal.entryMax || signal.entryPrice);
+    if (buyCeiling && cmp > (buyCeiling * 0.98) && cmp <= (buyCeiling * 1.015)) {
+      if (lastNotifiedStatus !== 'NEAR_BUY_ZONE' && lastNotifiedStatus !== 'IN_BUY_RANGE') {
+        isStateChange = true;
+        notificationType = 'NEAR_BUY_ZONE';
+        alertTitle = `👀 HEADS-UP: ${symbol} APPROACHING BUY ZONE`;
+        alertMessage = `*${symbol}* (${signal.companyName || symbol}) is within 1.5% of entering buy range!\n` +
+          `• Current CMP: ₹${cmp} vs Buy Ceiling ₹${buyCeiling}\n` +
+          `• Distance to entry: ${(((cmp - buyCeiling) / buyCeiling) * 100).toFixed(1)}%\n` +
+          `• Watch closely for limit order placement.`;
+      }
+    }
   }
 
-  // Condition 4: Stoploss Hit
-  if (!shouldNotify && status === 'SL_HIT') {
-    shouldNotify = true;
-    notificationType = 'SL_HIT';
-    alertTitle = `STOP LOSS TRIGGERED: ${symbol}`;
-    alertMessage = `*${symbol}* has hit stop loss level of ₹${signal.stopLoss}.\n` +
-      `• Current CMP: ₹${cmp}\n` +
-      `• Action: EXIT recommended to preserve capital.`;
+  // 4. Target 1 or Target 2 Hit
+  if (!isStateChange && (currentStatus === 'TGT1_HIT' || currentStatus === 'TGT2_HIT')) {
+    if (lastNotifiedStatus !== currentStatus) {
+      isStateChange = true;
+      notificationType = currentStatus;
+      alertTitle = `🏆 TARGET ACHIEVED: ${symbol}`;
+      alertMessage = `*${symbol}* (${signal.companyName || symbol}) has achieved target level!\n` +
+        `• Transition: *${prevStatus || 'ACTIVE'}* ➔ *${currentStatus}*\n` +
+        `• *Current Live CMP*: ₹${cmp}\n` +
+        `• Status: ${signal.statusReason || currentStatus}\n` +
+        `• Source: _${signal.source || 'Advisory'}_`;
+    }
   }
 
-  if (!shouldNotify) {
+  // 5. Stop Loss Hit
+  if (!isStateChange && currentStatus === 'SL_HIT') {
+    if (lastNotifiedStatus !== 'SL_HIT') {
+      isStateChange = true;
+      notificationType = 'SL_HIT';
+      alertTitle = `🛑 STOP LOSS TRIGGERED: ${symbol}`;
+      alertMessage = `*${symbol}* has breached stop loss level of ₹${signal.stopLoss}!\n` +
+        `• Transition: *${prevStatus || 'ACTIVE'}* ➔ *SL_HIT*\n` +
+        `• Current CMP: ₹${cmp}\n` +
+        `• Capital protection exit recommended.`;
+    }
+  }
+
+  // 6. Advisory Auto-Expired (Conflict Resolution)
+  if (!isStateChange && currentStatus === 'EXPIRED') {
+    if (lastNotifiedStatus !== 'EXPIRED' && signal.hasMultipleSources) {
+      isStateChange = true;
+      notificationType = 'ADVISORY_EXPIRED';
+      alertTitle = `🔄 ADVISORY UPDATE: ${symbol} BUY EXPIRED`;
+      alertMessage = `*${symbol}* previous buy recommendation is now EXPIRED.\n` +
+        `• Reason: WhatsApp Source of Truth exit call is active.\n` +
+        `• *Current Live CMP*: ₹${cmp}`;
+    }
+  }
+
+  if (!isStateChange || !notificationType) {
     return null;
   }
 
@@ -102,6 +152,18 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
 
   // Lock cooldown immediately to prevent concurrent triggers
   recordAlertSent(cooldownKey);
+
+  // Update in-memory and signal object state
+  signal.lastNotifiedStatus = currentStatus;
+  signal.lastNotifiedAt = new Date().toISOString();
+  if (prevStatus) signal.previousStatus = prevStatus;
+
+  // Persist lastNotifiedStatus to Multi-DB so reboots don't reset it
+  updateSignal(signal.id, {
+    lastNotifiedStatus: currentStatus,
+    lastNotifiedAt: signal.lastNotifiedAt,
+    previousStatus: prevStatus
+  }).catch(() => {});
 
   // Construct Notification Record
   const notificationRecord = {
@@ -117,11 +179,13 @@ async function checkAndTriggerSignalNotification(signal, options = { sendImmedia
     level: signal.entryPrice || signal.entryMax || signal.entryMin,
     rating: signal.rating || null,
     source: signal.source,
+    previousStatus: prevStatus,
+    newStatus: currentStatus,
     timestamp: new Date().toISOString(),
     channelSent: false
   };
 
-  logger.info(`🚨 [STOCK ALERT] Condition met for ${symbol}: ${notificationType} (CMP: ₹${cmp})`);
+  logger.info(`🚨 [STATE CHANGE ALERT] ${symbol}: ${prevStatus || 'NONE'} ➔ ${currentStatus} (CMP: ₹${cmp})`);
 
   // Dispatch individual immediate alert only if specifically forced (not used during batch scans)
   if (options.sendImmediately) {

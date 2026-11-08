@@ -124,11 +124,12 @@ const configRef = db.ref('schedulerConfig');
 function startCommandListener() {
   logger.info(`🚀 Sequential Queue listener started for [${daemonType.toUpperCase()}] (role: [${runnerRole.toUpperCase()}])`);
 
-  // Two-tier FIFO queue: Interactive single products get priority, but remain strictly FIFO
+  // Independent execution channels: Interactive priority commands NEVER wait for background crons!
   const priorityExecutionQueue = [];
   const normalExecutionQueue = [];
-  let isBusyExecuting = false;
-  let currentlyExecutingKey = null;
+  let isPriorityExecuting = false;
+  let isNormalExecuting = false;
+  const currentlyExecutingKeys = new Set();
 
   const executeCommandItem = (key, commandData) => {
     return new Promise(async (resolve) => {
@@ -148,14 +149,27 @@ function startCommandListener() {
         return resolve();
       }
 
-      // Check targetDaemon again against fresh data
+      // Check targetDaemon against fresh data
       const currentTarget = freshVal.targetDaemon || 'all';
-      if (currentTarget !== 'all' && currentTarget !== daemonType) {
+      const now = Date.now();
+      const createdAt = new Date(freshVal.createdAt || 0).getTime();
+      const isSingleProd = Boolean(
+        (freshVal.command && freshVal.command.includes('processSingleProduct.js')) ||
+        freshVal.isSingleProduct ||
+        freshVal.productCode
+      );
+      const isInteractive = freshVal.triggeredBy === 'api' || 
+                            freshVal.triggeredBy === 'dashboard' || 
+                            freshVal.priority === 1 || 
+                            isSingleProd;
+      const isStalePending = freshVal.status === 'pending' && (now - createdAt > 10000);
+
+      if (currentTarget !== 'all' && currentTarget !== daemonType && !isInteractive && !isStalePending) {
         logger.info(`Command ${key} is targeted to ${currentTarget}, skipping for ${daemonType}.`);
         return resolve();
       }
 
-      // Lock the command instantly to avoid duplicate runner pickup
+      // Lock the command instantly in RTDB
       try {
         await queueRef.child(key).update({
           status: 'running',
@@ -172,14 +186,13 @@ function startCommandListener() {
 
       logger.info(`⚙️ Running command on [${daemonType.toUpperCase()}]: "${commandData.command}"`);
 
-      // Adaptive watchdog: 3.5 minutes for single product extraction, 15 minutes for bulk updates
-      const isSingleProduct = commandData.command && commandData.command.includes('processSingleProduct.js');
-      const watchdogTimeoutMs = isSingleProduct ? 3.5 * 60 * 1000 : 15 * 60 * 1000;
+      // Adaptive watchdog: 7 minutes for single product extraction, 15 minutes for bulk updates
+      const watchdogTimeoutMs = isSingleProd ? 7 * 60 * 1000 : 15 * 60 * 1000;
       let hasFinished = false;
       const watchdogTimer = setTimeout(async () => {
         if (hasFinished) return;
         hasFinished = true;
-        logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" exceeded max runtime. Killing process tree...`);
+        logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" exceeded max runtime (${isSingleProd ? 7 : 15} mins). Killing process tree...`);
         try {
           if (child && child.pid) {
             if (process.platform === 'win32') {
@@ -193,7 +206,7 @@ function startCommandListener() {
         try {
           await queueRef.child(key).update({
             status: 'failed',
-            error: 'Watchdog Timeout: Terminated after 15 minutes of inactivity',
+            error: `Watchdog Timeout: Terminated after ${isSingleProd ? 7 : 15} minutes of runtime`,
             executorType: daemonType,
             completedAt: new Date().toISOString()
           });
@@ -246,22 +259,51 @@ function startCommandListener() {
     });
   };
 
-  const triggerNext = async () => {
-    if (isBusyExecuting) return;
-    const item = priorityExecutionQueue.shift() || normalExecutionQueue.shift();
+  // Dedicated High-Priority Pipeline: Executes process-product requests immediately
+  const triggerPriorityNext = async () => {
+    if (isPriorityExecuting) return;
+    const item = priorityExecutionQueue.shift();
     if (!item) return;
 
-    isBusyExecuting = true;
+    isPriorityExecuting = true;
     const { key, commandData } = item;
-    currentlyExecutingKey = key;
+    currentlyExecutingKeys.add(key);
     try {
       await executeCommandItem(key, commandData);
     } catch (e) {
-      logger.error('Error executing queued command', e);
+      logger.error('Error executing priority command', e);
     } finally {
-      currentlyExecutingKey = null;
-      isBusyExecuting = false;
-      setImmediate(triggerNext);
+      currentlyExecutingKeys.delete(key);
+      isPriorityExecuting = false;
+      setImmediate(triggerPriorityNext);
+      // Once priority tasks drain, trigger normal queue if waiting
+      if (priorityExecutionQueue.length === 0) {
+        setImmediate(triggerNormalNext);
+      }
+    }
+  };
+
+  // Dedicated Background Normal Pipeline: Runs crons/batch updates, always yields to priority tasks
+  const triggerNormalNext = async () => {
+    if (isNormalExecuting) return;
+    // Always yield immediately to any interactive priority requests
+    if (priorityExecutionQueue.length > 0 || isPriorityExecuting) {
+      return;
+    }
+    const item = normalExecutionQueue.shift();
+    if (!item) return;
+
+    isNormalExecuting = true;
+    const { key, commandData } = item;
+    currentlyExecutingKeys.add(key);
+    try {
+      await executeCommandItem(key, commandData);
+    } catch (e) {
+      logger.error('Error executing normal command', e);
+    } finally {
+      currentlyExecutingKeys.delete(key);
+      isNormalExecuting = false;
+      setImmediate(triggerNormalNext);
     }
   };
 
@@ -270,40 +312,55 @@ function startCommandListener() {
     const commandData = snapshot.val();
     if (!commandData || commandData.status !== 'pending') return;
 
-    // 1. Filter command by role
+    // 1. Filter command by role (supports 'all' wildcard)
     const commandRole = commandData.role || 'all';
-    if (runnerRole !== 'all' && commandRole !== runnerRole) {
+    if (runnerRole !== 'all' && commandRole !== 'all' && commandRole !== runnerRole) {
       logger.debug(`Skipping command ${commandData.id || key} (requires: ${commandRole}, we are: ${runnerRole})`);
       return;
     }
 
-    // 2. Filter command by targetDaemon
+    const now = Date.now();
+    const createdAt = new Date(commandData.createdAt || 0).getTime();
+    const isSingleProduct = Boolean(
+      (commandData.command && commandData.command.includes('processSingleProduct.js')) ||
+      commandData.isSingleProduct ||
+      commandData.productCode
+    );
+    const isInteractive = commandData.triggeredBy === 'api' || 
+                          commandData.triggeredBy === 'dashboard' || 
+                          commandData.priority === 1 || 
+                          isSingleProduct;
+
+    // 2. Filter command by targetDaemon with cross-daemon auto-adoption
     const target = commandData.targetDaemon || 'all';
+    const isStalePending = commandData.status === 'pending' && (now - createdAt > 10000);
+
     if (target !== 'all' && target !== daemonType) {
-      logger.debug(`Skipping command ${commandData.id || key} (targeted to: ${target}, we are: ${daemonType})`);
-      return;
+      // Topmost priority: Interactive process-product commands are adopted instantly by online daemon
+      if (isInteractive || isStalePending) {
+        logger.info(`⚡ [AUTO-ADOPTION] Adopting priority command ${commandData.id || key} (targeted to: [${target.toUpperCase()}]) immediately on [${daemonType.toUpperCase()}].`);
+      } else {
+        logger.debug(`Skipping background command ${commandData.id || key} (targeted to: ${target}, we are: ${daemonType})`);
+        return;
+      }
     }
 
     // 3. Avoid duplicate enqueueing if already executing or already in queue
-    if (currentlyExecutingKey === key || 
+    if (currentlyExecutingKeys.has(key) || 
         priorityExecutionQueue.some(item => item.key === key) || 
         normalExecutionQueue.some(item => item.key === key)) {
       return;
     }
 
-    // 4. Cooldown check / Expiration check for offline triggers
-    const createdAt = new Date(commandData.createdAt).getTime();
-    const now = Date.now();
-    const isSingleProduct = commandData.command && commandData.command.includes('processSingleProduct.js');
-    const expirationThresholdMs = isSingleProduct ? 10 * 60 * 1000 : 20 * 60 * 1000;
-    
-    if (!processStaleCommands && (now - createdAt > expirationThresholdMs)) {
-      logger.warn(`⚠️ Skipping stale trigger command ${commandData.id || key} (older than ${isSingleProduct ? 10 : 20} mins)`);
+    // 4. Cooldown check / Expiration check for background offline triggers ONLY
+    // Interactive single products NEVER expire! They must ALWAYS be processed as topmost priority.
+    if (!isInteractive && !processStaleCommands && (now - createdAt > 20 * 60 * 1000)) {
+      logger.warn(`⚠️ Skipping stale background trigger command ${commandData.id || key} (older than 20 mins)`);
       try {
         await queueRef.child(key).update({
           status: 'expired',
           expiredAt: new Date().toISOString(),
-          notes: 'Runner daemon was offline when triggered. Stale command expired automatically.'
+          notes: 'Runner daemon was offline when triggered. Stale background command expired automatically.'
         });
       } catch (err) {
         logger.error(`Failed to mark command as expired: ${key}`, err);
@@ -311,23 +368,35 @@ function startCommandListener() {
       return;
     }
 
-    // Two-tier FIFO queue: Interactive single products get priority, but run FIFO among themselves
-    const isInteractive = commandData.triggeredBy === 'api' || 
-                          commandData.priority === 1 || 
-                          isSingleProduct;
-
+    // Dispatch to dedicated pipeline
     if (isInteractive) {
-      logger.info(`⚡ Enqueuing [HIGH-PRIORITY FIFO] for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
+      logger.info(`⚡ Enqueuing [TOPMOST PRIORITY FIFO] for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
       priorityExecutionQueue.push({ key, commandData });
+      triggerPriorityNext();
     } else {
-      logger.info(`📥 Enqueuing [NORMAL FIFO] for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
+      logger.info(`📥 Enqueuing [BACKGROUND FIFO] for [${daemonType.toUpperCase()}]: ${commandData.name || key}`);
       normalExecutionQueue.push({ key, commandData });
+      triggerNormalNext();
     }
-    triggerNext();
   };
 
   queueRef.orderByChild('status').equalTo('pending').on('child_added', handleCommandCandidate);
   queueRef.on('child_changed', handleCommandCandidate);
+
+  // Proactive self-healing periodic sweep every 15s to guarantee 0% dropped commands
+  setInterval(async () => {
+    try {
+      const snap = await queueRef.orderByChild('status').equalTo('pending').limitToLast(25).once('value');
+      if (snap.exists()) {
+        const items = snap.val();
+        for (const [key, val] of Object.entries(items)) {
+          if (val && val.status === 'pending') {
+            handleCommandCandidate({ key, val: () => val });
+          }
+        }
+      }
+    } catch (_) {}
+  }, 15000);
 }
 
 /**
@@ -430,7 +499,7 @@ function rescheduleJobs(schedulerConfig) {
   if (runnerRole === 'all' || runnerRole === 'dealsTracking') {
     const cronExpr = getCronExpression(dealsTrackingInterval);
     const job = cron.schedule(cronExpr, () => {
-      triggerLocalJob('Active Deals Tracking', 'node scripts/trackActiveDeals.js');
+      triggerLocalJob('Active Deals Tracking', 'node scripts/scrapeLiveDeals.js');
     });
     activeCronJobs.set('dealsTracking', job);
     logger.info(`[Active Deals Tracking] scheduled on cron: "${cronExpr}"`);

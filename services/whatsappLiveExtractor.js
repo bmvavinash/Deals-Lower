@@ -1,7 +1,8 @@
-// Lazy-loaded puppeteer
+const puppeteer = require('puppeteer');
 const { parseStockMessage } = require('./stockSignalParser');
 const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
-const { saveRawMessage, saveSignals } = require('../database/stocksMultiDB');
+const { saveRawMessage, saveSignals, memoryDB } = require('../database/stocksMultiDB');
+const { dispatchWhatsAppAdvisoryAlert } = require('./genericTelegramDispatcher');
 const { getModuleLogger } = require('../logger/logger');
 
 const logger = getModuleLogger('whatsappLiveExtractor');
@@ -85,7 +86,6 @@ async function extractActiveWhatsAppChat(options = {}) {
 
   let browser;
   try {
-    const puppeteer = require('puppeteer');
     browser = await puppeteer.connect({ browserURL, defaultViewport: null });
     const pages = await browser.pages();
     const waPage = pages.find(p => p.url().includes('web.whatsapp.com'));
@@ -154,11 +154,11 @@ async function extractActiveWhatsAppChat(options = {}) {
 
     logger.info(`Extracted ${chatData.messages.length} messages from "${chatData.chatTitle}"`);
 
-    const extractedSignals = [];
     const rawSaved = [];
 
+    // 2. Parse all messages from chat
+    const candidateSignals = [];
     for (const msg of chatData.messages) {
-      // 1. Audit log raw message
       const rawRecord = await saveRawMessage({
         source: `WhatsApp: ${chatData.chatTitle}`,
         header: msg.header,
@@ -167,7 +167,6 @@ async function extractActiveWhatsAppChat(options = {}) {
       });
       rawSaved.push(rawRecord);
 
-      // 2. Parse stock signals
       const parseResult = parseStockMessage(msg.text, {
         source: `WhatsApp: ${chatData.chatTitle}`,
         sender: msg.header || 'WhatsApp',
@@ -177,22 +176,62 @@ async function extractActiveWhatsAppChat(options = {}) {
 
       if (parseResult.isTradeSignal && parseResult.signals.length > 0) {
         for (const sig of parseResult.signals) {
-          // Tag as 1st Priority Source of Truth
-          const truthSig = {
-            ...sig,
-            sourcePriority: 1,
-            isSourceOfTruth: true,
-            sourceLabel: 'WhatsApp (Source of Truth)'
-          };
-          // 3. Fetch live CMP
-          const quote = await getLiveQuote(sig.symbol);
-          const evaluated = evaluateSignalWithCMP(truthSig, quote);
-          extractedSignals.push(evaluated || truthSig);
+          candidateSignals.push(sig);
         }
       }
     }
 
-    // 4. Save parsed signals to Multi-DB
+    // 3. For any stock mentioned multiple times in the chat history, retain only the LATEST advisory
+    const latestBySymbol = new Map();
+    for (const sig of candidateSignals) {
+      latestBySymbol.set(sig.symbol.toUpperCase(), sig);
+    }
+
+    // 4. Enrich latest signals with CMP, compare hashes, and notify only on genuine changes
+    const extractedSignals = [];
+    for (const [sym, sig] of latestBySymbol.entries()) {
+      const truthSig = {
+        ...sig,
+        sourcePriority: 1,
+        isSourceOfTruth: true,
+        sourceLabel: 'WhatsApp (Source of Truth)'
+      };
+
+      const quote = await getLiveQuote(sig.symbol);
+      const evaluated = evaluateSignalWithCMP(truthSig, quote) || truthSig;
+
+      const id = `WA_SOIC_${truthSig.symbol.toUpperCase()}`;
+      const existing = memoryDB.signals ? memoryDB.signals[id] : null;
+      const msgHash = `${truthSig.symbol}_${truthSig.action}_${truthSig.entryPrice || truthSig.entryMax}_${truthSig.rating || 0}_${(truthSig.rawText || '').trim()}`;
+
+      const isNewOrUpdatedWA = !existing ||
+        !existing.lastNotifiedMsgHash ||
+        (existing.lastNotifiedMsgHash !== msgHash && (
+          existing.action !== truthSig.action ||
+          existing.entryPrice !== truthSig.entryPrice ||
+          existing.rating !== truthSig.rating ||
+          existing.rawText !== truthSig.rawText
+        ));
+
+      if (isNewOrUpdatedWA) {
+        evaluated.lastNotifiedMsgHash = msgHash;
+        evaluated.lastNotifiedStatus = evaluated.status;
+        evaluated.lastNotifiedAt = new Date().toISOString();
+
+        logger.info(`📢 New/Updated WhatsApp advisory detected for ${evaluated.symbol}. Dispatching Telegram alert...`);
+        dispatchWhatsAppAdvisoryAlert(evaluated).catch(err => {
+          logger.warn('Failed to dispatch WhatsApp advisory alert:', { error: err.message });
+        });
+      } else if (existing) {
+        evaluated.lastNotifiedMsgHash = existing.lastNotifiedMsgHash;
+        evaluated.lastNotifiedStatus = existing.lastNotifiedStatus;
+        evaluated.lastNotifiedAt = existing.lastNotifiedAt;
+      }
+
+      extractedSignals.push(evaluated);
+    }
+
+    // 5. Save parsed signals to Multi-DB
     if (extractedSignals.length > 0) {
       await saveSignals(extractedSignals);
       logger.info(`Saved ${extractedSignals.length} stock signals to database.`);

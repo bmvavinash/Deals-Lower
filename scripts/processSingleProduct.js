@@ -107,8 +107,17 @@ async function main() {
         saleName
       );
 
-      logger.info(`Product processing finished with result: ${result}`, { errorContext });
-      console.log(`[SUCCESS] Product processed: ${productCode} (Result: ${result})`);
+      let assignedNumber = null;
+      try {
+        const { getOrCreateProductNumber } = require("../services/productNumberService");
+        assignedNumber = await getOrCreateProductNumber(productCode, {
+          storeType: storeKey,
+          dealUrl: `https://lowerdeal.com/p/${productCode}`
+        });
+      } catch (_) {}
+
+      logger.info(`Product processing finished with result: ${result}`, { productCode, productNumber: assignedNumber, errorContext });
+      console.log(`[SUCCESS] Product processed: ${productCode} (Number: #${assignedNumber || "N/A"}) (Result: ${result})`);
     } else {
       logger.info(`No product code found. Treating URL as listing or search page: ${resolvedUrl}`);
       await extractAndStoreFromUrl(driver, resolvedUrl, 'website', '', null, 'productdeals', storeKey);

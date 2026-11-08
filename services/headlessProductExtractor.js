@@ -587,8 +587,23 @@ async function extractProductOnServer(rawUrl, options = {}) {
     logger.warn('Abnormal price alert check error:', { error: alertErr.message });
   }
 
+  // Allocate or resolve unique productNumber for YouTube & social sharing
+  let productNumber = null;
+  try {
+    const { getOrCreateProductNumber } = require("./productNumberService");
+    productNumber = await getOrCreateProductNumber(productCode, {
+      title,
+      price,
+      storeType: platform,
+      dealUrl: `https://lowerdeal.com/p/${productCode}`
+    });
+  } catch (numErr) {
+    logger.warn("Failed to assign productNumber on server", { error: numErr.message });
+  }
+
   const productPayload = {
     productCode,
+    productNumber: productNumber || undefined,
     title,
     productText: title,
     price: price ? String(price) : '',
@@ -621,6 +636,7 @@ async function extractProductOnServer(rawUrl, options = {}) {
       status: 'success',
       processedOn: 'server',
       productCode,
+      productNumber: productNumber || productPayload.productNumber || null,
       lowerdealUrl: `https://lowerdeal.com/p/${productCode}`,
       affiliateUrl: affiliateLinks.avinashbmv || affiliateLinks.avinashbmvINR || resolvedUrl,
       data: productPayload,

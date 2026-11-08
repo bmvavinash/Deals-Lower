@@ -132,6 +132,14 @@ async function runCMPRefresherJob() {
 
   const marketOpen = isIndianMarketOpen();
   jobState.isMarketHours = marketOpen;
+
+  // Gate market updates: when Indian market is closed, only refresh quotes once every 30 minutes
+  if (!marketOpen && jobState.totalRuns > 0 && jobState.totalRuns % 15 !== 0) {
+    jobState.lastStatus = 'market_closed_skipped';
+    logger.debug('[Scheduler] ⏸️ Indian Market closed. Skipping CMP refresh until next 30-min window.');
+    return;
+  }
+
   jobState.lastRunAt = new Date().toISOString();
   jobState.totalRuns++;
   jobState.lastStatus = 'running';

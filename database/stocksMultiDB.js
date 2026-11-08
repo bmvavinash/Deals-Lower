@@ -32,20 +32,13 @@ try {
   logger.warn('Could not initialize local stocks DB backup file', { error: e.message });
 }
 
-let persistTimer = null;
 function persistLocalDB() {
-  if (persistTimer) return;
-  persistTimer = setTimeout(() => {
-    persistTimer = null;
-    try {
-      memoryDB.meta.lastUpdated = new Date().toISOString();
-      fs.writeFile(LOCAL_DB_PATH, JSON.stringify(memoryDB), 'utf8', (err) => {
-        if (err) logger.error('Failed to persist local stocks DB', { error: err.message });
-      });
-    } catch (e) {
-      logger.error('Failed to persist local stocks DB', { error: e.message });
-    }
-  }, 500);
+  try {
+    memoryDB.meta.lastUpdated = new Date().toISOString();
+    fs.writeFileSync(LOCAL_DB_PATH, JSON.stringify(memoryDB, null, 2), 'utf8');
+  } catch (e) {
+    logger.error('Failed to persist local stocks DB', { error: e.message });
+  }
 }
 
 // Get Firebase admin database reference if initialized
@@ -59,6 +52,18 @@ function getFirebaseDB() {
     // Firebase not initialized yet
   }
   return null;
+}
+
+/**
+ * Run a promise against an enforced timeout to prevent network hangs on Render/cloud
+ */
+function safeFirebaseRead(promise, timeoutMs = 2500) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Firebase read timed out after ${timeoutMs}ms`)), timeoutMs)
+    )
+  ]);
 }
 
 /**
@@ -281,6 +286,10 @@ async function saveSignals(signals) {
 
     // UPSERT: If record already exists under this deterministic ID, update it rather than recreating it
     const existing = memoryDB.signals[id];
+    const newStatus = status || (existing ? existing.status : 'ACTIVE');
+    const prevStatus = existing ? existing.status : null;
+    const isStateChanged = Boolean(existing && prevStatus && newStatus && prevStatus !== newStatus);
+
     const record = {
       ...(existing || {}),
       ...sig,
@@ -295,8 +304,14 @@ async function saveSignals(signals) {
       target1: finalTarget1 !== undefined && finalTarget1 !== null ? finalTarget1 : (existing ? existing.target1 : null),
       stopLoss: finalStopLoss !== undefined && finalStopLoss !== null ? finalStopLoss : (existing ? existing.stopLoss : null),
       rating: sig.rating !== null && sig.rating !== undefined ? sig.rating : (existing ? existing.rating : null),
-      status: status || (existing ? existing.status : 'ACTIVE'),
+      status: newStatus,
       statusReason: statusReason || (existing ? existing.statusReason : null),
+      previousStatus: isStateChanged ? prevStatus : (existing ? existing.previousStatus : null),
+      lastStatusChangedAt: isStateChanged ? new Date().toISOString() : (existing ? existing.lastStatusChangedAt : null),
+      statusChanged: isStateChanged,
+      lastNotifiedStatus: sig.lastNotifiedStatus || (existing ? existing.lastNotifiedStatus : null),
+      lastNotifiedAt: sig.lastNotifiedAt || (existing ? existing.lastNotifiedAt : null),
+      lastNotifiedMsgHash: sig.lastNotifiedMsgHash || (existing ? existing.lastNotifiedMsgHash : null),
       isExpired,
       isReinitiated,
       currentCMP: sig.currentCMP || (existing ? existing.currentCMP : null),
@@ -362,12 +377,12 @@ function isBogusTicker(sym) {
 async function getAllSignals(filters = {}) {
   let signalsList = Object.values(memoryDB.signals || {});
 
-  // Try fetching fresh state from Firebase if available
+  // Try fetching fresh state from Firebase if available (with 2500ms timeout)
   const fb = getFirebaseDB();
   if (fb) {
     try {
-      const snap = await fb.ref('stocks/signals').once('value');
-      const val = snap.val();
+      const snap = await safeFirebaseRead(fb.ref('stocks/signals').once('value'), 2500);
+      const val = snap ? snap.val() : null;
       if (val) {
         // Detect legacy duplicate keys or timestamped keys in Firebase
         const rawList = Object.values(val);
@@ -634,11 +649,13 @@ async function getAllSignals(filters = {}) {
  */
 async function updateSignal(id, updates) {
   if (!memoryDB.signals[id]) {
-    // Check if in Firebase
+    // Check if in Firebase (with timeout)
     const fb = getFirebaseDB();
     if (fb) {
-      const snap = await fb.ref(`stocks/signals/${id}`).once('value');
-      if (snap.val()) memoryDB.signals[id] = snap.val();
+      try {
+        const snap = await safeFirebaseRead(fb.ref(`stocks/signals/${id}`).once('value'), 1500);
+        if (snap && snap.val()) memoryDB.signals[id] = snap.val();
+      } catch (e) {}
     }
   }
 
@@ -656,7 +673,7 @@ async function updateSignal(id, updates) {
   const fb = getFirebaseDB();
   if (fb) {
     try {
-      await fb.ref(`stocks/signals/${id}`).update(updates);
+      fb.ref(`stocks/signals/${id}`).update(updates).catch(() => {});
     } catch (fbErr) {
       logger.warn(`Firebase update failed for signal ${id}`, { error: fbErr.message });
     }
@@ -672,8 +689,8 @@ async function getPendingClarifications() {
   const fb = getFirebaseDB();
   if (fb) {
     try {
-      const snap = await fb.ref('stocks/clarifications').once('value');
-      const val = snap.val();
+      const snap = await safeFirebaseRead(fb.ref('stocks/clarifications').once('value'), 2000);
+      const val = snap ? snap.val() : null;
       if (val) memoryDB.clarifications = val;
     } catch (e) {}
   }
@@ -741,10 +758,12 @@ async function getBestInsights() {
   const fb = getFirebaseDB();
   if (fb) {
     try {
-      const snap = await fb.ref('stocks/insights').once('value');
-      const val = snap.val();
+      const snap = await safeFirebaseRead(fb.ref('stocks/insights').once('value'), 2000);
+      const val = snap ? snap.val() : null;
       if (val) memoryDB.insights = val;
-    } catch (e) {}
+    } catch (e) {
+      logger.warn('Could not read insights from Firebase, returning memory cache', { error: e.message });
+    }
   }
   return memoryDB.insights || [];
 }
@@ -772,7 +791,7 @@ async function saveNotification(notif) {
   const fb = getFirebaseDB();
   if (fb) {
     try {
-      await fb.ref(`stocks/notifications/${notif.id}`).set(notif);
+      fb.ref(`stocks/notifications/${notif.id}`).set(notif).catch(() => {});
     } catch (e) {}
   }
   return notif;
@@ -782,12 +801,14 @@ async function getNotifications(limit = 50) {
   const fb = getFirebaseDB();
   if (fb) {
     try {
-      const snap = await fb.ref('stocks/notifications').limitToLast(limit).once('value');
-      const val = snap.val();
+      const snap = await safeFirebaseRead(fb.ref('stocks/notifications').limitToLast(limit).once('value'), 2000);
+      const val = snap ? snap.val() : null;
       if (val) {
         memoryDB.notifications = Object.values(val).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       }
-    } catch (e) {}
+    } catch (e) {
+      logger.warn('Could not read notifications from Firebase, returning memory cache', { error: e.message });
+    }
   }
   return (memoryDB.notifications || []).slice(0, limit);
 }

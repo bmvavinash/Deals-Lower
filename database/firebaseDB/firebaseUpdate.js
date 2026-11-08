@@ -264,10 +264,20 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
         }
       }
 
-      // Ensure fields like createdAt, productId, productCode are preserved
+      // Ensure fields like createdAt, productId, productCode, productNumber are preserved
       diff.createdAt = existingProductData.createdAt;
       diff.productId = existingProductData.productId;
       diff.productCode = existingProductData.productCode;
+      if (existingProductData.productNumber) {
+        diff.productNumber = existingProductData.productNumber;
+      } else if (updatedData.productNumber) {
+        diff.productNumber = updatedData.productNumber;
+      } else {
+        try {
+          const { getOrCreateProductNumber } = require("../../services/productNumberService");
+          diff.productNumber = await getOrCreateProductNumber(productCode, existingProductData);
+        } catch (_) {}
+      }
       if(diff.date == existingProductData.date){
         if(!constants.updateTodayDeals) {
           logger.info("DB Found : Updated Product today hence not posting !" , { functionName: 'updateProduct' });
@@ -305,7 +315,13 @@ async function updateProduct(productCode, updatedData, access_token="", env="sta
       console.log('Product updated successfully!');
       return { status: 200, message: productStatus.PRODUCT_UPDATED_SUCCESSFULLY }; // Return success status
     } else {
-        // Create a new product - ensure no undefined values
+        // Create a new product - ensure productNumber is assigned for YouTube and social linking
+        if (!updatedData.productNumber) {
+          try {
+            const { getOrCreateProductNumber } = require("../../services/productNumberService");
+            updatedData.productNumber = await getOrCreateProductNumber(productCode, updatedData);
+          } catch (_) {}
+        }
         const sanitizedData = sanitizeForFirebase(updatedData);
         await productRef.set(sanitizedData); // Use .set() directly on the reference
       console.log('New product created!');

@@ -281,14 +281,28 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
     const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
 
+    let productNumber = null;
+    if (productCode) {
+      try {
+        const { getOrCreateProductNumber } = require("../../../services/productNumberService");
+        productNumber = await getOrCreateProductNumber(productCode, {
+          storeType: detectedPlatform,
+          dealUrl: `https://lowerdeal.com/p/${productCode}`
+        });
+      } catch (_) {}
+    }
+
     const commandPayload = {
       id: `process-product-${Date.now()}`,
       command: cliCommand,
       name: `Process Product (${targetUrl.substring(0, 50)}...)`,
       productCode: productCode || null,
+      productNumber: productNumber || null,
       targetDaemon: initialTarget,
       role: 'all',
       status: 'pending',
+      priority: 1,
+      isSingleProduct: true,
       targetUrl,
       createdAt: new Date().toISOString(),
       triggeredBy: 'api'
@@ -314,6 +328,7 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
       isLocalAlive,
       isOracleAlive,
       productCode,
+      productNumber: productNumber || null,
       lowerdealUrl,
       processedOn: 'queue',
       reason: anyDaemonAlive 
@@ -338,6 +353,51 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
  * Process one or multiple product URLs and save to database
  * Body: { url?: string, urls?: string | string[], postProduct?: boolean, saleName?: string }
  */
+
+async function autoCreateBundleIfNeeded(results, validUrls, options = {}) {
+  const { saleName, force = false } = options;
+  if (!force && (!validUrls || validUrls.length <= 1)) return null;
+  try {
+    const { createBundle } = require('../../../services/bundleService');
+    const bundleProductCodes = (results || []).map(r => r.productCode).filter(Boolean);
+    const bundleProductNumbers = (results || []).map(r => r.productNumber).filter(Boolean);
+    const bundleItems = (results || []).map(r => {
+      const d = r.data || {};
+      const livePrice = Number(d.dealPrice || d.price || d.discountedPrice || 0);
+      const regPrice = Number(d.originalPrice || d.regularPrice || d.mrp || livePrice);
+      const disc = regPrice > livePrice ? Math.round(((regPrice - livePrice) / regPrice) * 100) : Number(d.discountPercent || 0);
+      return {
+        productCode: r.productCode || d.productCode || null,
+        productNumber: r.productNumber || null,
+        lowerdealUrl: r.lowerdealUrl || (r.productCode ? `https://lowerdeal.com/p/${r.productCode}` : null),
+        title: d.title || d.productTitle || (r.productCode ? `Deal [${r.productCode}]` : 'Special Deal'),
+        price: livePrice || null,
+        originalPrice: regPrice || null,
+        discountPercent: disc || 0,
+        imageUrl: d.imageUrl || d.image || d.thumbnail || null,
+        storeType: d.storeType || d.store || null,
+        dealUrl: r.originalUrl || d.dealUrl || null,
+        inStock: d.inStock !== false && !d.isOutOfStock
+      };
+    });
+
+    return await createBundle({
+      title: saleName || 'YouTube Deals Collection',
+      productCodes: bundleProductCodes,
+      productNumbers: bundleProductNumbers,
+      items: bundleItems,
+      metadata: {
+        source: 'process-product',
+        urls: validUrls,
+        createdAt: new Date().toISOString()
+      }
+    });
+  } catch (err) {
+    logger.warn('Failed to auto-create collection bundle for multi-product request', { error: err.message });
+    return null;
+  }
+}
+
 router.post('/process-product', async (req, res) => {
   let driver = null;
   try {
@@ -410,15 +470,11 @@ router.post('/process-product', async (req, res) => {
     if (isCloudEnv) {
       logger.info('Cloud environment detected (Render/Hybrid). Running server-side headless extraction with Cuelinks API.', { count: validUrls.length, postProduct, saleName });
 
-      // Process up to 3 URLs concurrently
-      const CHUNK_SIZE = 3;
+      // Process URLs in strict sequence to guarantee chronological push IDs in Firebase RTDB (FIFO order)
       const results = [];
-      for (let i = 0; i < validUrls.length; i += CHUNK_SIZE) {
-        const chunk = validUrls.slice(i, i + CHUNK_SIZE);
-        const chunkResults = await Promise.all(
-          chunk.map(u => processProductUrlOnCloud(u, { postProduct, saleName }))
-        );
-        results.push(...chunkResults);
+      for (const singleUrl of validUrls) {
+        const r = await processProductUrlOnCloud(singleUrl, { postProduct, saleName });
+        results.push(r);
       }
 
       const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
@@ -426,6 +482,8 @@ router.post('/process-product', async (req, res) => {
       const failed = results.filter(r => !r.success);
       const firstResult = results[0] || {};
       const queuedCount = results.filter(r => r.queued || r.status === 'queued').length;
+      const queuedItems = results.filter(r => r.queued || r.status === 'queued');
+      const queuedIds = queuedItems.map(r => r.queuedId).filter(Boolean);
 
       let overallStatus = 'success';
       if (successful.length === 0) {
@@ -443,15 +501,32 @@ router.post('/process-product', async (req, res) => {
         summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed or queued: ${errorDetails}`;
       }
 
+      const productNumbers = results.map(r => r.productNumber).filter(Boolean);
+      const autoBundle = await autoCreateBundleIfNeeded(results, validUrls, {
+        saleName,
+        force: Boolean(req.body && req.body.createBundle)
+      });
+
       const responsePayload = {
-        success: successful.length > 0,
+        success: successful.length > 0 || queuedCount > 0,
         status: overallStatus,
         total: results.length,
         successfulCount: successful.length,
         failedCount: failed.length,
         queuedCount,
+        queued: queuedCount > 0,
+        queuedId: queuedIds[0] || null,
+        queuedIds,
+        queuedItems,
+        targetDaemon: queuedItems[0]?.targetDaemon || (isLocalAlive ? 'local' : 'oracle'),
         lowerdealUrl: lowerdealUrls[0] || null,
         lowerdealUrls,
+        bundleId: autoBundle ? autoBundle.bundleId : null,
+        bundleUrl: autoBundle ? autoBundle.bundleUrl : null,
+        bundle: autoBundle || null,
+        productCode: firstResult.productCode || null,
+        productNumber: firstResult.productNumber || productNumbers[0] || null,
+        productNumbers,
         results,
         message: summaryMessage
       };
@@ -467,6 +542,7 @@ router.post('/process-product', async (req, res) => {
         responsePayload.success = Boolean(firstResult.success || firstResult.queued);
         responsePayload.status = firstResult.status || overallStatus;
         responsePayload.productCode = firstResult.productCode;
+        responsePayload.productNumber = firstResult.productNumber || productNumbers[0] || null;
         responsePayload.data = firstResult.data;
         responsePayload.processedOn = firstResult.processedOn;
         responsePayload.isCuelinks = firstResult.isCuelinks;
@@ -499,10 +575,13 @@ router.post('/process-product', async (req, res) => {
       const lowerdealUrls = results.map(r => r.lowerdealUrl).filter(Boolean);
       const successful = results.filter(r => r.success);
       const failed = results.filter(r => !r.success);
+      const queuedCount = results.filter(r => r.queued || r.status === 'queued').length;
+      const queuedItems = results.filter(r => r.queued || r.status === 'queued');
+      const queuedIds = queuedItems.map(r => r.queuedId).filter(Boolean);
 
       let overallStatus = 'success';
       if (successful.length === 0) {
-        overallStatus = 'error';
+        overallStatus = queuedCount > 0 ? 'queued' : 'error';
       } else if (failed.length > 0) {
         overallStatus = 'partial';
       }
@@ -513,17 +592,30 @@ router.post('/process-product', async (req, res) => {
           const code = f.productCode ? `[${f.productCode}]` : '';
           return `${code} ${f.error || f.message || 'Failed'}`.trim();
         }).join('; ');
-        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed: ${errorDetails}`;
+        summaryMessage = `Processed ${successful.length}/${results.length} product(s). ${failed.length} product(s) failed or queued: ${errorDetails}`;
       }
 
+      const localAutoBundle = await autoCreateBundleIfNeeded(results, validUrls, {
+        saleName,
+        force: Boolean(req.body && req.body.createBundle)
+      });
+
       const responsePayload = {
-        success: successful.length > 0,
+        success: successful.length > 0 || queuedCount > 0,
         status: overallStatus,
         total: results.length,
         successfulCount: successful.length,
         failedCount: failed.length,
+        queuedCount,
+        queued: queuedCount > 0,
+        queuedId: queuedIds[0] || null,
+        queuedIds,
+        queuedItems,
         lowerdealUrl: lowerdealUrls[0] || null,
         lowerdealUrls,
+        bundleId: localAutoBundle ? localAutoBundle.bundleId : null,
+        bundleUrl: localAutoBundle ? localAutoBundle.bundleUrl : null,
+        bundle: localAutoBundle || null,
         results,
         message: summaryMessage
       };
@@ -572,6 +664,10 @@ router.post('/process-product', async (req, res) => {
           name: `Process Product (${url.substring(0, 50)}...)`,
           role: 'all',
           status: 'pending',
+          priority: 1,
+          isSingleProduct: true,
+          targetDaemon: 'all',
+          targetUrl: url,
           createdAt: new Date().toISOString(),
           triggeredBy: 'dashboard'
         });
@@ -793,6 +889,30 @@ router.get('/queue-status/:commandId', async (req, res) => {
       }
     }
 
+    // Dynamic failover from oracle to local if oracle daemon stalled or failed
+    if (cmd.targetDaemon === 'oracle' && (cmd.status === 'pending' || cmd.status === 'failed')) {
+      const createdAt = new Date(cmd.createdAt || 0).getTime();
+      const isStale = (Date.now() - createdAt) > 25000;
+      if (cmd.status === 'failed' || isStale) {
+        try {
+          const localSnap = await db.ref('daemons/local').once('value');
+          const localVal = localSnap.val();
+          const isLocalAlive = localVal && (Date.now() - new Date(localVal.timestamp).getTime() < 60000);
+          if (isLocalAlive) {
+            logger.info(`[POLLING FAILOVER] Reassigning stalled/failed Oracle command ${commandId} to Local Daemon.`);
+            await db.ref(`commandsQueue/${commandId}`).update({
+              targetDaemon: 'local',
+              status: 'pending',
+              failedOverFrom: 'oracle',
+              reassignedAt: new Date().toISOString()
+            });
+            cmd.targetDaemon = 'local';
+            cmd.status = 'pending';
+          }
+        } catch (_) {}
+      }
+    }
+
     let productData = null;
     const pCode = cmd.productCode;
     if (cmd.status === 'completed' && pCode) {
@@ -806,6 +926,7 @@ router.get('/queue-status/:commandId', async (req, res) => {
       } catch (_) {}
     }
 
+    const productNumber = productData?.productNumber || cmd.productNumber || null;
     return res.json({
       success: true,
       status: cmd.status, // 'pending' | 'running' | 'completed' | 'failed' | 'expired'
@@ -813,6 +934,7 @@ router.get('/queue-status/:commandId', async (req, res) => {
       executorId: cmd.executorId || null,
       executorType: cmd.executorType || null,
       productCode: pCode || null,
+      productNumber,
       lowerdealUrl: pCode ? `https://lowerdeal.com/p/${pCode}` : null,
       product: productData,
       completedAt: cmd.completedAt || null,
@@ -820,6 +942,119 @@ router.get('/queue-status/:commandId', async (req, res) => {
     });
   } catch (err) {
     logger.error('Error checking queue status', { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/deals/by-number/:productNumber
+ * Fetch product details by its unique numeric productNumber
+ * Perfect for YouTube / social video viewers looking up by ID
+ */
+
+/**
+ * GET /api/deals/bundle/:bundleId
+ * Returns collection bundle with all member products and real-time live prices
+ * Designed for YouTube viewers and multi-deal video landing pages
+ */
+router.get(['/bundle/:bundleId', '/by-bundle/:bundleId'], async (req, res) => {
+  try {
+    const { bundleId } = req.params;
+    if (!bundleId) {
+      return res.status(400).json({ success: false, error: 'Bundle ID is required' });
+    }
+    const { getBundleById } = require('../../../services/bundleService');
+    const bundle = await getBundleById(bundleId);
+    if (!bundle) {
+      return res.status(404).json({
+        success: false,
+        error: `Collection #${bundleId.toUpperCase()} not found`,
+        message: `No deal collection found for code #${bundleId.toUpperCase()}. Please check the link from the video description.`
+      });
+    }
+    return res.json({
+      success: true,
+      bundleId: bundle.bundleId,
+      bundleUrl: bundle.bundleUrl || `https://lowerdeal.com/b/${bundle.bundleId}`,
+      title: bundle.title || 'Featured Deals Collection',
+      itemCount: bundle.itemCount || (bundle.items ? bundle.items.length : 0),
+      productCodes: bundle.productCodes || [],
+      productNumbers: bundle.productNumbers || [],
+      items: bundle.items || [],
+      data: bundle
+    });
+  } catch (err) {
+    logger.error('Error in /bundle/:bundleId', { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/deals/bundle
+ * Manually create a collection bundle of products
+ * Body: { title?: string, productCodes?: string[], productNumbers?: number[], items?: Array }
+ */
+router.post('/bundle', async (req, res) => {
+  try {
+    const authResult = authenticateRequest(req);
+    if (!authResult.authenticated) {
+      return res.status(401).json({ success: false, error: 'Administrator authentication required.' });
+    }
+
+    const { title, productCodes = [], productNumbers = [], items = [], metadata = {} } = req.body || {};
+    if ((!productCodes || productCodes.length === 0) && (!productNumbers || productNumbers.length === 0) && (!items || items.length === 0)) {
+      return res.status(400).json({ success: false, error: 'At least one product code, product number, or item is required to form a bundle.' });
+    }
+
+    const { createBundle } = require('../../../services/bundleService');
+    const bundle = await createBundle({
+      title: title || 'Featured Deals Collection',
+      productCodes,
+      productNumbers,
+      items,
+      metadata: {
+        ...metadata,
+        createdBy: authResult.user.email,
+        createdAt: new Date().toISOString()
+      }
+    });
+
+    return res.json({
+      success: true,
+      bundleId: bundle.bundleId,
+      bundleUrl: bundle.bundleUrl,
+      bundle
+    });
+  } catch (err) {
+    logger.error('Error in POST /bundle', { error: err.message });
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+router.get('/by-number/:productNumber', async (req, res) => {
+  try {
+    const { productNumber } = req.params;
+    if (!productNumber) {
+      return res.status(400).json({ success: false, error: 'Product number is required' });
+    }
+    const { getProductByNumber } = require('../../../services/productNumberService');
+    const product = await getProductByNumber(productNumber);
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        error: `Product #${productNumber} not found`,
+        message: `No product found for Product Number #${productNumber}. Please check the number from the video.`
+      });
+    }
+    return res.json({
+      success: true,
+      productNumber: Number(product.productNumber || productNumber),
+      productCode: product.productCode || product.id,
+      lowerdealUrl: product.lowerdealUrl || `https://lowerdeal.com/p/${product.productCode || product.id}`,
+      data: product
+    });
+  } catch (err) {
+    logger.error('Error in /by-number/:productNumber', { error: err.message });
     return res.status(500).json({ success: false, error: err.message });
   }
 });

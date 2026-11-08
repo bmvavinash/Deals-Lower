@@ -16,6 +16,16 @@ const Dashboard: React.FC = () => {
   const [postProduct, setPostProduct] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedLowerdealUrls, setProcessedLowerdealUrls] = useState<string[]>([]);
+  const [batchItems, setBatchItems] = useState<Array<{
+    queuedId?: string;
+    url?: string;
+    lowerdealUrl?: string;
+    productCode?: string;
+    status: 'queued' | 'running' | 'completed' | 'failed';
+    title?: string;
+    price?: string | number;
+    executor?: string;
+  }>>([]);
   const [extractionStatus, setExtractionStatus] = useState<{
     status: 'idle' | 'queued' | 'running' | 'completed' | 'failed';
     title?: string;
@@ -23,6 +33,8 @@ const Dashboard: React.FC = () => {
     executor?: string;
     message?: string;
     productCode?: string;
+    completedCount?: number;
+    totalCount?: number;
   }>({ status: 'idle' });
   
   // Product code search and CRUD state
@@ -77,100 +89,137 @@ const Dashboard: React.FC = () => {
         setProductCode(response.data.productCode);
       }
 
-      // If queued for background daemon execution, poll queue status for live completion
-      if (response.data.status === 'queued' && response.data.queuedId) {
-        const queuedId = response.data.queuedId;
+      // Prepare batch items from results or single URL response
+      const resultsArray = Array.isArray(response.data.results) && response.data.results.length > 0
+        ? response.data.results
+        : [{
+            queuedId: response.data.queuedId,
+            originalUrl: productUrl,
+            lowerdealUrl: response.data.lowerdealUrl,
+            productCode: response.data.productCode,
+            status: response.data.status,
+            queued: response.data.queued,
+            data: response.data.data
+          }];
+
+      const initialBatch = resultsArray.map((r: any) => ({
+        queuedId: r.queuedId,
+        url: r.originalUrl,
+        lowerdealUrl: r.lowerdealUrl || (r.productCode ? `https://lowerdeal.com/p/${r.productCode}` : undefined),
+        productCode: r.productCode,
+        status: (r.status === 'success' || (!r.queued && r.success)) ? 'completed' : (r.queued ? 'queued' : (r.status === 'error' ? 'failed' : 'queued')),
+        title: r.data?.title || r.title || r.productCode,
+        price: r.data?.price || r.price,
+        executor: r.targetDaemon === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon'
+      }));
+      setBatchItems(initialBatch);
+
+      // If any items are queued for background daemon execution, poll queue status for live completion
+      const hasQueuedItems = initialBatch.some((b: any) => b.status === 'queued' || b.status === 'running');
+      if (hasQueuedItems) {
         const targetDaemonName = response.data.targetDaemon === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+        const totalCount = initialBatch.length;
+        const queuedCount = initialBatch.filter((b: any) => b.status === 'queued' || b.status === 'running').length;
+
         setExtractionStatus({
           status: 'queued',
           executor: targetDaemonName,
-          message: `Task queued on ${targetDaemonName}. Scraper is initializing headless browser to extract live details...`,
+          totalCount,
+          completedCount: totalCount - queuedCount,
+          message: totalCount > 1 
+            ? `${queuedCount} of ${totalCount} products queued on ${targetDaemonName}. Processing sequentially in FIFO order...`
+            : `Task queued on ${targetDaemonName}. Scraper is initializing headless browser to extract live details...`,
           productCode: response.data.productCode
         });
+
         addNotification({
           type: 'info',
-          message: `Product queued on ${targetDaemonName}. Output link is ready below while scraper extracts full details in background...`,
+          message: totalCount > 1
+            ? `${totalCount} product links submitted. Output links are ready below while scraper processes them in FIFO order...`
+            : `Product queued on ${targetDaemonName}. Output link is ready below while scraper extracts full details in background...`,
           source: 'Process Product',
           page: 'Dashboard'
         });
 
         const pollInterval = 2500;
-        const maxAttempts = 60; // ~150 seconds max polling (handles long-running extractions up to 100s+)
+        const maxAttempts = 60 * Math.max(1, Math.ceil(totalCount / 2));
         let attempts = 0;
-        
+        const currentBatch = [...initialBatch];
+
         const pollStatus = async () => {
           attempts++;
           try {
-            const statusRes = await dealsAPI.checkQueueStatus(queuedId);
-            const statusData = statusRes.data;
+            let anyRunning = false;
 
-            if (statusData.status === 'running') {
-              const runner = statusData.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
-              setExtractionStatus(prev => ({
-                ...prev,
-                status: 'running',
-                executor: runner,
-                message: `Actively running on ${runner}. Parsing live product page, prices, and images...`
-              }));
+            for (let i = 0; i < currentBatch.length; i++) {
+              const item = currentBatch[i];
+              if (item.queuedId && item.status !== 'completed' && item.status !== 'failed') {
+                try {
+                  const statusRes = await dealsAPI.checkQueueStatus(item.queuedId);
+                  const statusData = statusRes.data;
+
+                  if (statusData.status === 'running') {
+                    item.status = 'running';
+                    item.executor = statusData.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+                    anyRunning = true;
+                  } else if (statusData.status === 'completed') {
+                    item.status = 'completed';
+                    item.title = statusData.product?.title || item.title || statusData.productCode;
+                    item.price = statusData.product?.price || item.price;
+                    item.executor = statusData.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+                  } else if (statusData.status === 'failed') {
+                    item.status = 'failed';
+                  }
+                } catch (_) {}
+              }
             }
 
-            if (statusData.status === 'completed') {
+            setBatchItems([...currentBatch]);
+            const completedCount = currentBatch.filter((b: any) => b.status === 'completed').length;
+            const failedCount = currentBatch.filter((b: any) => b.status === 'failed').length;
+
+            if (completedCount + failedCount >= currentBatch.length) {
               clearInterval(pollTimer);
               setIsProcessing(false);
-              const prodTitle = statusData.product?.title || statusData.productCode || 'Deal';
-              const prodPrice = statusData.product?.price ? ` - ₹${statusData.product.price}` : '';
-              const executorLabel = statusData.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
+              const allSuccess = failedCount === 0;
               setExtractionStatus({
-                status: 'completed',
-                title: prodTitle,
-                price: statusData.product?.price,
-                executor: executorLabel,
-                message: 'Product is ready in the database! Live deal verified.',
-                productCode: statusData.productCode
+                status: allSuccess ? 'completed' : 'failed',
+                completedCount,
+                totalCount: currentBatch.length,
+                title: currentBatch.length === 1 ? currentBatch[0].title : undefined,
+                price: currentBatch.length === 1 ? currentBatch[0].price : undefined,
+                executor: currentBatch[0]?.executor,
+                message: allSuccess
+                  ? (currentBatch.length > 1
+                      ? `All ${currentBatch.length} products are ready in the database! Live deals verified.`
+                      : 'Product is ready in the database! Live deal verified.')
+                  : `Batch finished: ${completedCount} completed, ${failedCount} failed.`
               });
               addNotification({
-                type: 'success',
-                message: `Product extracted successfully (${prodTitle}${prodPrice}) via ${executorLabel}!`,
+                type: allSuccess ? 'success' : 'warning',
+                message: `Finished processing batch (${completedCount}/${currentBatch.length} saved to DB)!`,
                 source: 'Process Product',
                 page: 'Dashboard'
               });
-              if (statusData.productCode) {
-                setProductCode(statusData.productCode);
-              }
-              if (statusData.lowerdealUrl) {
-                setProcessedLowerdealUrls([statusData.lowerdealUrl]);
-              }
               return;
             }
 
-            if (statusData.status === 'failed') {
-              clearInterval(pollTimer);
-              setIsProcessing(false);
-              setExtractionStatus({
-                status: 'failed',
-                message: `Scraper execution failed: ${statusData.error || 'Unknown error'}`
-              });
-              addNotification({
-                type: 'error',
-                message: `Scraper execution failed: ${statusData.error || 'Unknown error'}`,
-                source: 'Process Product',
-                page: 'Dashboard'
-              });
-              return;
-            }
+            setExtractionStatus(prev => ({
+              ...prev,
+              status: anyRunning ? 'running' : 'queued',
+              completedCount,
+              totalCount: currentBatch.length,
+              message: anyRunning
+                ? `Extracting products... (${completedCount}/${currentBatch.length} ready in DB)`
+                : `Queued in line (FIFO)... (${completedCount}/${currentBatch.length} ready in DB)`
+            }));
 
             if (attempts >= maxAttempts) {
               clearInterval(pollTimer);
               setIsProcessing(false);
               setExtractionStatus({
                 status: 'running',
-                message: 'Processing is taking longer than 150s. Scraper is still working in background; link will be ready once saved.'
-              });
-              addNotification({
-                type: 'warning',
-                message: 'Processing is taking longer than 150s. Your Lowerdeal link is active below, and details will update when finished.',
-                source: 'Process Product',
-                page: 'Dashboard'
+                message: 'Processing is taking longer than expected. Scraper is still working in background; links will update once saved.'
               });
             }
           } catch (pollErr) {
@@ -446,11 +495,11 @@ const Dashboard: React.FC = () => {
           )}
 
           {/* Lowerdeal URLs Display */}
-          {processedLowerdealUrls.length > 0 && (
+          {(processedLowerdealUrls.length > 0 || batchItems.length > 0) && (
             <div style={{ marginTop: '20px', padding: '15px', backgroundColor: '#f5f5f5', border: '1px solid #ddd', borderRadius: '6px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
                 <h4 style={{ margin: 0, color: '#333' }}>
-                  🛒 Generated Lowerdeal URL{processedLowerdealUrls.length > 1 ? 's' : ''} ({processedLowerdealUrls.length}):
+                  🛒 Generated Lowerdeal URL{Math.max(processedLowerdealUrls.length, batchItems.length) > 1 ? 's' : ''} ({Math.max(processedLowerdealUrls.length, batchItems.length)}):
                 </h4>
                 {extractionStatus.status === 'completed' && (
                   <span style={{ fontSize: '12px', backgroundColor: '#4CAF50', color: 'white', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
@@ -459,33 +508,70 @@ const Dashboard: React.FC = () => {
                 )}
                 {(extractionStatus.status === 'queued' || extractionStatus.status === 'running') && (
                   <span style={{ fontSize: '12px', backgroundColor: '#ff9800', color: 'white', padding: '3px 8px', borderRadius: '12px', fontWeight: 'bold' }}>
-                    Scraping... ⏳
+                    {extractionStatus.completedCount !== undefined && extractionStatus.totalCount !== undefined
+                      ? `${extractionStatus.completedCount}/${extractionStatus.totalCount} Ready`
+                      : 'Scraping... ⏳'}
                   </span>
                 )}
               </div>
               <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                {processedLowerdealUrls.map((ldUrl, idx) => (
-                  <li key={idx} style={{ marginBottom: '8px', wordBreak: 'break-all' }}>
-                    <a
-                      href={ldUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{
-                        color: extractionStatus.status === 'completed' ? '#1b5e20' : '#1565c0',
-                        fontWeight: 'bold',
-                        fontSize: '14px',
-                        textDecoration: 'underline'
-                      }}
-                    >
-                      {ldUrl}
-                    </a>
-                    {extractionStatus.status === 'completed' && (
-                      <span style={{ marginLeft: '10px', fontSize: '12px', color: '#2e7d32', fontWeight: 'bold' }}>
-                        👉 Ready to view!
-                      </span>
-                    )}
-                  </li>
-                ))}
+                {(batchItems.length > 0 ? batchItems : processedLowerdealUrls.map(u => ({ lowerdealUrl: u, status: extractionStatus.status }))).map((item: any, idx: number) => {
+                  const ldUrl = item.lowerdealUrl || item;
+                  const isDone = item.status === 'completed' || extractionStatus.status === 'completed';
+                  const isRun = item.status === 'running';
+                  const isQueued = item.status === 'queued';
+                  const isFailed = item.status === 'failed';
+
+                  return (
+                    <li key={idx} style={{ marginBottom: '10px', wordBreak: 'break-all' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <a
+                          href={ldUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            color: isDone ? '#1b5e20' : '#1565c0',
+                            fontWeight: 'bold',
+                            fontSize: '14px',
+                            textDecoration: 'underline'
+                          }}
+                        >
+                          {ldUrl}
+                        </a>
+
+                        {isDone && (
+                          <span style={{ fontSize: '11px', backgroundColor: '#c8e6c9', color: '#1b5e20', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                            ✓ Live in DB {item.price ? `(₹${item.price})` : ''}
+                          </span>
+                        )}
+
+                        {isRun && (
+                          <span style={{ fontSize: '11px', backgroundColor: '#ffe0b2', color: '#e65100', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                            ⚡ Scraping now...
+                          </span>
+                        )}
+
+                        {isQueued && (
+                          <span style={{ fontSize: '11px', backgroundColor: '#f5f5f5', color: '#757575', border: '1px solid #ccc', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                            ⏳ Queued in line (FIFO)
+                          </span>
+                        )}
+
+                        {isFailed && (
+                          <span style={{ fontSize: '11px', backgroundColor: '#ffcdd2', color: '#c62828', padding: '2px 8px', borderRadius: '10px', fontWeight: 'bold' }}>
+                            ✕ Extraction failed
+                          </span>
+                        )}
+
+                        {item.title && (
+                          <span style={{ fontSize: '12px', color: '#555', fontStyle: 'italic' }}>
+                            — {item.title.substring(0, 45)}...
+                          </span>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
