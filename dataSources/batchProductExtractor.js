@@ -1188,6 +1188,17 @@ async function normalizeProduct(raw, url, sourceType = 'website', categoryKey = 
 		}
 	}
 
+	// Detect and enrich with slot deals attributes (12pm, 3pm, 6pm, 8pm, etc.)
+	try {
+		const { enrichProductWithSlot } = require('../utils/dealSlotUtils');
+		enrichProductWithSlot(normalized, { raw, url });
+		if (normalized.isSlotDeal) {
+			logger.info(`⚡ [SLOT DEAL DETECTED] Product ${normalized.productCode || 'unknown'}: slot="${normalized.dealSlot}", date="${normalized.dealDate}"`);
+		}
+	} catch (slotErr) {
+		logger.debug('Slot deal detection error (non-fatal):', { error: slotErr.message });
+	}
+
 	return normalized;
 }
 

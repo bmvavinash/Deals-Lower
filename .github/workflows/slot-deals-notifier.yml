@@ -1,0 +1,58 @@
+name: '⚡ Slot Deals Notifier (12PM, 3PM, 6PM, 8PM)'
+
+on:
+  schedule:
+    # 06:30 UTC = 12:00 PM IST
+    # 09:30 UTC = 03:00 PM IST
+    # 12:30 UTC = 06:00 PM IST
+    # 14:30 UTC = 08:00 PM IST
+    - cron: '30 6,9,12,14 * * *'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Time slot to check & notify (12pm, 3pm, 5pm, 6pm, 8pm, 9pm, or auto)'
+        required: false
+        default: 'auto'
+        type: string
+      force:
+        description: 'Force notification broadcast even if already sent today (true/false)'
+        required: false
+        default: 'false'
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  CI: 'true'
+  NODE_ENV: production
+  HEADLESS: 'true'
+
+jobs:
+  slot-deals-notifier:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: slot-deals-notifier-${{ github.event.inputs.slot || 'auto' }}
+      cancel-in-progress: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Slot Deals Notifier Runner
+        run: node actions/slot-deals-runner.js --slot="${{ github.event.inputs.slot || 'auto' }}" --force="${{ github.event.inputs.force || 'false' }}"
+        env:
+          FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
+          USERS_FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.USERS_FIREBASE_SERVICE_ACCOUNT_JSON }}
+          TELEGRAM_BOT_KEY: ${{ secrets.TELEGRAM_BOT_KEY }}
+          DEALS_GLOBAL_BOT_KEY: ${{ secrets.DEALS_GLOBAL_BOT_KEY }}

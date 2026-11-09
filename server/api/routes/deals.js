@@ -1598,6 +1598,16 @@ router.get('/', async (req, res, next) => {
       );
     }
 
+    // Filter by deal slot if specified (e.g. ?slot=12pm) - Strictly matches today's IST date
+    if (req.query.slot) {
+      const { normalizeSlotName, getISTDateString, isSlotDealValidForToday } = require('../../../utils/dealSlotUtils');
+      const normSlot = normalizeSlotName(req.query.slot);
+      if (normSlot) {
+        const targetDate = queryDate || date || getISTDateString();
+        dealsArray = dealsArray.filter(deal => isSlotDealValidForToday(deal, normSlot, targetDate));
+      }
+    }
+
     // Relevance scoring helper
     const getRelevanceScore = (product) => {
       let score = 0;
@@ -1989,15 +1999,105 @@ router.get('/search', async (req, res, next) => {
 });
 
 /**
+ * Helper to handle slot deals requests (filtering by slot and strictly by today's date in IST)
+ */
+async function handleSlotDealsRequest(req, res, slotName) {
+  try {
+    const { normalizeSlotName, getISTDateString, SLOT_CONFIG } = require('../../../utils/dealSlotUtils');
+    const { fetchSlotDeals } = require('../../../services/slotDealsNotificationService');
+    
+    const normSlot = normalizeSlotName(slotName);
+    const todayIST = req.query.date || getISTDateString();
+    const limit = Number(req.query.limit || 100);
+
+    const products = await fetchSlotDeals(normSlot, todayIST);
+    const sliced = products.slice(0, limit);
+
+    return res.json({
+      success: true,
+      slot: normSlot,
+      date: todayIST,
+      isSlotDeal: true,
+      slotConfig: SLOT_CONFIG[normSlot] || null,
+      data: sliced,
+      count: sliced.length,
+      totalCount: products.length
+    });
+  } catch (error) {
+    logger.error('Error fetching slot deals', { slotName, error: error.message });
+    return res.status(500).json({ success: false, error: 'Failed to fetch slot deals' });
+  }
+}
+
+/**
+ * GET /api/deals/slots/summary
+ * Returns summary of today's time slots, current active slot, and deal counts
+ */
+router.get('/slots/summary', async (req, res, next) => {
+  try {
+    const { getISTDateString, getISTHour, getCurrentOrClosestSlot, SLOT_CONFIG, VALID_SLOTS } = require('../../../utils/dealSlotUtils');
+    const { fetchSlotDeals } = require('../../../services/slotDealsNotificationService');
+    
+    const todayIST = req.query.date || getISTDateString();
+    const currentHour = getISTHour();
+    const activeSlot = getCurrentOrClosestSlot();
+
+    const slotsSummary = await Promise.all(
+      VALID_SLOTS.map(async (slotKey) => {
+        const config = SLOT_CONFIG[slotKey] || {};
+        const deals = await fetchSlotDeals(slotKey, todayIST).catch(() => []);
+        const isLive = activeSlot === slotKey;
+        return {
+          slot: slotKey,
+          label: config.label || slotKey.toUpperCase(),
+          hour: config.hour,
+          count: deals.length,
+          isLive,
+          redirectUrl: `/sale/${slotKey}`
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      date: todayIST,
+      currentHour,
+      activeSlot,
+      slots: slotsSummary
+    });
+  } catch (error) {
+    logger.error('Error getting slots summary:', error.message);
+    res.status(500).json({ success: false, error: 'Failed to get slots summary' });
+  }
+});
+
+/**
+ * GET /api/deals/slot/:slotName
+ * Get products matching a specific time slot (e.g. 12pm, 3pm, 6pm, 8pm)
+ * Strictly filters out older deals from past days.
+ */
+router.get('/slot/:slotName', async (req, res, next) => {
+  const { slotName } = req.params;
+  return handleSlotDealsRequest(req, res, slotName);
+});
+
+/**
  * GET /api/deals/sale/:saleName
- * Get products matching a specific sale name
+ * Get products matching a specific sale name OR time slot name (12pm, 3pm, etc.)
  */
 router.get('/sale/:saleName', async (req, res, next) => {
   try {
     const { saleName } = req.params;
     const { limit = 100 } = req.query;
+    const { normalizeSlotName } = require('../../../utils/dealSlotUtils');
+
+    // If saleName is a slot (e.g. 12pm, 3pm, 6pm, 8pm), route to slot handler
+    const detectedSlot = normalizeSlotName(saleName);
+    if (detectedSlot) {
+      return handleSlotDealsRequest(req, res, detectedSlot);
+    }
     
-    // Check both standard deals and static productdeals
+    // Standard sale name query
     const [dealsSnap, staticSnap] = await Promise.all([
       productDealsDB.dealsRef
         .orderByChild('saleName')

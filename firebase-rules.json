@@ -16,7 +16,10 @@
         "categoryKey",
         "categoryGroup",
         "hierarchicalCategory/subcategory",
-        "storeType"
+        "storeType",
+        "dealSlot",
+        "dealDate",
+        "dealSlotKey"
       ]
     },
     "productdeals": {
@@ -33,7 +36,10 @@
         "categoryKey",
         "categoryGroup",
         "hierarchicalCategory/subcategory",
-        "storeType"
+        "storeType",
+        "dealSlot",
+        "dealDate",
+        "dealSlotKey"
       ],
       "$id": {
         ".read": true,
@@ -45,7 +51,10 @@
         "staticCategory",
         "categoryGroup",
         "staticSubcategory",
-        "staticStyle"
+        "staticStyle",
+        "dealSlot",
+        "dealDate",
+        "dealSlotKey"
       ],
       "$id": {
         ".read": true,

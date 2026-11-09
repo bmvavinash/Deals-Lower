@@ -451,6 +451,15 @@ class ProductDealsDB {
 					sourceUrl: product.sourceUrl || "",
 					matchId: product.matchId || "",
 					
+					// Slot deals and sale attributes
+					dealSlot: product.dealSlot || "",
+					dealDate: product.dealDate || "",
+					dealSlotKey: product.dealSlotKey || "",
+					isSlotDeal: product.isSlotDeal || false,
+					dealLabel: product.dealLabel || "",
+					dealExpiresAt: product.dealExpiresAt || "",
+					saleName: product.saleName || "",
+					
 					// Extracted attributes
 					attributes: product.attributes || null
 				};
