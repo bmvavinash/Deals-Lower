@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+// Lazy-loaded puppeteer
 const https = require('https');
 const { getModuleLogger } = require('../logger/logger');
 const { saveSignals } = require('../database/stocksMultiDB');
@@ -65,6 +65,7 @@ async function extractGoogleSheetSignals(options = {}) {
 
   let browser;
   try {
+    const puppeteer = require('puppeteer');
     browser = await puppeteer.connect({ browserURL: `http://127.0.0.1:${port}` });
   } catch (err) {
     throw new Error(`Could not connect to Chrome on port ${port}. Ensure Chrome 9223 is running with remote debugging.`);

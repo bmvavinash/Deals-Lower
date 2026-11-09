@@ -170,14 +170,24 @@ function startCommandListener() {
 
       logger.info(`⚙️ Running command on [${daemonType.toUpperCase()}]: "${commandData.command}"`);
 
-      // Execute script locally with a 15-minute watchdog timer to prevent hangs
-      const watchdogTimeoutMs = 15 * 60 * 1000;
+      // Adaptive watchdog: 3.5 minutes for single product extraction, 15 minutes for bulk updates
+      const isSingleProduct = commandData.command && commandData.command.includes('processSingleProduct.js');
+      const watchdogTimeoutMs = isSingleProduct ? 3.5 * 60 * 1000 : 15 * 60 * 1000;
       let hasFinished = false;
       const watchdogTimer = setTimeout(async () => {
         if (hasFinished) return;
         hasFinished = true;
-        logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" exceeded max runtime. Killing process...`);
-        try { child.kill('SIGKILL'); } catch (_) {}
+        logger.error(`🚨 Watchdog Alert: Command "${commandData.name}" exceeded max runtime. Killing process tree...`);
+        try {
+          if (child && child.pid) {
+            if (process.platform === 'win32') {
+              exec(`taskkill /F /T /PID ${child.pid} >nul 2>&1`);
+            } else {
+              exec(`pkill -P ${child.pid} >/dev/null 2>&1; kill -9 ${child.pid} >/dev/null 2>&1 || true`);
+            }
+          }
+          child.kill('SIGKILL');
+        } catch (_) {}
         try {
           await queueRef.child(key).update({
             status: 'failed',
@@ -544,7 +554,34 @@ async function selfHealStaleExecution(isBoot = false) {
   }
 }
 
+function cleanupStaleTempProfiles() {
+  try {
+    const tempDir = os.tmpdir();
+    const files = fs.readdirSync(tempDir);
+    const now = Date.now();
+    let cleaned = 0;
+    for (const file of files) {
+      if (file.startsWith('scoped_dir') || file.startsWith('chrome_')) {
+        const fullPath = path.join(tempDir, file);
+        try {
+          const stat = fs.statSync(fullPath);
+          if (now - stat.mtimeMs > 60 * 60 * 1000) { // older than 1 hour
+            fs.rmSync(fullPath, { recursive: true, force: true });
+            cleaned++;
+          }
+        } catch (_) {}
+      }
+    }
+    if (cleaned > 0) {
+      logger.info(`🧹 Cleaned up ${cleaned} stale temp browser profile directories from ${tempDir}`);
+    }
+  } catch (err) {
+    logger.warn('Temp directory cleanup warning:', err.message);
+  }
+}
+
 async function main() {
+  cleanupStaleTempProfiles();
   await selfHealStaleExecution(true);
   startCommandListener();
   startConfigListener();
@@ -552,6 +589,8 @@ async function main() {
   
   // Continuously check for hung/stuck executions every 60 seconds
   setInterval(() => selfHealStaleExecution(false), 60000);
+  // Periodically clean stale temp browser profiles every 30 minutes
+  setInterval(cleanupStaleTempProfiles, 30 * 60 * 1000);
 }
 
 // Start the daemon

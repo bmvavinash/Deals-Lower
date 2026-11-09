@@ -26,8 +26,8 @@ router.get('/deals', async (req, res, next) => {
     }
     
     // Get deals from both databases (with timeout)
-    const dealsPromise = productDealsDB.dealsRef.once('value');
-    const productDealsPromise = productDealsDB.productdealsRef.once('value');
+    const dealsPromise = productDealsDB.dealsRef.limitToLast(100).once('value');
+    const productDealsPromise = productDealsDB.productdealsRef.limitToLast(100).once('value');
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Database timeout')), 10000)
     );

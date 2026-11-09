@@ -93,6 +93,18 @@ class ExecutionTracker {
   }
 
   setupFirebaseListeners() {
+    // If running in API server mode or Render, do not attach heavy root .on('value') listener
+    // This prevents downloading massive historical execution logs and causing out-of-memory / GC loop
+    if (process.env.IS_API_SERVER === 'true' || process.env.RENDER) {
+      logger.info('API server mode: skipping heavy root .on("value") listener on executionTracking to save RAM/CPU');
+      if (this.ref) {
+        this.ref.child('current').on('value', (snapshot) => {
+          this.currentExecution = snapshot.val() || null;
+        });
+      }
+      return;
+    }
+
     // Listen for real-time updates
     this.ref.on('value', (snapshot) => {
       const data = snapshot.val();
@@ -1150,15 +1162,44 @@ class ExecutionTracker {
   /**
    * Get execution history
    */
-  getHistory(limit = 10) {
-    return this.executionHistory.slice(0, limit);
+  async getHistory(limit = 10) {
+    if (this.executionHistory && this.executionHistory.length > 0) {
+      return this.executionHistory.slice(0, limit);
+    }
+    if (this.ref) {
+      try {
+        const snap = await this.ref.child('history').limitToLast(limit).once('value');
+        if (snap.exists()) {
+          const val = snap.val();
+          const arr = Array.isArray(val) ? val : Object.values(val);
+          arr.sort((a, b) => {
+            const tA = a.startTime ? new Date(a.startTime).getTime() : 0;
+            const tB = b.startTime ? new Date(b.startTime).getTime() : 0;
+            return tB - tA;
+          });
+          return arr;
+        }
+      } catch (err) {
+        logger.error('Failed to fetch history on demand from Firebase', { error: err.message });
+      }
+    }
+    return [];
   }
 
   /**
    * Get analytics summary
    */
-  getAnalytics() {
-    const recent = this.executionHistory.slice(0, 10);
+  async getAnalytics() {
+    let recent = this.executionHistory ? this.executionHistory.slice(0, 10) : [];
+    if (recent.length === 0 && this.ref) {
+      try {
+        const snap = await this.ref.child('history').limitToLast(10).once('value');
+        if (snap.exists()) {
+          const val = snap.val();
+          recent = Array.isArray(val) ? val : Object.values(val);
+        }
+      } catch (_) {}
+    }
     
     const platformStats = {};
     const categoryStats = {};

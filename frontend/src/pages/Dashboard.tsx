@@ -64,6 +64,9 @@ const Dashboard: React.FC = () => {
       } else if (response.data.lowerdealUrl) {
         setProcessedLowerdealUrls([response.data.lowerdealUrl]);
       }
+      if (response.data.productCode) {
+        setProductCode(response.data.productCode);
+      }
 
       // If queued for background daemon execution, poll queue status for live completion
       if (response.data.status === 'queued' && response.data.queuedId) {
@@ -71,13 +74,13 @@ const Dashboard: React.FC = () => {
         const targetDaemonName = response.data.targetDaemon === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
         addNotification({
           type: 'info',
-          message: `Product queued on ${targetDaemonName}. Scraper is extracting live details in background...`,
+          message: `Product queued on ${targetDaemonName}. Output link is ready below while scraper extracts full details in background...`,
           source: 'Process Product',
           page: 'Dashboard'
         });
 
         const pollInterval = 2500;
-        const maxAttempts = 18; // ~45 seconds max polling
+        const maxAttempts = 60; // ~150 seconds max polling (handles long-running extractions up to 100s+)
         let attempts = 0;
         
         const pollStatus = async () => {
@@ -101,6 +104,9 @@ const Dashboard: React.FC = () => {
               if (statusData.productCode) {
                 setProductCode(statusData.productCode);
               }
+              if (statusData.lowerdealUrl) {
+                setProcessedLowerdealUrls([statusData.lowerdealUrl]);
+              }
               return;
             }
 
@@ -121,7 +127,7 @@ const Dashboard: React.FC = () => {
               setIsProcessing(false);
               addNotification({
                 type: 'warning',
-                message: 'Processing is taking longer than expected. You can check the Lowerdeal link in a moment.',
+                message: 'Processing is taking longer than 150s. Your Lowerdeal link is active below, and details will update when finished.',
                 source: 'Process Product',
                 page: 'Dashboard'
               });

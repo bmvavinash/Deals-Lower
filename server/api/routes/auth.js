@@ -10,7 +10,10 @@ const ALLOWED_ADMIN_EMAILS = [
   'avi2bmv@gmail.com',
   'avinash1bmv@gmail.com',
   'gupta4aventis@gmail.com',
-  'gupta4aventis'
+  'gupta4aventis',
+  'jahnavi.anila99@gmail.com',
+  'bmvavinash@gmail.com',
+  'avideploy@gmail.com'
 ];
 
 // Backend password verification (not in frontend)
@@ -74,7 +77,8 @@ function validateCredentials(email, password) {
   if (!password || typeof password !== 'string') {
     return { valid: false, error: 'Password is required.' };
   }
-  const isPasswordValid = VALID_PASSWORDS.some(validPass => validPass === password);
+  const passClean = password.trim();
+  const isPasswordValid = VALID_PASSWORDS.some(validPass => validPass === password || validPass === passClean);
   if (!isPasswordValid) {
     return { valid: false, error: 'Access Denied: Invalid password.' };
   }

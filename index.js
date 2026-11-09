@@ -1,4 +1,8 @@
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+if (process.env.RENDER || process.env.PORT) {
+  module.exports = require('./server.js');
+  return;
+}
 const { Builder, By, Key, until } = require("selenium-webdriver");
 const { scrapeAmazonProduct } = require("./scrappers/amazon")
 const { scrapeFlipkartProduct } = require("./scrappers/flipkart");

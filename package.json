@@ -2,13 +2,13 @@
   "name": "dealsefficient",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "api": "node server/api/index.js",
+    "api": "node --max-old-space-size=384 server/api/index.js",
     "frontend": "cd frontend && npm run dev",
     "start:all": "concurrently \"npm run api\" \"npm run frontend\"",
-    "start": "node server/api/index.js"
+    "start": "node --max-old-space-size=384 server/api/index.js"
   },
   "keywords": [],
   "author": "",

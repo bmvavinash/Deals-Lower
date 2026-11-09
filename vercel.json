@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "https://dealsoptimised.onrender.com/api/$1"
+      "destination": "http://140.245.249.227:3001/api/$1"
     },
     {
       "source": "/(.*)",

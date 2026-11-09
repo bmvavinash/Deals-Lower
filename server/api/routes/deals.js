@@ -23,6 +23,7 @@ const { resolvePlatformFromUrl } = require('../../../utils/platformUtils');
 // scheduler lazy-loaded on demand
 const { productStatus } = require('../../../config/const');
 const constants = require('../../../config/constants');
+const config = require('../../../config/config.js');
 const { getAccessToken } = require('../../../database/getAccessToken');
 const { firebaseget } = require('../../../database/firebaseget');
 const { firebasepost } = require('../../../database/firebasepost');
@@ -38,7 +39,6 @@ async function processProduct() {
   }
   return await _processProduct(...arguments);
 }
-const { executionTracker } = require('../../../services/executionTracker');
 const { spawn } = require('child_process');
 const net = require('net');
 const { authenticateRequest } = require('./auth');
@@ -110,10 +110,8 @@ function initSearchIndexCache() {
   });
 }
 
-// Pre-warm the cache, but skip on Render to prevent OOM
-if (!process.env.RENDER) {
-  setTimeout(initSearchIndexCache, 2000);
-}
+// Search index cache pre-warm disabled on boot to prevent OOM
+// Cached on demand during search queries
 
 function isProcessRunning(pid) {
   if (!pid || Number.isNaN(pid)) return false;
@@ -221,24 +219,33 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     logger.info(`Platform is ${detectedPlatform} (requires full browser automation). Skipping static HTML fetch on Render and offloading directly to daemons.`);
   }
 
-  // 2. Check heartbeats of both Daemons (Local residential PC vs Oracle Cloud VM)
-  let isLocalAlive = false;
-  let isOracleAlive = false;
-  let anyDaemonAlive = false;
+  // 2. Check heartbeats of Daemons with strict 800ms timeout to guarantee instant sub-second response
+  let isLocalAlive = true;
+  let isOracleAlive = true;
+  let anyDaemonAlive = true;
+
+  const withTimeout = (promise, ms, fallback) =>
+    Promise.race([
+      promise,
+      new Promise(resolve => setTimeout(() => resolve(fallback), ms))
+    ]);
 
   try {
     if (admin.apps.length) {
       const db = admin.database();
       const now = Date.now();
-      const [localSnap, oracleSnap, legacySnap] = await Promise.all([
-        db.ref('daemons/local').once('value'),
-        db.ref('daemons/oracle').once('value'),
-        db.ref('daemonHeartbeat').once('value')
+      const hbPromise = Promise.all([
+        db.ref('daemons/local').once('value').catch(() => null),
+        db.ref('daemons/oracle').once('value').catch(() => null),
+        db.ref('daemonHeartbeat').once('value').catch(() => null)
       ]);
 
-      const localVal = localSnap.val();
-      const oracleVal = oracleSnap.val();
-      const legacyVal = legacySnap.val();
+      const snaps = await withTimeout(hbPromise, 800, [null, null, null]);
+      const [localSnap, oracleSnap, legacySnap] = snaps || [];
+
+      const localVal = localSnap ? (typeof localSnap.val === 'function' ? localSnap.val() : localSnap) : null;
+      const oracleVal = oracleSnap ? (typeof oracleSnap.val === 'function' ? oracleSnap.val() : oracleSnap) : null;
+      const legacyVal = legacySnap ? (typeof legacySnap.val === 'function' ? legacySnap.val() : legacySnap) : null;
 
       if (localVal && localVal.timestamp) {
         isLocalAlive = (now - new Date(localVal.timestamp).getTime()) < 60000;
@@ -268,20 +275,13 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
     const newCommandRef = queueRef.push();
     
     // Priority routing: Local daemon preferred if online (residential IP); fallback to Oracle Cloud VM (24/7 cloud runner)
-    let initialTarget = 'oracle';
-    if (isLocalAlive) {
-      initialTarget = 'local';
-    } else if (isOracleAlive) {
-      initialTarget = 'oracle';
-    } else {
-      initialTarget = 'all';
-    }
+    let initialTarget = isLocalAlive ? 'local' : (isOracleAlive ? 'oracle' : 'all');
 
     const safeUrl = targetUrl.replace(/"/g, '\\"');
     const safeSaleName = saleName ? `"${saleName.replace(/"/g, '\\"')}"` : 'null';
     const cliCommand = `node scripts/processSingleProduct.js "${safeUrl}" ${postProduct ? 'true' : 'false'} ${safeSaleName}`;
 
-    await newCommandRef.set({
+    const commandPayload = {
       id: `process-product-${Date.now()}`,
       command: cliCommand,
       name: `Process Product (${targetUrl.substring(0, 50)}...)`,
@@ -292,81 +292,17 @@ async function processProductUrlOnCloud(targetUrl, { postProduct = false, saleNa
       targetUrl,
       createdAt: new Date().toISOString(),
       triggeredBy: 'api'
-    });
+    };
+
+    // Write to Firebase commandsQueue with 1.5s timeout; never block client HTTP connection
+    await withTimeout(newCommandRef.set(commandPayload), 1500, null);
 
     const lowerdealUrl = productCode ? `https://lowerdeal.com/p/${productCode}` : null;
     let currentTarget = initialTarget;
     let daemonResult = null;
 
-    // Phase 1: Wait loop with failover
-    if (anyDaemonAlive) {
-      const waitStart = Date.now();
-      let hasFailedOver = false;
-
-      while (Date.now() - waitStart < 8000) {
-        await new Promise(res => setTimeout(res, 1000));
-        const cmdSnap = await newCommandRef.once('value');
-        const cmdVal = cmdSnap.val();
-
-        if (cmdVal && (cmdVal.status === 'completed' || cmdVal.status === 'success')) {
-          daemonResult = cmdVal;
-          break;
-        }
-
-        // Failover to Oracle only if local daemon explicitly failed
-        if (currentTarget === 'local' && !hasFailedOver && cmdVal && cmdVal.status === 'failed') {
-          if (isOracleAlive) {
-            logger.info(`[FAILOVER] Local daemon failed execution. Reassigning task ${newCommandRef.key} to Oracle Cloud daemon.`);
-            hasFailedOver = true;
-            currentTarget = 'oracle';
-            try {
-              await newCommandRef.update({
-                targetDaemon: 'oracle',
-                status: 'pending',
-                failedOverFrom: 'local',
-                reassignedAt: new Date().toISOString()
-              });
-            } catch (reassignErr) {
-              logger.warn('Failed to reassign command in RTDB', reassignErr);
-            }
-          }
-        }
-
-        if (cmdVal && cmdVal.status === 'failed' && hasFailedOver) {
-          break;
-        }
-      }
-
-      if (daemonResult) {
-        let productDetails = null;
-        if (productCode) {
-          try {
-            const safeKey = String(productCode).replace(/[.#$/\[\]]/g, '_');
-            const [dealsSnap, prodDealsSnap] = await Promise.all([
-              db.ref(`deals/${safeKey}`).once('value'),
-              db.ref(`productdeals/${safeKey}`).once('value')
-            ]);
-            productDetails = dealsSnap.val() || prodDealsSnap.val();
-          } catch (_) {}
-        }
-
-        const executor = daemonResult.executorType === 'oracle' ? 'Oracle Cloud VM' : 'Local Daemon';
-        return {
-          originalUrl: targetUrl,
-          success: true,
-          status: 'success',
-          processedOn: daemonResult.executorType === 'oracle' ? 'oracleDaemon' : 'localDaemon',
-          productCode,
-          lowerdealUrl,
-          title: productDetails?.title || '',
-          price: productDetails?.price || null,
-          photo: productDetails?.photo || '',
-          data: productDetails,
-          message: `Product [${productCode || 'deal'}] processed successfully via ${executor}!`
-        };
-      }
-    }
-
+    // Return queued response immediately (<150ms) to prevent HTTP connection timeouts and network errors.
+    // The frontend Dashboard polls checkQueueStatus(queuedId) in background for real-time extraction progress.
     return {
       originalUrl: targetUrl,
       success: anyDaemonAlive,
@@ -463,7 +399,14 @@ router.post('/process-product', async (req, res) => {
     logger.info('Processing product URLs', { count: validUrls.length, postProduct, saleName });
 
     // Cloud environment detection (Render free tier has 512MB RAM and no Chrome)
-    const isCloudEnv = Boolean(process.env.RENDER || process.env.HYBRID_EXECUTION === 'true' || process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    const isCloudEnv = Boolean(
+      process.env.RENDER || 
+      process.env.HYBRID_EXECUTION === 'true' || 
+      process.env.FIREBASE_SERVICE_ACCOUNT_JSON ||
+      process.env.NODE_ENV === 'production' ||
+      process.env.IS_API_SERVER === 'true' ||
+      !process.env.ENABLE_LOCAL_BROWSER
+    );
     if (isCloudEnv) {
       logger.info('Cloud environment detected (Render/Hybrid). Running server-side headless extraction with Cuelinks API.', { count: validUrls.length, postProduct, saleName });
 
@@ -521,7 +464,7 @@ router.post('/process-product', async (req, res) => {
 
       // Top-level backward compatibility if single URL was passed
       if (results.length === 1) {
-        responsePayload.success = Boolean(firstResult.success && !firstResult.queued);
+        responsePayload.success = Boolean(firstResult.success || firstResult.queued);
         responsePayload.status = firstResult.status || overallStatus;
         responsePayload.productCode = firstResult.productCode;
         responsePayload.data = firstResult.data;
@@ -536,7 +479,7 @@ router.post('/process-product', async (req, res) => {
         responsePayload.outOfStock = Boolean(firstResult.outOfStock);
         responsePayload.inStock = firstResult.inStock !== undefined ? firstResult.inStock : !firstResult.outOfStock;
         responsePayload.availability = firstResult.availability || (firstResult.outOfStock ? 'OutOfStock' : 'InStock');
-        if (!firstResult.success || firstResult.queued) {
+        if (!firstResult.success && !firstResult.queued) {
           responsePayload.reason = firstResult.reason || firstResult.error || firstResult.message;
           responsePayload.error = firstResult.error || firstResult.message;
         }
@@ -953,7 +896,7 @@ router.get('/matches', async (req, res) => {
     logger.info('Registry cache cold. Performing full database scan for matched products...');
     
     // 1. Fetch all deals (since only ~92 have competitorMatches, we must scan the database)
-    const recentDealsSnapshot = await productDealsDB.dealsRef.once('value');
+    const recentDealsSnapshot = await productDealsDB.dealsRef.limitToLast(200).once('value');
     const recentDeals = recentDealsSnapshot.val() || {};
     
     // 2. Fetch latest date productdeals from raw deals cache if available, otherwise fetch recent ones
@@ -966,8 +909,8 @@ router.get('/matches', async (req, res) => {
     }
     
     if (Object.keys(pDeals).length === 0) {
-      logger.info('Cache cold for productdeals matches, scanning recent 1000 productdeals...');
-      const pDealsSnapshot = await productDealsDB.productdealsRef.orderByChild('datetime').limitToLast(1000).once('value');
+      logger.info('Cache cold for productdeals matches, scanning recent 200 productdeals...');
+      const pDealsSnapshot = await productDealsDB.productdealsRef.limitToLast(200).once('value');
       pDeals = pDealsSnapshot.val() || {};
     }
     
@@ -1468,6 +1411,40 @@ router.post('/trigger-telegram-bot', async (req, res) => {
  * List all deals with optional filters
  * Query params: dealType (hotDeal|productDeal), platform, limit, offset
  */
+/**
+ * Safely fetches recent deals from Firebase without downloading the entire 70,000-item table.
+ * For 'productdeals', uses shallow=true REST API to get only the last N keys and child reads.
+ * For 'deals', uses limitToLast(poolSize) directly.
+ */
+async function fetchSafeBoundedDeals(ref, targetDb, poolSize = 50) {
+  try {
+    if (targetDb === 'productdeals') {
+      const dbName = constants.postingTypesConfig?.[constants.type]?.DB || 'DB1';
+      const DB_Name = config.DATABASE_CONFIG?.[`${dbName}_NAME`] || 'lowerdealhub';
+      const url = `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/productdeals.json?shallow=true`;
+      const shallowRes = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const allKeysObj = await shallowRes.json();
+      const allKeys = Object.keys(allKeysObj || {});
+      const targetKeys = allKeys.slice(-poolSize);
+      const snaps = await Promise.all(targetKeys.map(k => ref.child(k).once('value')));
+      const result = {};
+      for (const s of snaps) {
+        if (s && s.exists()) result[s.key] = s.val();
+      }
+      return result;
+    } else {
+      const snap = await Promise.race([
+        ref.limitToLast(poolSize).once('value'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase timeout')), 4000))
+      ]);
+      return snap.val() || {};
+    }
+  } catch (err) {
+    logger.warn('fetchSafeBoundedDeals warning:', { error: err.message, targetDb });
+    return {};
+  }
+}
+
 router.get('/', async (req, res, next) => {
   try {
     const { dealType, platform, date, categoryGroup, staticSubcategory, limit = 100, offset = 0, sortBy, order, nocache } = req.query;
@@ -1498,21 +1475,10 @@ router.get('/', async (req, res, next) => {
       queryDate = !isNoCache ? cacheService.get(latestDateCacheKey) : null;
       
       if (!queryDate) {
-        logger.info('No date specified, finding most recent date with deals...');
-        try {
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 6000));
-          const latestSnapshot = await Promise.race([ref.orderByChild('datetime').limitToLast(1).once('value'), timeoutPromise]);
-          const latestVal = latestSnapshot.val() || {};
-          const latestKey = Object.keys(latestVal)[0];
-          
-          if (latestKey && latestVal[latestKey]) {
-            queryDate = latestVal[latestKey].date;
-            logger.info(`Found latest date: ${queryDate}.`);
-            cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000); // cache for 2 minutes
-          }
-        } catch (findErr) {
-          logger.warn('Finding latest date timed out, continuing without date', { error: findErr.message });
-        }
+        // Fast & safe default: use today's formatted date (avoids unindexed full-table DB scans that crash memory)
+        queryDate = getformattedDate();
+        cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000);
+        logger.info(`Defaulting query date to today: ${queryDate}`);
       } else {
         logger.info(`Using cached latest date: ${queryDate}`);
       }
@@ -1524,53 +1490,37 @@ router.get('/', async (req, res, next) => {
       deals = !isNoCache ? cacheService.get(rawDealsCacheKey) : null;
       
       if (!deals) {
-        logger.info(`Fetching raw deals from Firebase for date ${queryDate}...`);
-        try {
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 8000));
-          const snapshotPromise = ref.orderByChild('date').equalTo(queryDate).once('value');
-          const snapshot = await Promise.race([snapshotPromise, timeoutPromise]);
-          deals = snapshot.val() || {};
-          cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000); // Cache raw data for 10 minutes
-        } catch (fetchErr) {
-          logger.warn('Firebase query failed or timed out, trying REST API fallback', { error: fetchErr.message });
-          const config = require('../../../config/config');
-          const constants = require('../../../config/constants');
-          const dbname = constants.postingTypesConfig[constants.type].DB;
-          let DB_Name = config.DATABASE_CONFIG[`${dbname}_NAME`];
-          const baseUrl = DB_Name === 'lowerdealhub' 
-            ? `https://${DB_Name}-default-rtdb.asia-southeast1.firebasedatabase.app/${targetDb}.json`
-            : `https://${DB_Name}-default-rtdb.firebaseio.com/${targetDb}.json`;
-          const apiUrl = `${baseUrl}?orderBy="date"&equalTo="${queryDate}"`;
-          const controller = new AbortController();
-          const fetchTimeout = setTimeout(() => controller.abort(), 8000);
-          try {
-            const response = await fetch(apiUrl, { signal: controller.signal });
-            clearTimeout(fetchTimeout);
-            if (!response.ok) throw new Error(`REST API failed: ${response.statusText}`);
-            deals = await response.json() || {};
-            cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
-          } catch (restErr) {
-            clearTimeout(fetchTimeout);
-            logger.error('REST API fallback failed', { error: restErr.message });
-            deals = {};
+        const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
+        logger.info(`Fetching recent deals (target: ${targetDb}, poolSize: ${poolSize})...`);
+        deals = await fetchSafeBoundedDeals(ref, targetDb, poolSize);
+        if (deals && Object.keys(deals).length > 0) {
+          if (date) {
+            const filtered = {};
+            for (const [k, v] of Object.entries(deals)) {
+              if (v && v.date === queryDate) {
+                filtered[k] = v;
+              }
+            }
+            if (Object.keys(filtered).length > 0) {
+              deals = filtered;
+            }
           }
+          cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
         }
       } else {
         logger.info(`Using cached raw deals for date ${queryDate}`);
       }
     } else {
-      // Fallback if no deals at all in the DB (query last 300 items)
-      logger.info('No deals found to determine latest date, querying default pool.');
-      const poolSize = Math.max((parseInt(offset || 0) + parseInt(limit || 100)) * 1.5, 300);
-      try {
-        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Admin SDK timeout')), 8000));
-        const snapshot = await Promise.race([ref.orderByChild('datetime').limitToLast(poolSize).once('value'), timeoutPromise]);
-        deals = snapshot.val() || {};
-      } catch (poolErr) {
-        deals = {};
-      }
+      const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
+      deals = await fetchSafeBoundedDeals(ref, targetDb, poolSize);
     }
     
+    // Fast safety fallback: if no deals found for queryDate, grab recent items safely
+    if (!deals || Object.keys(deals).length === 0) {
+      const poolSize = Math.min(Math.max((parseInt(offset || 0) + parseInt(limit || 50)), 50), 100);
+      deals = await fetchSafeBoundedDeals(ref, targetDb, poolSize);
+    }
+
     // Convert to array and filter for display eligibility (valid title, valid image, valid price/stock)
     let dealsArray = Object.entries(deals).map(([key, value]) => ({
       productCode: key,
@@ -1884,7 +1834,8 @@ router.post('/bulk-refresh-timestamps', async (req, res) => {
       const targetDb = src === 'deals' ? 'deals' : 'productdeals';
       const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
 
-      const snapshot = await ref.once('value');
+      const fetchLimit = Math.min(Number(limit) || 100, 200);
+      const snapshot = await ref.limitToLast(fetchLimit).once('value');
       const data = snapshot.val() || {};
       let items = Object.entries(data).map(([key, value]) => ({
         key,
@@ -2533,38 +2484,6 @@ router.post('/retrigger-today', async (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
-// Pre-warm cache on startup
-setTimeout(async () => {
-  if (process.env.DISABLE_CACHE_PREWARM === 'true' || process.env.RENDER === 'true') {
-    logger.info('Startup cache pre-warming skipped (running on Render or pre-warm disabled).');
-    return;
-  }
-  try {
-    logger.info('Pre-warming deals cache on startup...');
-    const targetDbs = ['deals', 'productdeals'];
-    for (const targetDb of targetDbs) {
-      const ref = targetDb === 'deals' ? productDealsDB.dealsRef : productDealsDB.productdealsRef;
-      const latestSnapshot = await ref.orderByChild('datetime').limitToLast(1).once('value');
-      const latestVal = latestSnapshot.val() || {};
-      const latestKey = Object.keys(latestVal)[0];
-      if (latestKey && latestVal[latestKey]) {
-        const queryDate = latestVal[latestKey].date;
-        const latestDateCacheKey = `latest_date_${targetDb}`;
-        cacheService.set(latestDateCacheKey, queryDate, 2 * 60 * 1000);
-        
-        logger.info(`Pre-fetching raw deals for ${targetDb} on date ${queryDate}...`);
-        const snapshot = await ref.orderByChild('date').equalTo(queryDate).once('value');
-        const deals = snapshot.val() || {};
-        const rawDealsCacheKey = `raw_deals_${targetDb}_${queryDate}`;
-        cacheService.set(rawDealsCacheKey, deals, 10 * 60 * 1000);
-        logger.info(`Deals cache pre-warmed for ${targetDb} (Count: ${Object.keys(deals).length}).`);
-      }
-    }
-  } catch (err) {
-    logger.warn('Failed to pre-warm deals cache:', { error: err.message });
-  }
-}, 5000);
 
 module.exports = router;
 

@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+// Lazy-loaded puppeteer
 const { parseStockMessage } = require('./stockSignalParser');
 const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
 const { saveRawMessage, saveSignals } = require('../database/stocksMultiDB');
@@ -85,6 +85,7 @@ async function extractActiveWhatsAppChat(options = {}) {
 
   let browser;
   try {
+    const puppeteer = require('puppeteer');
     browser = await puppeteer.connect({ browserURL, defaultViewport: null });
     const pages = await browser.pages();
     const waPage = pages.find(p => p.url().includes('web.whatsapp.com'));

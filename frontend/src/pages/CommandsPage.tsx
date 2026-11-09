@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './CommandsPage.css';
-const API_BASE_URL = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.hostname.startsWith('192.168.')) ? '/api' : 'https://dealsoptimised.onrender.com/api';
+const API_BASE_URL = '/api';
 
 interface Command {
   id: string;
