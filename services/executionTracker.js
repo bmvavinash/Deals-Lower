@@ -92,16 +92,35 @@ class ExecutionTracker {
     }
   }
 
-  setupFirebaseListeners() {
-    // If running in API server mode or Render, do not attach heavy root .on('value') listener
-    // This prevents downloading massive historical execution logs and causing out-of-memory / GC loop
-    if (process.env.IS_API_SERVER === 'true' || process.env.RENDER) {
-      logger.info('API server mode: skipping heavy root .on("value") listener on executionTracking to save RAM/CPU');
-      if (this.ref) {
-        this.ref.child('current').on('value', (snapshot) => {
-          this.currentExecution = snapshot.val() || null;
-        });
+  ensureFirebaseRef() {
+    if (this.ref) return this.ref;
+    try {
+      if (admin.apps.length > 0) {
+        const activeDb = admin.database();
+        if (activeDb) {
+          this.ref = activeDb.ref('executionTracking');
+          this.setupFirebaseListeners();
+          return this.ref;
+        }
       }
+    } catch (_) {}
+    return null;
+  }
+
+  setupFirebaseListeners() {
+    if (!this.ref || this._listenersAttached) return;
+    this._listenersAttached = true;
+
+    // If running in API server mode or Render, attach lightweight child listeners
+    if (process.env.IS_API_SERVER === 'true' || process.env.RENDER) {
+      logger.info('API server mode: attaching child listeners on executionTracking (current & queue)');
+      this.ref.child('current').on('value', (snapshot) => {
+        this.currentExecution = snapshot.val() || null;
+      });
+      this.ref.child('queue').on('value', (snapshot) => {
+        const qVal = snapshot.val();
+        this.queue = qVal && typeof qVal === 'object' ? Object.values(qVal) : [];
+      });
       return;
     }
 
@@ -1126,6 +1145,7 @@ class ExecutionTracker {
    * Get current execution status
    */
   getCurrentStatus() {
+    this.ensureFirebaseRef();
     // Get real-time Telegram queue status if available
     let telegramQueue = this.telegramQueue;
     

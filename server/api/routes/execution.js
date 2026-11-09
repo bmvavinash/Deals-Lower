@@ -52,7 +52,38 @@ const GITHUB_WORKFLOW_MAP = {
 router.get('/status', async (req, res) => {
   try {
     const { type = 'all' } = req.query;
-    const status = executionTracker.getCurrentStatus();
+    let status = executionTracker.getCurrentStatus();
+
+    // Fallback: If in-memory currentExecution is null, query Firebase RTDB directly (matching /heartbeat)
+    if (!status.currentExecution) {
+      try {
+        const admin = require('firebase-admin');
+        const db = admin.apps.length ? admin.database() : null;
+        if (db) {
+          const dbUrl = db.app?.options?.databaseURL;
+          let liveCurrent = null;
+          if (dbUrl) {
+            try {
+              const r = await fetch(`${dbUrl}/executionTracking/current.json`, { signal: AbortSignal.timeout(2500) });
+              liveCurrent = await r.json();
+            } catch (_) {}
+          }
+          if (!liveCurrent) {
+            const snap = await db.ref('executionTracking/current').once('value');
+            liveCurrent = snap.val() || null;
+          }
+          if (liveCurrent) {
+            status = {
+              ...status,
+              currentExecution: liveCurrent
+            };
+            executionTracker.currentExecution = liveCurrent;
+          }
+        }
+      } catch (fbErr) {
+        logger.debug('Fallback currentExecution fetch failed', { error: fbErr.message });
+      }
+    }
     
     // Filter by type if specified
     let filteredStatus = status;
@@ -108,10 +139,37 @@ router.get('/analytics', async (req, res) => {
 router.get('/history', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 10;
-    const history = await executionTracker.getHistory(limit);
+    let history = await executionTracker.getHistory(limit);
+    if (!history || history.length === 0) {
+      try {
+        const admin = require('firebase-admin');
+        const db = admin.apps.length ? admin.database() : null;
+        if (db) {
+          const dbUrl = db.app?.options?.databaseURL;
+          if (dbUrl) {
+            try {
+              const r = await fetch(`${dbUrl}/executionTracking/history.json?orderBy="$key"&limitToLast=${limit}`, { signal: AbortSignal.timeout(3000) });
+              const histData = await r.json();
+              if (histData && typeof histData === 'object') {
+                history = Object.values(histData);
+                history.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0));
+              }
+            } catch (_) {}
+          }
+          if (!history || history.length === 0) {
+            const snap = await db.ref('executionTracking/history').limitToLast(limit).once('value');
+            if (snap.exists()) {
+              const histVal = snap.val();
+              history = Array.isArray(histVal) ? histVal : Object.values(histVal);
+              history.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0));
+            }
+          }
+        }
+      } catch (_) {}
+    }
     res.json({
       success: true,
-      data: history,
+      data: history || [],
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -129,7 +187,31 @@ router.get('/history', async (req, res) => {
  */
 router.get('/detailed', async (req, res) => {
   try {
-    const status = executionTracker.getCurrentStatus();
+    let status = executionTracker.getCurrentStatus();
+    if (!status.currentExecution) {
+      try {
+        const admin = require('firebase-admin');
+        const db = admin.apps.length ? admin.database() : null;
+        if (db) {
+          const dbUrl = db.app?.options?.databaseURL;
+          let liveCurrent = null;
+          if (dbUrl) {
+            try {
+              const r = await fetch(`${dbUrl}/executionTracking/current.json`, { signal: AbortSignal.timeout(2500) });
+              liveCurrent = await r.json();
+            } catch (_) {}
+          }
+          if (!liveCurrent) {
+            const snap = await db.ref('executionTracking/current').once('value');
+            liveCurrent = snap.val() || null;
+          }
+          if (liveCurrent) {
+            status = { ...status, currentExecution: liveCurrent };
+            executionTracker.currentExecution = liveCurrent;
+          }
+        }
+      } catch (_) {}
+    }
     
     let breakdown = null;
     if (status.currentExecution && status.currentExecution.type === 'bulk_update') {
