@@ -7,6 +7,7 @@ const { broadcastWebPush } = require('./webPushService');
 const { sendTelegramAlert } = require('./saleLiveNotificationService');
 const { userFavoritesDB } = require('../database/firebaseDB/userFavoritesDB');
 const { productDealsDB } = require('../database/firebaseDB/productDealsDB');
+const cacheService = require('./cacheService');
 const {
   VALID_SLOTS,
   SLOT_CONFIG,
@@ -78,20 +79,7 @@ function getPrimaryDb() {
 }
 
 /**
- * Escapes characters for Telegram Markdown
- */
-function escapeTg(text) {
-  if (!text) return '';
-  return String(text).replace(/[_*[\]()~`>#+-=|{}.!]/g, '\\$&');
-}
-
-/**
- * Fetches products for a specific slot on a specific date (strictly today's date in IST).
- * Past days' deals are filtered out.
- *
- * @param {string} slotName - e.g. '12pm'
- * @param {string} [targetDate] - YYYY-MM-DD (defaults to today's date in IST)
- * @returns {Promise<Array>} Array of valid deal objects
+ * Safe query with timeout
  */
 async function safeQuery(queryRef, timeoutMs = 6000) {
   try {
@@ -108,8 +96,78 @@ async function safeQuery(queryRef, timeoutMs = 6000) {
   }
 }
 
-const cacheService = require('./cacheService');
+/**
+ * Auto-curates top high-discount deals extracted today and tags them with the active slot
+ * (e.g. 3 PM Handpicked Picks, 12 PM Loot, 8 PM Deals).
+ */
+async function autoTagTodayDealsForSlot(normSlot, targetDate = getISTDateString(), count = 20) {
+  try {
+    logger.info(`⚡ [AUTO-TAG] Checking today's deals to curate for ${normSlot} on ${targetDate}...`);
+    // Query by indexed datetime for instant response (<1s)
+    const snap = await safeQuery(productDealsDB.dealsRef.orderByChild('datetime').limitToLast(180), 8000);
+    if (!snap || !snap.exists()) return [];
 
+    const rawDeals = Object.values(snap.val() || {}).filter(p => {
+      const pDate = p.date || (p.datetime && String(p.datetime).slice(0, 10));
+      return pDate === targetDate;
+    });
+    const validDeals = rawDeals.filter(isValidDealForDisplay);
+
+    validDeals.sort((a, b) => {
+      const discA = parseFloat(String(a.discount || a.discountPercentage || 0).replace(/[^0-9.]/g, '')) || 0;
+      const discB = parseFloat(String(b.discount || b.discountPercentage || 0).replace(/[^0-9.]/g, '')) || 0;
+      return discB - discA;
+    });
+
+    const topPicks = validDeals.slice(0, count);
+    if (topPicks.length === 0) return [];
+
+    const slotKey = `${targetDate}_${normSlot}`;
+    const updates = {};
+    const dbRoot = productDealsDB.dealsRef ? productDealsDB.dealsRef.root : null;
+
+    topPicks.forEach(p => {
+      p.dealSlot = normSlot;
+      p.dealDate = targetDate;
+      p.dealSlotKey = slotKey;
+      p.isSlotDeal = true;
+      p.dealLabel = SLOT_CONFIG[normSlot]?.defaultBadge || `${normSlot.toUpperCase()} Picks`;
+      p.dealName = SLOT_CONFIG[normSlot]?.label || `${normSlot.toUpperCase()} Flash Deals`;
+
+      const key = p.productCode || p.id || p.asin;
+      if (key && dbRoot) {
+        const safeKey = String(key).replace(/[.#$/\[\]]/g, '_');
+        updates[`deals/${safeKey}/dealSlot`] = normSlot;
+        updates[`deals/${safeKey}/dealDate`] = targetDate;
+        updates[`deals/${safeKey}/dealSlotKey`] = slotKey;
+        updates[`deals/${safeKey}/isSlotDeal`] = true;
+        updates[`deals/${safeKey}/dealLabel`] = p.dealLabel;
+        updates[`deals/${safeKey}/dealName`] = p.dealName;
+      }
+    });
+
+    if (dbRoot && Object.keys(updates).length > 0) {
+      dbRoot.update(updates).catch(err => {
+        logger.warn('Failed to update slot attributes in Firebase deals node:', err.message);
+      });
+      logger.info(`✅ [AUTO-TAG] Curated and tagged ${topPicks.length} top deals for ${normSlot} on ${targetDate}`);
+    }
+
+    return topPicks;
+  } catch (err) {
+    logger.warn('Error in autoTagTodayDealsForSlot:', err.message);
+    return [];
+  }
+}
+
+/**
+ * Fetches products for a specific slot on a specific date (strictly today's date in IST).
+ * Past days' deals are filtered out.
+ *
+ * @param {string} slotName - e.g. '12pm', '3pm'
+ * @param {string} [targetDate] - YYYY-MM-DD (defaults to today's date in IST)
+ * @returns {Promise<Array>} Array of valid deal objects
+ */
 async function fetchSlotDeals(slotName, targetDate = getISTDateString()) {
   const normSlot = normalizeSlotName(slotName);
   if (!normSlot) {
@@ -119,7 +177,7 @@ async function fetchSlotDeals(slotName, targetDate = getISTDateString()) {
 
   const cacheKey = `slot_deals_${targetDate}_${normSlot}`;
   const cached = cacheService.get(cacheKey);
-  if (cached) {
+  if (cached && Array.isArray(cached) && cached.length > 0) {
     logger.debug(`Returning ${cached.length} cached slot deals for ${normSlot}`);
     return cached;
   }
@@ -141,40 +199,32 @@ async function fetchSlotDeals(slotName, targetDate = getISTDateString()) {
   };
 
   try {
-    // 1. Query recent items by indexed datetime (fast, millisecond response)
-    const [recentDealsSnap, recentProdSnap] = await Promise.all([
-      safeQuery(productDealsDB.dealsRef.orderByChild('datetime').limitToLast(120)),
-      safeQuery(productDealsDB.productdealsRef.orderByChild('datetime').limitToLast(120))
-    ]);
-
+    // 1. Query recent items by indexed datetime (<1s response)
+    const recentDealsSnap = await safeQuery(productDealsDB.dealsRef.orderByChild('datetime').limitToLast(180), 5000);
     if (recentDealsSnap && recentDealsSnap.exists()) {
       Object.values(recentDealsSnap.val() || {}).forEach(addValidProduct);
     }
-    if (recentProdSnap && recentProdSnap.exists()) {
-      Object.values(recentProdSnap.val() || {}).forEach(addValidProduct);
-    }
 
-    // 2. Query indexed dealSlotKey with limit
+    // 2. Query indexed dealSlotKey if needed
     if (dealsMap.size === 0) {
-      const [slotDealsSnap, slotProductDealsSnap] = await Promise.all([
-        safeQuery(productDealsDB.dealsRef.orderByChild('dealSlotKey').equalTo(slotKey).limitToLast(100)),
-        safeQuery(productDealsDB.productdealsRef.orderByChild('dealSlotKey').equalTo(slotKey).limitToLast(100))
-      ]);
-
+      const slotDealsSnap = await safeQuery(productDealsDB.dealsRef.orderByChild('dealSlotKey').equalTo(slotKey).limitToLast(100), 5000);
       if (slotDealsSnap && slotDealsSnap.exists()) {
         Object.values(slotDealsSnap.val() || {}).forEach(addValidProduct);
-      }
-      if (slotProductDealsSnap && slotProductDealsSnap.exists()) {
-        Object.values(slotProductDealsSnap.val() || {}).forEach(addValidProduct);
       }
     }
 
     // 3. Fallback: Check static deals
     if (dealsMap.size === 0 && productDealsDB.staticRef) {
-      const staticSnap = await safeQuery(productDealsDB.staticRef.orderByChild('datetime').limitToLast(100));
+      const staticSnap = await safeQuery(productDealsDB.staticRef.orderByChild('datetime').limitToLast(100), 4000);
       if (staticSnap && staticSnap.exists()) {
         Object.values(staticSnap.val() || {}).forEach(addValidProduct);
       }
+    }
+
+    // 4. Auto-curate and tag top deals for this slot if no deals are explicitly tagged yet
+    if (dealsMap.size === 0) {
+      const curated = await autoTagTodayDealsForSlot(normSlot, targetDate, 20);
+      curated.forEach(addValidProduct);
     }
   } catch (err) {
     logger.error('Error fetching slot deals from Firebase:', { error: err.message });
@@ -193,7 +243,9 @@ async function fetchSlotDeals(slotName, targetDate = getISTDateString()) {
   });
 
   logger.info(`✅ Found ${products.length} valid slot deals for ${normSlot} on ${targetDate}`);
-  cacheService.set(cacheKey, products, 2 * 60 * 1000); // Cache for 2 minutes
+  if (products.length > 0) {
+    cacheService.set(cacheKey, products, 2 * 60 * 1000); // Cache for 2 minutes
+  }
   return products;
 }
 
