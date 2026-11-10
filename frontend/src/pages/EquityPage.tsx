@@ -826,12 +826,12 @@ const EquityPage: React.FC = () => {
     }
     const first = breakdown[0];
     if (first?.isSourceOfTruth || first?.sourceType === 'whatsapp') {
-      return '💬 WhatsApp Ref';
+      return '💬 View Sources (1)';
     }
     if (first?.sourceType === 'google_sheet' || (entity.source || '').toLowerCase().includes('sheet')) {
-      return '📊 Sheet Ref';
+      return '📊 View Sources (1)';
     }
-    return '📄 View Ref';
+    return '📄 View Sources (1)';
   };
 
   const getMatchingSheetSnapshot = (sourceItem: SourceBreakdownItem): SheetSnapshotItem | null => {
