@@ -2,7 +2,16 @@ const express = require('express');
 const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
 // Lazy-loaded getGoogleSheetRecommendations (heavy module)
-const { getAllSignals, updateSignal, getPendingClarifications, resolveClarification, saveSignals, memoryDB } = require('../../../database/stocksMultiDB');
+const {
+  getAllSignals,
+  updateSignal,
+  getPendingClarifications,
+  resolveClarification,
+  saveSignals,
+  getRawMessages,
+  getSheetSnapshots,
+  memoryDB
+} = require('../../../database/stocksMultiDB');
 const { getLiveQuote, resolveSignalTickerAndQuote } = require('../../../services/marketQuoteService');
 const { parseStockMessage, generateSignalId } = require('../../../services/stockSignalParser');
 const { generateBestInsights } = require('../../../services/stockInsightsAggregator');
@@ -234,11 +243,12 @@ router.get('/equity/quote/:symbol', async (req, res, next) => {
 
 /**
  * GET /api/stocks/equity/notifications
- * Get real-time triggered alerts (where CMP crossed exit level or buy range)
+ * Get real-time triggered alerts sorted strictly descending by timestamp (latest first)
  */
 router.get('/equity/notifications', async (req, res, next) => {
   try {
-    const notifications = await getTriggeredNotifications(50);
+    const limit = Math.min(parseInt(req.query.limit || '80', 10) || 80, 200);
+    const notifications = await getTriggeredNotifications(limit);
     res.json({
       success: true,
       count: notifications.length,
@@ -247,6 +257,44 @@ router.get('/equity/notifications', async (req, res, next) => {
     });
   } catch (error) {
     logger.error('Error fetching equity notifications', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/stocks/equity/whatsapp-feed
+ * Get WhatsApp extracted messages & advisories sorted strictly descending by real timestamp (latest first)
+ */
+router.get('/equity/whatsapp-feed', async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '100', 10) || 100, 200);
+    const messages = await getRawMessages(limit, 'whatsapp');
+    res.json({
+      success: true,
+      count: messages.length,
+      data: messages,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error fetching WhatsApp feed', { error: error.message });
+    next(error);
+  }
+});
+
+/**
+ * GET /api/stocks/equity/sheet-snapshots
+ * Get latest captured Google Sheet tab screenshots & metadata (for reference modal previews)
+ */
+router.get('/equity/sheet-snapshots', async (req, res, next) => {
+  try {
+    const snapshots = await getSheetSnapshots();
+    res.json({
+      success: true,
+      data: snapshots,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Error fetching Google Sheet snapshots', { error: error.message });
     next(error);
   }
 });

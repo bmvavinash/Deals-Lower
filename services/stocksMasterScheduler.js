@@ -60,7 +60,7 @@ const schedulerState = {
   },
   sheetsSync: {
     enabled: true,
-    intervalMinutes: 15,
+    intervalMinutes: 5,
     lastRunAt: null,
     totalRuns: 0,
     signalsSynced: 0,
@@ -113,12 +113,19 @@ function isIndianMarketOpen() {
   return currentTotalMin >= marketOpenMin && currentTotalMin <= marketCloseMin;
 }
 
+let isChrome9223Busy = false;
+
 /**
  * 1. WhatsApp Scheduled Ingestion Job (Every 3 minutes on Local PC)
  */
 async function runWhatsAppScheduledJob() {
   const jobState = schedulerState.whatsappPoller;
   if (!jobState.enabled || isCloudEnv()) return;
+  if (isChrome9223Busy) {
+    logger.debug('[Scheduler] Chrome 9223 busy with another job, skipping overlapping WA run.');
+    return;
+  }
+  isChrome9223Busy = true;
 
   jobState.lastRunAt = new Date().toISOString();
   jobState.totalRuns++;
@@ -145,6 +152,8 @@ async function runWhatsAppScheduledJob() {
     jobState.lastStatus = 'error';
     jobState.lastError = err.message;
     logger.warn(`[Scheduler] WhatsApp poller warning: ${err.message}`);
+  } finally {
+    isChrome9223Busy = false;
   }
 }
 
@@ -184,32 +193,40 @@ async function runCMPRefresherJob(forceMarketCheck = false) {
 }
 
 /**
- * 3. Google Sheets Sync Job (Every 15 minutes on Local PC)
+ * 3. Google Sheets Sync Job (Every 5 minutes on Local PC)
  */
 async function runGoogleSheetsScheduledJob() {
   const jobState = schedulerState.sheetsSync;
   if (!jobState.enabled || isCloudEnv()) return;
+  if (isChrome9223Busy) {
+    logger.debug('[Scheduler] Chrome 9223 busy with another job, skipping overlapping Sheets run.');
+    return;
+  }
+  isChrome9223Busy = true;
 
   jobState.lastRunAt = new Date().toISOString();
   jobState.totalRuns++;
   jobState.lastStatus = 'running';
 
-  logger.info(`[Scheduler] 📊 Running 15-min Google Sheet Sync on Chrome Port 9223 (Run #${jobState.totalRuns})...`);
+  logger.info(`[Scheduler] 📊 Running 5-min Google Sheet Sync on Chrome Port 9223 (Run #${jobState.totalRuns})...`);
 
   try {
     // Lazy-loaded only on local PC so cloud never imports puppeteer
     const { extractGoogleSheetSignals } = require('./googleSheetLiveExtractor');
     const result = await extractGoogleSheetSignals({ port: 9223 });
     if (result.success) {
-      jobState.signalsSynced += (result.extractedSignals?.length || 0);
-      jobState.lastStatus = `success (${result.extractedSignals?.length || 0} signals from ${result.tabsProcessed || 3} tabs)`;
-      logger.info(`[Scheduler] ✅ Google Sheets sync complete: ${result.extractedSignals?.length || 0} signals processed.`);
+      const count = result.totalSignalsFound || result.extractedSignals?.length || 0;
+      jobState.signalsSynced += count;
+      jobState.lastStatus = `success (${count} signals, ${result.sheetChangesDetected || 0} changes)`;
+      logger.info(`[Scheduler] ✅ Google Sheets sync complete: ${count} signals (${result.sheetChangesDetected || 0} row changes).`);
     } else {
       jobState.lastStatus = result.message || 'skipped';
     }
   } catch (err) {
     jobState.lastStatus = 'error';
     logger.warn(`[Scheduler] Google Sheets sync warning: ${err.message}`);
+  } finally {
+    isChrome9223Busy = false;
   }
 }
 
@@ -399,7 +416,7 @@ function startMasterScheduler(options = {}) {
   // F. Local-Only Browser Scrapers (WhatsApp & Google Sheets via Chrome 9223)
   if (!isCloud) {
     logger.info('  • WhatsApp Ingestion: Every 3 minutes (Port 9223)');
-    logger.info('  • Google Sheets Sync: Every 15 minutes (Port 9223)');
+    logger.info('  • Google Sheets Sync: Every 5 minutes (Port 9223)');
 
     schedulerState.whatsappPoller.enabled = true;
     schedulerState.sheetsSync.enabled = true;
@@ -409,15 +426,18 @@ function startMasterScheduler(options = {}) {
     });
     cronTasks.push(waTask);
 
-    const sheetsTask = cron.schedule('*/15 * * * *', () => {
+    const sheetsTask = cron.schedule('*/5 * * * *', () => {
       runGoogleSheetsScheduledJob().catch(e => logger.warn('Sheets job warning:', { error: e.message }));
     });
     cronTasks.push(sheetsTask);
 
-    // Warm-up WhatsApp poller after 5s
+    // Warm-up WhatsApp poller after 5s & Google Sheets after 12s
     setTimeout(() => {
       runWhatsAppScheduledJob().catch(() => {});
     }, 5000);
+    setTimeout(() => {
+      runGoogleSheetsScheduledJob().catch(() => {});
+    }, 12000);
   } else {
     logger.info('  • WhatsApp & Sheets: Skipped in Cloud mode (runs on local PC via Port 9223)');
     schedulerState.whatsappPoller.enabled = false;

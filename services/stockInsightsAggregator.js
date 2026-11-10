@@ -40,11 +40,41 @@ async function generateBestInsights() {
     (s.status === 'TRIGGERED' || s.status === 'TGT1_HIT' || s.status === 'TGT2_HIT') &&
     s.currentCMP && s.entryPrice
   );
+  const normalizeBreakdown = (sig) => {
+    if (Array.isArray(sig.sourcesBreakdown) && sig.sourcesBreakdown.length > 0) {
+      return sig.sourcesBreakdown;
+    }
+    const isWA = sig.isSourceOfTruth || (sig.source && sig.source.toLowerCase().includes('whatsapp'));
+    return [{
+      id: sig.id,
+      symbol: sig.symbol,
+      companyName: sig.companyName || sig.symbol,
+      source: sig.source,
+      sourceLabel: isWA ? 'WhatsApp (Source of Truth)' : (sig.source?.includes('Watchlist') ? 'Google Sheet: Watchlist' : sig.source?.includes('Stock list') ? 'Google Sheet: Stock list' : sig.sourceLabel || sig.source),
+      sourceType: isWA ? 'whatsapp' : (sig.source?.toLowerCase().includes('sheet') ? 'google_sheet' : 'telegram'),
+      action: sig.action,
+      price: sig.entryPrice || sig.entryMax || sig.target1,
+      rating: sig.rating,
+      status: sig.status,
+      statusReason: sig.statusReason,
+      isExpired: Boolean(sig.isExpired),
+      isSourceOfTruth: Boolean(isWA),
+      timestamp: sig.timestamp || sig.updatedAt,
+      sender: sig.sender,
+      rawHeader: sig.rawHeader || null,
+      rawText: sig.rawText,
+      sheetUrl: sig.sheetUrl || null,
+      sheetTab: sig.sheetTab || null,
+      sheetRow: sig.sheetRow || null
+    }];
+  };
+
   for (const sig of triggeredExits) {
     const targetLevel = Number(sig.entryPrice || sig.entryMin || sig.target1);
     const gainPercent = targetLevel && sig.currentCMP 
       ? Number((((sig.currentCMP - targetLevel) / targetLevel) * 100).toFixed(1))
       : 0;
+    const sourcesBreakdown = normalizeBreakdown(sig);
 
     actionableInsights.push({
       type: 'ACTIONABLE_EXIT',
@@ -59,8 +89,8 @@ async function generateBestInsights() {
       source: sig.source,
       rating: sig.rating,
       priority: 1,
-      hasMultipleSources: Boolean(sig.hasMultipleSources),
-      sourcesBreakdown: sig.sourcesBreakdown || [],
+      hasMultipleSources: sourcesBreakdown.length > 1,
+      sourcesBreakdown,
       sourceOfTruth: sig.sourceOfTruth || null,
       finalVerdict: sig.finalVerdict || null,
       signal: sig
@@ -80,6 +110,7 @@ async function generateBestInsights() {
       ? Number((((buyUpto - sig.currentCMP) / buyUpto) * 100).toFixed(1))
       : 0;
     const isWA = sig.sourcePriority === 1 || getSourcePriority(sig.source) === 1;
+    const sourcesBreakdown = normalizeBreakdown(sig);
 
     actionableInsights.push({
       type: 'BUY_OPPORTUNITY',
@@ -98,8 +129,8 @@ async function generateBestInsights() {
       isSourceOfTruth: isWA,
       sourceOfTruth: isWA ? 'WhatsApp' : sig.sourceOfTruth || null,
       priority: isWA ? 1 : (sig.rating && sig.rating >= 4 ? 2 : 3),
-      hasMultipleSources: Boolean(sig.hasMultipleSources),
-      sourcesBreakdown: sig.sourcesBreakdown || [],
+      hasMultipleSources: sourcesBreakdown.length > 1,
+      sourcesBreakdown,
       finalVerdict: sig.finalVerdict || null,
       signal: sig
     });
@@ -180,6 +211,8 @@ async function generateBestInsights() {
         const isWA = sib.isSourceOfTruth || (sib.source && sib.source.toLowerCase().includes('whatsapp'));
         return {
           id: sib.id,
+          symbol: sym,
+          companyName: sib.companyName || sym,
           source: sib.source,
           sourceLabel: isWA ? 'WhatsApp (Source of Truth)' : (sib.source?.includes('Watchlist') ? 'Google Sheet: Watchlist' : sib.source?.includes('Stock list') ? 'Google Sheet: Stock list' : sib.sourceLabel || sib.source),
           sourceType: isWA ? 'whatsapp' : (sib.source?.toLowerCase().includes('sheet') ? 'google_sheet' : 'telegram'),
@@ -192,7 +225,11 @@ async function generateBestInsights() {
           isSourceOfTruth: Boolean(isWA),
           timestamp: sib.timestamp || sib.updatedAt,
           sender: sib.sender,
-          rawText: sib.rawText
+          rawHeader: sib.rawHeader || null,
+          rawText: sib.rawText,
+          sheetUrl: sib.sheetUrl || null,
+          sheetTab: sib.sheetTab || null,
+          sheetRow: sib.sheetRow || null
         };
       }).sort((a, b) => (b.isSourceOfTruth ? 1 : 0) - (a.isSourceOfTruth ? 1 : 0));
 

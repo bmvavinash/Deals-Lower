@@ -5,6 +5,7 @@ import './EquityPage.css';
 interface SourceBreakdownItem {
   id: string;
   symbol?: string;
+  companyName?: string;
   source: string;
   sourceLabel: string;
   sourceType: 'whatsapp' | 'google_sheet' | 'telegram';
@@ -17,7 +18,35 @@ interface SourceBreakdownItem {
   isSourceOfTruth: boolean;
   timestamp?: string;
   sender?: string;
+  rawHeader?: string | null;
   rawText?: string;
+  sheetUrl?: string | null;
+  sheetTab?: string | null;
+  sheetRow?: number | null;
+}
+
+interface WhatsAppFeedItem {
+  id: string;
+  source: string;
+  sourceType?: string;
+  chatTitle?: string;
+  header?: string | null;
+  sender?: string;
+  text: string;
+  timestamp: string;
+  storedAt?: string;
+  domIndex?: number;
+  matchedSymbols?: string[];
+  isTradeSignal?: boolean;
+}
+
+interface SheetSnapshotItem {
+  tab: string;
+  gid: string;
+  url: string;
+  capturedAt: string;
+  title?: string;
+  dataUrl: string;
 }
 
 interface StockSignal {
@@ -49,7 +78,14 @@ interface StockSignal {
   hasMultipleSources?: boolean;
   sourcesBreakdown?: SourceBreakdownItem[];
   sourceOfTruth?: string | null;
+  isSourceOfTruth?: boolean;
   finalVerdict?: string | null;
+  sender?: string;
+  rawHeader?: string | null;
+  rawText?: string;
+  sheetUrl?: string | null;
+  sheetTab?: string | null;
+  sheetRow?: number | null;
 }
 
 interface BestInsight {
@@ -73,7 +109,9 @@ interface BestInsight {
   hasMultipleSources?: boolean;
   sourcesBreakdown?: SourceBreakdownItem[];
   sourceOfTruth?: string | null;
+  isSourceOfTruth?: boolean;
   finalVerdict?: string | null;
+  signal?: StockSignal;
 }
 
 interface ClarificationItem {
@@ -137,8 +175,13 @@ const EquityPage: React.FC = () => {
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
 
   // Navigation tab & search
-  const [activeTab, setActiveTab] = useState<'all' | 'buy' | 'sell' | 'actionable' | 'alerts' | 'clarifications'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'buy' | 'sell' | 'actionable' | 'alerts' | 'whatsapp' | 'clarifications'>('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // WhatsApp descending chronological feed & Google Sheet captured visual snapshots
+  const [whatsappFeed, setWhatsappFeed] = useState<WhatsAppFeedItem[]>([]);
+  const [sheetSnapshots, setSheetSnapshots] = useState<Record<string, SheetSnapshotItem | any>>({});
+  const [expandedSnapshot, setExpandedSnapshot] = useState<SheetSnapshotItem | null>(null);
 
   // Sub-filters & sorting state
   const [sortBy, setSortBy] = useState<string>('rating_desc');
@@ -183,20 +226,33 @@ const EquityPage: React.FC = () => {
   const [schedulerState, setSchedulerState] = useState<any>({ isMasterActive: true, _syncing: true, environment: 'connecting' });
   const [isSchedulerToggling, setIsSchedulerToggling] = useState(false);
 
+  const sortByTimestampDesc = <T extends { timestamp?: string; storedAt?: string }>(items: T[]): T[] => {
+    return [...(items || [])].sort((a, b) => {
+      const tA = new Date(a.timestamp || a.storedAt || 0).getTime() || 0;
+      const tB = new Date(b.timestamp || b.storedAt || 0).getTime() || 0;
+      return tB - tA;
+    });
+  };
+
   // 1. Fetch dashboard signals & insights
   const fetchDashboardData = async (silent = false) => {
     if (!silent) setIsLoading(true);
     try {
-      const [signalsRes, insightsRes, doubtsRes, notifsRes, schedRes] = await Promise.allSettled([
+      const [signalsRes, insightsRes, doubtsRes, notifsRes, schedRes, waFeedRes, snapRes] = await Promise.allSettled([
         stocksAPI.getEquitySignals(),
         stocksAPI.getEquityInsights(),
         stocksAPI.getClarifications(),
-        stocksAPI.getNotifications(),
-        stocksAPI.getSchedulerStatus()
+        stocksAPI.getNotifications(100),
+        stocksAPI.getSchedulerStatus(),
+        stocksAPI.getWhatsAppFeed(120),
+        stocksAPI.getSheetSnapshots()
       ]);
 
       let loadedSignals: StockSignal[] = [];
       let loadedInsights: BestInsight[] = [];
+      let loadedNotifs: StockNotification[] = [];
+      let loadedWaFeed: WhatsAppFeedItem[] = [];
+      let loadedSnapshots: Record<string, any> = {};
       let loadedScheduler: any = null;
 
       if (signalsRes.status === 'fulfilled' && signalsRes.value.data?.success) {
@@ -209,7 +265,13 @@ const EquityPage: React.FC = () => {
         setClarifications(doubtsRes.value.data.data || []);
       }
       if (notifsRes.status === 'fulfilled' && notifsRes.value.data?.success) {
-        setNotifications(notifsRes.value.data.data || []);
+        loadedNotifs = sortByTimestampDesc(notifsRes.value.data.data || []);
+      }
+      if (waFeedRes.status === 'fulfilled' && waFeedRes.value.data?.success) {
+        loadedWaFeed = sortByTimestampDesc(waFeedRes.value.data.data || []);
+      }
+      if (snapRes.status === 'fulfilled' && snapRes.value.data?.success) {
+        loadedSnapshots = snapRes.value.data.data || {};
       }
       if (schedRes.status === 'fulfilled' && schedRes.value.data?.success) {
         loadedScheduler = schedRes.value.data.data || null;
@@ -249,6 +311,8 @@ const EquityPage: React.FC = () => {
                     hasMultipleSources: group.length > 1,
                     sourcesBreakdown: group.map(sib => ({
                       id: sib.id,
+                      symbol: sib.symbol,
+                      companyName: sib.companyName,
                       source: sib.source,
                       sourceLabel: sib.source?.toLowerCase().includes('whatsapp') ? 'WhatsApp (Source of Truth)' : (sib.source || 'Advisory'),
                       sourceType: sib.source?.toLowerCase().includes('whatsapp') ? 'whatsapp' : 'google_sheet',
@@ -260,7 +324,12 @@ const EquityPage: React.FC = () => {
                       isExpired: Boolean(sib.isExpired),
                       isSourceOfTruth: Boolean(sib.isSourceOfTruth || sib.source?.toLowerCase().includes('whatsapp')),
                       timestamp: sib.timestamp,
-                      rawText: (sib as any).rawText
+                      sender: sib.sender,
+                      rawHeader: sib.rawHeader || null,
+                      rawText: sib.rawText,
+                      sheetUrl: sib.sheetUrl || null,
+                      sheetTab: sib.sheetTab || null,
+                      sheetRow: sib.sheetRow || null
                     }))
                   });
                 });
@@ -272,6 +341,31 @@ const EquityPage: React.FC = () => {
         } catch (fbErr: any) {
           console.warn('[EquityPage] Firebase direct fallback error:', fbErr.message);
         }
+      }
+
+      if (loadedWaFeed.length === 0) {
+        try {
+          const fbWaRes = await fetch('https://lowerdealhub-default-rtdb.asia-southeast1.firebasedatabase.app/stocks/raw_messages.json');
+          if (fbWaRes.ok) {
+            const rawMsgs = await fbWaRes.json();
+            if (rawMsgs && typeof rawMsgs === 'object') {
+              const waOnly = (Object.values(rawMsgs) as WhatsAppFeedItem[]).filter(m =>
+                (m.source && m.source.toLowerCase().includes('whatsapp')) || m.sourceType === 'whatsapp'
+              );
+              loadedWaFeed = sortByTimestampDesc(waOnly);
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (Object.keys(loadedSnapshots).length === 0) {
+        try {
+          const fbSnapRes = await fetch('https://lowerdealhub-default-rtdb.asia-southeast1.firebasedatabase.app/stocks/sheet_snapshots.json');
+          if (fbSnapRes.ok) {
+            const snapVal = await fbSnapRes.json();
+            if (snapVal && typeof snapVal === 'object') loadedSnapshots = snapVal;
+          }
+        } catch (_) {}
       }
 
       // If scheduler state is null from server, try reading Firebase RTDB scheduler state or default to active
@@ -289,6 +383,9 @@ const EquityPage: React.FC = () => {
 
       setSignals(loadedSignals);
       setInsights(loadedInsights);
+      setNotifications(sortByTimestampDesc(loadedNotifs));
+      setWhatsappFeed(sortByTimestampDesc(loadedWaFeed));
+      setSheetSnapshots(loadedSnapshots);
       setSchedulerState(loadedScheduler || { isMasterActive: true, environment: 'cloud / resilient' });
       setLastRefreshedAt(new Date());
     } catch (err: any) {
@@ -689,6 +786,89 @@ const EquityPage: React.FC = () => {
     );
   };
 
+  const getEffectiveSourcesBreakdown = (entity: StockSignal | BestInsight | null): SourceBreakdownItem[] => {
+    if (!entity) return [];
+    if (Array.isArray(entity.sourcesBreakdown) && entity.sourcesBreakdown.length > 0) {
+      return entity.sourcesBreakdown;
+    }
+    const fallbackSig: any = (entity as BestInsight).signal || entity;
+    const rawSource = fallbackSig.source || entity.source || 'Advisory';
+    const isWA = Boolean(fallbackSig.isSourceOfTruth || rawSource.toLowerCase().includes('whatsapp'));
+    const isSheet = rawSource.toLowerCase().includes('sheet');
+    return [{
+      id: fallbackSig.id || entity.symbol,
+      symbol: entity.symbol,
+      companyName: entity.companyName,
+      source: rawSource,
+      sourceLabel: isWA ? 'WhatsApp (Source of Truth)' : rawSource,
+      sourceType: isWA ? 'whatsapp' : isSheet ? 'google_sheet' : 'telegram',
+      action: fallbackSig.action || entity.action || 'BUY',
+      price: fallbackSig.entryPrice || fallbackSig.entryMax || (entity as BestInsight).targetLevel || (entity as BestInsight).buyUpto || null,
+      rating: fallbackSig.rating ?? entity.rating ?? null,
+      status: fallbackSig.status || ((entity as BestInsight).type === 'ACTIONABLE_EXIT' ? 'TRIGGERED' : 'ACTIVE'),
+      statusReason: fallbackSig.statusReason || (entity as BestInsight).reason || null,
+      isExpired: Boolean(fallbackSig.isExpired || (entity as BestInsight).isExpiredBuy),
+      isSourceOfTruth: isWA,
+      timestamp: fallbackSig.timestamp,
+      sender: fallbackSig.sender,
+      rawHeader: fallbackSig.rawHeader || null,
+      rawText: fallbackSig.rawText || (entity as BestInsight).reason,
+      sheetUrl: fallbackSig.sheetUrl || null,
+      sheetTab: fallbackSig.sheetTab || null,
+      sheetRow: fallbackSig.sheetRow || null
+    }];
+  };
+
+  const getSourceRefButtonLabel = (entity: StockSignal | BestInsight): string => {
+    const breakdown = getEffectiveSourcesBreakdown(entity);
+    if (breakdown.length > 1) {
+      return `🔀 View Sources (${breakdown.length})`;
+    }
+    const first = breakdown[0];
+    if (first?.isSourceOfTruth || first?.sourceType === 'whatsapp') {
+      return '💬 WhatsApp Ref';
+    }
+    if (first?.sourceType === 'google_sheet' || (entity.source || '').toLowerCase().includes('sheet')) {
+      return '📊 Sheet Ref';
+    }
+    return '📄 View Ref';
+  };
+
+  const getMatchingSheetSnapshot = (sourceItem: SourceBreakdownItem): SheetSnapshotItem | null => {
+    const src = (sourceItem.source || sourceItem.sheetTab || '').toLowerCase();
+    if (src.includes('stock list') && sheetSnapshots?.stock_list?.dataUrl) {
+      return sheetSnapshots.stock_list;
+    }
+    if (sheetSnapshots?.watchlist?.dataUrl) {
+      return sheetSnapshots.watchlist;
+    }
+    if (sheetSnapshots?.stock_list?.dataUrl) {
+      return sheetSnapshots.stock_list;
+    }
+    return null;
+  };
+
+  const openSignalSourcesBySymbol = (sym: string) => {
+    const cleanSym = sym.toUpperCase().trim();
+    const match = signals.find(s => s.symbol.toUpperCase() === cleanSym);
+    if (match) {
+      setSelectedStockForSources(match);
+    }
+  };
+
+  const sortedNotifications = sortByTimestampDesc(notifications);
+
+  const filteredWhatsappFeed = whatsappFeed.filter((item) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (item.text || '').toLowerCase().includes(q) ||
+      (item.sender || '').toLowerCase().includes(q) ||
+      (item.chatTitle || '').toLowerCase().includes(q) ||
+      (item.matchedSymbols || []).some(s => s.toLowerCase().includes(q))
+    );
+  });
+
   return (
     <div className="equity-page">
       {/* 1. Header with Prioritized Mobile Actions */}
@@ -809,8 +989,13 @@ const EquityPage: React.FC = () => {
             </button>
           </div>
           <div className="alerts-grid">
-            {notifications.slice(0, 4).map((notif) => {
-              const isBuy = notif.type === 'BUY_ZONE_ENTERED';
+            {sortedNotifications.slice(0, 4).map((notif) => {
+              const isBuy = notif.type === 'BUY_ZONE_ENTERED' || notif.type === 'SHEET_NEW_ENTRY' || notif.type === 'SHEET_UPDATE' || (notif.type === 'WHATSAPP_ADVISORY' && notif.action === 'BUY');
+              const badgeLabel =
+                notif.type === 'WHATSAPP_ADVISORY' ? '💬 WA CALL' :
+                notif.type === 'SHEET_NEW_ENTRY' ? '📊 NEW SHEET' :
+                notif.type === 'SHEET_UPDATE' ? '📊 SHEET EDIT' :
+                isBuy ? '🟢 BUY ZONE' : '🎯 TARGET MET';
               return (
                 <div key={notif.id} className={`alert-card ${isBuy ? 'buy_zone' : ''}`}>
                   <div className="alert-card-top">
@@ -821,20 +1006,20 @@ const EquityPage: React.FC = () => {
                       </span>
                     </div>
                     <span className={`alert-card-badge ${isBuy ? 'buy' : 'exit'}`}>
-                      {isBuy ? '🟢 BUY ZONE' : '🎯 TARGET MET'}
+                      {badgeLabel}
                     </span>
                   </div>
                   <div className="alert-card-prices">
-                    <span>Target Level: <strong>₹{notif.level || '-'}</strong></span>
+                    <span>Target Level: <strong>₹{notif.level || (notif as any).entryMax || '-'}</strong></span>
                     <span style={{ color: isBuy ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
-                      Live CMP: ₹{notif.currentCMP}
+                      Live CMP: ₹{notif.currentCMP || '-'}
                     </span>
                   </div>
                   {renderFormattedAlertMessage(notif)}
                   <div className="alert-card-footer">
-                    <span>{notif.source || 'Advisory'} • {new Date(notif.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span>{notif.source || 'Advisory'} • {new Date(notif.timestamp).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
                     <span className="telegram-sent-tag">
-                      📱 Grouped Alert Sent
+                      📱 Latest-First Sync
                     </span>
                   </div>
                 </div>
@@ -889,7 +1074,7 @@ const EquityPage: React.FC = () => {
             </span>
             <span className="scheduler-tag">💬 WA: 3m (9223)</span>
             <span className="scheduler-tag">⚡ CMP: 2m (9AM–3:30PM)</span>
-            <span className="scheduler-tag">📊 Sheets: 15m (9223)</span>
+            <span className="scheduler-tag">📊 Sheets: 5m (9223)</span>
             <span className="scheduler-tag tg-tag">📱 TG Fallback: Ingesting 24/7</span>
           </div>
           <div className="scheduler-subtitle">
@@ -1221,19 +1406,17 @@ const EquityPage: React.FC = () => {
                         <span>Source: {item.source || 'Advisory'}</span>
                       )}
                     </span>
-                    {item.hasMultipleSources && (
-                      <button
-                        type="button"
-                        className="btn-sources-badge"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedStockForSources(item);
-                        }}
-                        title="View comparative sources breakdown"
-                      >
-                        🔀 View Sources ({item.sourcesBreakdown?.length || 2})
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="btn-sources-badge"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedStockForSources(item);
+                      }}
+                      title="View source reference & proof (WhatsApp message / Google Sheet screenshot)"
+                    >
+                      {getSourceRefButtonLabel(item)}
+                    </button>
                     {item.type === 'ACTIONABLE_EXIT' && <span style={{ color: '#f87171', fontWeight: 600 }}>🚨 Exit Alert Sent</span>}
                     {item.type === 'BUY_OPPORTUNITY' && <span style={{ color: '#4ade80', fontWeight: 600 }}>🚀 In Buy Range</span>}
                   </div>
@@ -1296,6 +1479,13 @@ const EquityPage: React.FC = () => {
               🚨 Alerts ({notifications.length})
             </button>
           )}
+          <button
+            className={`tab-btn ${activeTab === 'whatsapp' ? 'active' : ''}`}
+            onClick={() => setActiveTab('whatsapp')}
+            style={{ color: '#059669' }}
+          >
+            💬 WhatsApp Feed ({whatsappFeed.length})
+          </button>
           {clarifications.length > 0 && (
             <button 
               className={`tab-btn ${activeTab === 'clarifications' ? 'active' : ''}`}
@@ -1469,13 +1659,21 @@ const EquityPage: React.FC = () => {
         </div>
       )}
 
-      {/* 12. Alerts Tab View */}
+      {/* 12. Alerts Tab View (Strictly Latest First) */}
       {activeTab === 'alerts' ? (
         <div className="signals-container" style={{ padding: '16px' }}>
-          <h3 style={{ margin: '0 0 16px 0', fontSize: '16px' }}>🚨 All Real-Time Dispatched Alerts</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+            <h3 style={{ margin: 0, fontSize: '16px' }}>🚨 All Real-Time Dispatched Alerts (Latest First)</h3>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>Sorted descending by timestamp</span>
+          </div>
           <div className="alerts-grid">
-            {notifications.map((notif) => {
-              const isBuy = notif.type === 'BUY_ZONE_ENTERED';
+            {sortedNotifications.map((notif) => {
+              const isBuy = notif.type === 'BUY_ZONE_ENTERED' || notif.type === 'SHEET_NEW_ENTRY' || notif.type === 'SHEET_UPDATE' || (notif.type === 'WHATSAPP_ADVISORY' && notif.action === 'BUY');
+              const badgeLabel =
+                notif.type === 'WHATSAPP_ADVISORY' ? '💬 WA CALL' :
+                notif.type === 'SHEET_NEW_ENTRY' ? '📊 NEW SHEET' :
+                notif.type === 'SHEET_UPDATE' ? '📊 SHEET EDIT' :
+                isBuy ? '🟢 BUY ZONE' : '🎯 TARGET MET';
               return (
                 <div key={notif.id} className={`alert-card ${isBuy ? 'buy_zone' : ''}`}>
                   <div className="alert-card-top">
@@ -1486,26 +1684,101 @@ const EquityPage: React.FC = () => {
                       </span>
                     </div>
                     <span className={`alert-card-badge ${isBuy ? 'buy' : 'exit'}`}>
-                      {isBuy ? '🟢 BUY ZONE' : '🎯 TARGET MET'}
+                      {badgeLabel}
                     </span>
                   </div>
                   <div className="alert-card-prices">
-                    <span>Target Level: <strong>₹{notif.level || '-'}</strong></span>
+                    <span>Target Level: <strong>₹{notif.level || (notif as any).entryMax || '-'}</strong></span>
                     <span style={{ color: isBuy ? '#16a34a' : '#dc2626', fontWeight: 700 }}>
-                      Live CMP: ₹{notif.currentCMP}
+                      Live CMP: ₹{notif.currentCMP || '-'}
                     </span>
                   </div>
                   {renderFormattedAlertMessage(notif)}
                   <div className="alert-card-footer">
-                    <span>{notif.source || 'Advisory'} • {new Date(notif.timestamp).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
-                    <span className="telegram-sent-tag">
-                      📱 Grouped &amp; Dispatched by Topic
-                    </span>
+                    <span>{notif.source || 'Advisory'} • {new Date(notif.timestamp).toLocaleString('en-IN', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    <button
+                      type="button"
+                      className="btn-sources-badge"
+                      onClick={() => openSignalSourcesBySymbol(notif.symbol)}
+                    >
+                      📄 View Source
+                    </button>
                   </div>
                 </div>
               );
             })}
           </div>
+        </div>
+      ) : activeTab === 'whatsapp' ? (
+        /* 12b. Dedicated WhatsApp Chronological Feed (Descending Timestamp - Latest First) */
+        <div className="signals-container" style={{ padding: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '16px' }}>💬 WhatsApp Messages &amp; Notifications (Latest First)</h3>
+              <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                All extracted WhatsApp notifications &amp; advisory messages ordered strictly descending by timestamp.
+              </div>
+            </div>
+            <button
+              type="button"
+              className="btn-outline"
+              style={{ fontSize: '12px', padding: '5px 10px' }}
+              onClick={() => handleExtractWhatsApp()}
+              disabled={isExtractingWhatsApp}
+            >
+              {isExtractingWhatsApp ? '⏳ Scanning WA...' : '🔄 Refresh WA Feed'}
+            </button>
+          </div>
+
+          {filteredWhatsappFeed.length === 0 ? (
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: '#9ca3af' }}>
+              <div style={{ fontSize: '26px', marginBottom: '8px' }}>💬</div>
+              <div>No WhatsApp messages recorded yet{searchQuery ? ` matching "${searchQuery}"` : ''}.</div>
+              <div style={{ fontSize: '12px', marginTop: '4px' }}>Click &quot;🔄 Refresh WA Feed&quot; when Chrome 9223 has WhatsApp Web open.</div>
+            </div>
+          ) : (
+            <div className="wa-feed-list">
+              {filteredWhatsappFeed.map((msg) => (
+                <div key={msg.id} className={`wa-feed-card ${msg.isTradeSignal ? 'has-signal' : ''}`}>
+                  <div className="wa-feed-header">
+                    <div className="wa-feed-sender-group">
+                      <span className="wa-feed-sender-badge">
+                        💬 {msg.sender || msg.chatTitle || 'WhatsApp'}
+                      </span>
+                      {msg.isTradeSignal && (
+                        <span className="wa-feed-signal-tag">📢 Trade Signal</span>
+                      )}
+                      {(msg.matchedSymbols || []).map((sym) => (
+                        <button
+                          key={sym}
+                          type="button"
+                          className="btn-sources-badge"
+                          onClick={() => openSignalSourcesBySymbol(sym)}
+                          title={`Open source reference for ${sym}`}
+                        >
+                          📈 {sym} Ref
+                        </button>
+                      ))}
+                    </div>
+                    <span className="wa-feed-timestamp" title={msg.header || msg.timestamp}>
+                      🕒 {new Date(msg.timestamp).toLocaleString('en-IN', {
+                        day: '2-digit',
+                        month: 'short',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hour12: true
+                      })}
+                    </span>
+                  </div>
+                  {msg.header && (
+                    <div className="wa-feed-raw-header">{msg.header.trim()}</div>
+                  )}
+                  <div className="wa-feed-body">{msg.text}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
         /* 13. Signals Container: Supports both Touch Cards & Full Table */
@@ -1610,16 +1883,14 @@ const EquityPage: React.FC = () => {
                                 📄 {sig.source}
                               </span>
                             )}
-                            {sig.hasMultipleSources && (
-                              <button
-                                type="button"
-                                className="btn-sources-badge"
-                                onClick={() => setSelectedStockForSources(sig)}
-                                title="Click to view all sources (WhatsApp vs Google Sheet)"
-                              >
-                                🔀 View Sources ({sig.sourcesBreakdown?.length || 2})
-                              </button>
-                            )}
+                            <button
+                              type="button"
+                              className="btn-sources-badge"
+                              onClick={() => setSelectedStockForSources(sig)}
+                              title="Click to view source reference (WhatsApp message / Google Sheet screenshot)"
+                            >
+                              {getSourceRefButtonLabel(sig)}
+                            </button>
                           </div>
                           <span style={{ fontSize: '11px', color: '#64748b' }}>
                             {sig.callType || 'General'}
@@ -1760,18 +2031,16 @@ const EquityPage: React.FC = () => {
                                   📄 {sig.source}
                                 </div>
                               )}
-                              {sig.hasMultipleSources && (
-                                <div style={{ marginTop: '2px', marginBottom: '4px' }}>
-                                  <button
-                                    type="button"
-                                    className="btn-sources-badge"
-                                    onClick={() => setSelectedStockForSources(sig)}
-                                    title="Click to compare WhatsApp vs Google Sheet sources"
-                                  >
-                                    🔀 View Sources ({sig.sourcesBreakdown?.length || 2})
-                                  </button>
-                                </div>
-                              )}
+                              <div style={{ marginTop: '2px', marginBottom: '4px' }}>
+                                <button
+                                  type="button"
+                                  className="btn-sources-badge"
+                                  onClick={() => setSelectedStockForSources(sig)}
+                                  title="Click to inspect source reference (WhatsApp message / Google Sheet screenshot)"
+                                >
+                                  {getSourceRefButtonLabel(sig)}
+                                </button>
+                              </div>
                               <div style={{ color: '#6b7280', fontSize: '11px' }}>
                                 {sig.callType || 'General'}
                               </div>
@@ -1830,146 +2099,244 @@ const EquityPage: React.FC = () => {
         </div>
       )}
 
-      {/* 9. Comparative Multi-Source Modal (WhatsApp Source of Truth vs Google Sheet) */}
-      {selectedStockForSources && (
-        <div className="modal-overlay" onClick={() => setSelectedStockForSources(null)}>
-          <div className="sources-modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
-                    {selectedStockForSources.symbol} - Advisory Sources Comparison
-                  </h3>
-                  {selectedStockForSources.hasMultipleSources && (
+      {/* 9. Comparative Sources & Visual Reference Modal (All Single & Multi-Source Scenarios) */}
+      {selectedStockForSources && (() => {
+        const effectiveBreakdown = getEffectiveSourcesBreakdown(selectedStockForSources);
+        const isMultiSourceModal = effectiveBreakdown.length > 1;
+        const hasWA = effectiveBreakdown.some(sb => sb.isSourceOfTruth || sb.sourceType === 'whatsapp');
+
+        return (
+          <div className="modal-overlay" onClick={() => setSelectedStockForSources(null)}>
+            <div className="sources-modal-content" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a' }}>
+                      {selectedStockForSources.symbol} — {isMultiSourceModal ? 'Advisory Sources Comparison' : 'Source Reference & Proof'}
+                    </h3>
                     <span className="badge-multi-source-count">
-                      {selectedStockForSources.sourcesBreakdown?.length || 2} Sources
+                      {effectiveBreakdown.length} {effectiveBreakdown.length === 1 ? 'Source' : 'Sources'}
                     </span>
-                  )}
-                </div>
-                <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
-                  {selectedStockForSources.companyName}
-                  {selectedStockForSources.currentCMP && (
-                    <span style={{ marginLeft: '8px', fontWeight: 600, color: '#0f172a' }}>
-                      | Live CMP: ₹{selectedStockForSources.currentCMP}
-                      {selectedStockForSources.dayChangePercent !== undefined && selectedStockForSources.dayChangePercent !== null && (
-                        <span style={{ 
-                          marginLeft: '4px',
-                          color: selectedStockForSources.dayChangePercent >= 0 ? '#16a34a' : '#dc2626'
-                        }}>
-                          ({selectedStockForSources.dayChangePercent >= 0 ? '+' : ''}{selectedStockForSources.dayChangePercent}%)
-                        </span>
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <button className="modal-close" onClick={() => setSelectedStockForSources(null)}>✕</button>
-            </div>
-
-            <div className="sources-modal-body">
-              {/* WhatsApp Source of Truth Rule Banner */}
-              <div className="verdict-banner">
-                <div className="verdict-banner-title">
-                  👑 WhatsApp is the 1st Priority Final Source of Truth
-                </div>
-                <div className="verdict-banner-desc">
-                  {selectedStockForSources.finalVerdict || (
-                    selectedStockForSources.sourcesBreakdown?.some(sb => sb.isSourceOfTruth)
-                      ? 'WhatsApp advisory messages take strict precedence. If an exit call was issued in WhatsApp, the Google Sheet buy recommendation is permanently expired unless reinitiated in WhatsApp.'
-                      : 'Consensus across multiple advisory sources.'
-                  )}
-                </div>
-              </div>
-
-              {/* Sources Cards Grid */}
-              <div className="sources-grid">
-                {(selectedStockForSources.sourcesBreakdown || []).map((sourceItem, idx) => {
-                  const isWA = sourceItem.isSourceOfTruth || sourceItem.sourceType === 'whatsapp';
-                  const isExit = ['SELL', 'EXIT', 'COMPLETE_EXIT', 'PARTIAL_EXIT'].includes(sourceItem.action?.toUpperCase());
-
-                  return (
-                    <div 
-                      key={sourceItem.id || idx} 
-                      className={`source-card ${isWA ? 'source-card-whatsapp' : 'source-card-secondary'}`}
-                    >
-                      <div className="source-card-header">
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontSize: '18px' }}>{isWA ? '👑' : '📑'}</span>
-                          <div>
-                            <div className="source-card-title">{sourceItem.sourceLabel}</div>
-                            <div className="source-card-priority">
-                              {isWA ? '1st Priority • Ultimate Source of Truth' : '2nd Priority • Secondary Advisory'}
-                            </div>
-                          </div>
-                        </div>
-                        <span className={`badge-action ${sourceItem.isExpired ? 'expired' : isExit ? 'sell' : 'buy'}`}>
-                          {sourceItem.action}
-                        </span>
-                      </div>
-
-                      <div className="source-card-stats">
-                        <div className="source-stat-box">
-                          <span className="source-stat-label">
-                            {isExit ? 'Exit / Call Price' : 'Buy Range / Ceiling'}
-                          </span>
-                          <span className="source-stat-val">
-                            {sourceItem.price ? `₹${sourceItem.price}` : 'Market Price'}
-                          </span>
-                        </div>
-
-                        {sourceItem.rating ? (
-                          <div className="source-stat-box">
-                            <span className="source-stat-label">Conviction</span>
-                            <span className="source-stat-val" style={{ color: '#d97706' }}>
-                              {'⭐'.repeat(sourceItem.rating)} ({sourceItem.rating}★)
-                            </span>
-                          </div>
-                        ) : null}
-
-                        <div className="source-stat-box">
-                          <span className="source-stat-label">Signal Status</span>
-                          <span className={`source-status-badge ${sourceItem.isExpired ? 'status-expired' : 'status-active'}`}>
-                            {sourceItem.isExpired ? '⛔ EXPIRED' : (sourceItem.status || 'ACTIVE')}
-                          </span>
-                        </div>
-                      </div>
-
-                      {sourceItem.statusReason && (
-                        <div className="source-status-reason">
-                          <strong>Note: </strong>{sourceItem.statusReason}
-                        </div>
-                      )}
-
-                      {sourceItem.rawText && (
-                        <div className="source-raw-box">
-                          <div className="source-raw-label">
-                            {isWA ? 'Original WhatsApp Advisory Message:' : 'Google Sheet Source Entry:'}
-                          </div>
-                          <div className="source-raw-content">
-                            {sourceItem.sender && <span style={{ color: '#059669', fontWeight: 600 }}>{sourceItem.sender} </span>}
-                            {sourceItem.rawText}
-                          </div>
-                        </div>
-                      )}
-
-                      <div className="source-card-footer">
-                        <span>Synced: {sourceItem.timestamp ? new Date(sourceItem.timestamp).toLocaleString('en-IN') : 'Active'}</span>
-                        {isWA && (
-                          <span className="source-truth-tag">
-                            ✓ Controls Final Portfolio Action
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#64748b', marginTop: '2px' }}>
+                    {selectedStockForSources.companyName}
+                    {selectedStockForSources.currentCMP && (
+                      <span style={{ marginLeft: '8px', fontWeight: 600, color: '#0f172a' }}>
+                        | Live CMP: ₹{selectedStockForSources.currentCMP}
+                        {selectedStockForSources.dayChangePercent !== undefined && selectedStockForSources.dayChangePercent !== null && (
+                          <span style={{ 
+                            marginLeft: '4px',
+                            color: selectedStockForSources.dayChangePercent >= 0 ? '#16a34a' : '#dc2626'
+                          }}>
+                            ({selectedStockForSources.dayChangePercent >= 0 ? '+' : ''}{selectedStockForSources.dayChangePercent}%)
                           </span>
                         )}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button className="modal-close" onClick={() => setSelectedStockForSources(null)}>✕</button>
+              </div>
+
+              <div className="sources-modal-body">
+                {/* Verdict / Source Reference Banner */}
+                <div className="verdict-banner">
+                  <div className="verdict-banner-title">
+                    {isMultiSourceModal
+                      ? '👑 WhatsApp is the 1st Priority Final Source of Truth'
+                      : hasWA
+                        ? '💬 WhatsApp Message Reference (Source of Truth)'
+                        : '📊 Google Sheet Reference & Live Screenshot Proof'}
+                  </div>
+                  <div className="verdict-banner-desc">
+                    {selectedStockForSources.finalVerdict || (
+                      hasWA
+                        ? 'Exact original WhatsApp advisory message captured with sender and timestamp. WhatsApp advisories take strict 1st-priority precedence.'
+                        : 'Row metadata extracted directly from the SOIC Google Sheet along with the latest captured tab screenshot.'
+                    )}
+                  </div>
+                </div>
+
+                {/* Sources Cards Grid */}
+                <div className="sources-grid">
+                  {effectiveBreakdown.map((sourceItem, idx) => {
+                    const isWA = sourceItem.isSourceOfTruth || sourceItem.sourceType === 'whatsapp';
+                    const isSheet = sourceItem.sourceType === 'google_sheet' || (sourceItem.source || '').toLowerCase().includes('sheet');
+                    const isExit = ['SELL', 'EXIT', 'COMPLETE_EXIT', 'PARTIAL_EXIT'].includes(sourceItem.action?.toUpperCase());
+                    const matchingSnap = isSheet ? getMatchingSheetSnapshot(sourceItem) : null;
+
+                    return (
+                      <div 
+                        key={sourceItem.id || idx} 
+                        className={`source-card ${isWA ? 'source-card-whatsapp' : 'source-card-secondary'}`}
+                      >
+                        <div className="source-card-header">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '18px' }}>{isWA ? '👑' : '📊'}</span>
+                            <div>
+                              <div className="source-card-title">{sourceItem.sourceLabel}</div>
+                              <div className="source-card-priority">
+                                {isWA ? '1st Priority • Ultimate Source of Truth' : '2nd Priority • Google Sheet Baseline'}
+                              </div>
+                            </div>
+                          </div>
+                          <span className={`badge-action ${sourceItem.isExpired ? 'expired' : isExit ? 'sell' : 'buy'}`}>
+                            {sourceItem.action}
+                          </span>
+                        </div>
+
+                        <div className="source-card-stats">
+                          <div className="source-stat-box">
+                            <span className="source-stat-label">
+                              {isExit ? 'Exit / Call Price' : 'Buy Range / Ceiling'}
+                            </span>
+                            <span className="source-stat-val">
+                              {sourceItem.price ? `₹${sourceItem.price}` : 'Market Price'}
+                            </span>
+                          </div>
+
+                          {sourceItem.rating ? (
+                            <div className="source-stat-box">
+                              <span className="source-stat-label">Conviction</span>
+                              <span className="source-stat-val" style={{ color: '#d97706' }}>
+                                {'⭐'.repeat(sourceItem.rating)} ({sourceItem.rating}★)
+                              </span>
+                            </div>
+                          ) : null}
+
+                          <div className="source-stat-box">
+                            <span className="source-stat-label">Signal Status</span>
+                            <span className={`source-status-badge ${sourceItem.isExpired ? 'status-expired' : 'status-active'}`}>
+                              {sourceItem.isExpired ? '⛔ EXPIRED' : (sourceItem.status || 'ACTIVE')}
+                            </span>
+                          </div>
+                        </div>
+
+                        {sourceItem.statusReason && (
+                          <div className="source-status-reason">
+                            <strong>Note: </strong>{sourceItem.statusReason}
+                          </div>
+                        )}
+
+                        {sourceItem.rawHeader && (
+                          <div className="source-header-meta">
+                            <span>🕒 Header:</span> <code>{sourceItem.rawHeader.trim()}</code>
+                          </div>
+                        )}
+
+                        {sourceItem.sheetTab && (
+                          <div className="source-sheet-meta">
+                            <span>
+                              📑 Tab: <strong>{sourceItem.sheetTab}</strong>
+                              {sourceItem.sheetRow ? ` • Row ${sourceItem.sheetRow}` : ''}
+                            </span>
+                            {sourceItem.sheetUrl && (
+                              <a
+                                href={sourceItem.sheetUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="sheet-open-link"
+                              >
+                                ↗ Open Row in Sheet
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {sourceItem.rawText && (
+                          <div className="source-raw-box">
+                            <div className="source-raw-label">
+                              {isWA ? 'Original WhatsApp Advisory Message:' : 'Google Sheet Source Entry:'}
+                            </div>
+                            <div className="source-raw-content">
+                              {sourceItem.sender && <span style={{ color: '#059669', fontWeight: 600 }}>{sourceItem.sender}: </span>}
+                              {sourceItem.rawText}
+                            </div>
+                          </div>
+                        )}
+
+                        {isSheet && matchingSnap && (
+                          <div className="sheet-snapshot-preview-box">
+                            <div className="sheet-snapshot-header">
+                              <span>📸 Google Sheet Screenshot ({matchingSnap.tab})</span>
+                              <span style={{ fontSize: '10px', color: '#64748b' }}>
+                                Captured {new Date(matchingSnap.capturedAt).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              className="sheet-snapshot-img-btn"
+                              onClick={() => setExpandedSnapshot(matchingSnap)}
+                              title="Click to enlarge Google Sheet screenshot"
+                            >
+                              <img
+                                src={matchingSnap.dataUrl}
+                                alt={`Google Sheet ${matchingSnap.tab} Reference`}
+                                className="sheet-snapshot-thumb"
+                              />
+                              <span className="sheet-snapshot-zoom-hint">🔍 Click to Enlarge</span>
+                            </button>
+                          </div>
+                        )}
+
+                        <div className="source-card-footer">
+                          <span>Timestamp: {sourceItem.timestamp ? new Date(sourceItem.timestamp).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true }) : 'Active'}</span>
+                          {isWA && (
+                            <span className="source-truth-tag">
+                              ✓ Controls Final Portfolio Action
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="modal-footer" style={{ justifyContent: 'flex-end' }}>
+                <button className="btn-secondary" onClick={() => setSelectedStockForSources(null)}>
+                  Close
+                </button>
               </div>
             </div>
+          </div>
+        );
+      })()}
 
-            <div className="modal-footer" style={{ justifyContent: 'flex-end' }}>
-              <button className="btn-secondary" onClick={() => setSelectedStockForSources(null)}>
-                Close
-              </button>
+      {/* 9b. Fullscreen Lightbox for Google Sheet Reference Screenshot */}
+      {expandedSnapshot && (
+        <div className="modal-overlay" style={{ zIndex: 1200 }} onClick={() => setExpandedSnapshot(null)}>
+          <div className="snapshot-lightbox" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 style={{ margin: 0, fontSize: '16px' }}>
+                  📸 Google Sheet Visual Reference — {expandedSnapshot.tab}
+                </h3>
+                <div style={{ fontSize: '12px', color: '#64748b' }}>
+                  Captured: {new Date(expandedSnapshot.capturedAt).toLocaleString('en-IN')}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {expandedSnapshot.url && (
+                  <a
+                    href={expandedSnapshot.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-outline"
+                    style={{ fontSize: '12px', padding: '5px 10px', textDecoration: 'none' }}
+                  >
+                    ↗ Open Live Sheet
+                  </a>
+                )}
+                <button className="modal-close" onClick={() => setExpandedSnapshot(null)}>✕</button>
+              </div>
+            </div>
+            <div style={{ padding: '12px', overflow: 'auto', maxHeight: '78vh', textAlign: 'center', background: '#0f172a' }}>
+              <img
+                src={expandedSnapshot.dataUrl}
+                alt={`Google Sheet ${expandedSnapshot.tab}`}
+                style={{ maxWidth: '100%', height: 'auto', borderRadius: '6px', border: '1px solid #334155' }}
+              />
             </div>
           </div>
         </div>

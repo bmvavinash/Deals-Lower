@@ -14,6 +14,7 @@ let memoryDB = {
   clarifications: {},
   insights: [],
   notifications: [],
+  sheetSnapshots: {},
   meta: {
     lastUpdated: new Date().toISOString(),
     primaryDB: 'firebase'
@@ -82,21 +83,66 @@ function getSourcePriority(source = '') {
 }
 
 /**
- * Save raw inbound message for permanent audit trail
+ * Sort raw messages descending by real message timestamp (newest first),
+ * falling back to domIndex & storedAt when timestamps tie.
+ */
+function sortRawMessagesDesc(list) {
+  return (list || []).sort((a, b) => {
+    const tA = new Date(a.timestamp || a.storedAt || 0).getTime() || 0;
+    const tB = new Date(b.timestamp || b.storedAt || 0).getTime() || 0;
+    if (tB !== tA) return tB - tA;
+    const dA = Number(a.domIndex || 0);
+    const dB = Number(b.domIndex || 0);
+    if (dB !== dA) return dB - dA;
+    const sA = new Date(a.storedAt || 0).getTime() || 0;
+    const sB = new Date(b.storedAt || 0).getTime() || 0;
+    return sB - sA;
+  });
+}
+
+/**
+ * Save raw inbound message for permanent audit trail (deduplicated to avoid redundant writes)
  */
 async function saveRawMessage(msgData) {
   const id = msgData.id || `MSG_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+  const existing = memoryDB.rawMessages ? memoryDB.rawMessages[id] : null;
+  const nextTimestamp = msgData.timestamp || existing?.timestamp || new Date().toISOString();
+
+  // Skip redundant disk/Firebase writes when deterministic message payload hasn't changed
+  if (
+    existing &&
+    existing.text === msgData.text &&
+    existing.header === msgData.header &&
+    existing.timestamp === nextTimestamp &&
+    JSON.stringify(existing.matchedSymbols || []) === JSON.stringify(msgData.matchedSymbols || [])
+  ) {
+    return existing;
+  }
+
   const record = {
+    ...(existing || {}),
     ...msgData,
     id,
-    storedAt: new Date().toISOString()
+    timestamp: nextTimestamp,
+    storedAt: existing?.storedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   };
 
-  // 1. Save in memory & local backup
+  if (!memoryDB.rawMessages) memoryDB.rawMessages = {};
   memoryDB.rawMessages[id] = record;
+
+  // Prune memory cache to latest 200 raw messages
+  const allRaw = Object.values(memoryDB.rawMessages);
+  if (allRaw.length > 200) {
+    const kept = sortRawMessagesDesc(allRaw).slice(0, 200);
+    memoryDB.rawMessages = {};
+    for (const item of kept) {
+      memoryDB.rawMessages[item.id] = item;
+    }
+  }
   persistLocalDB();
 
-  // 2. Sync to Firebase
+  // Sync to Firebase
   const fb = getFirebaseDB();
   if (fb) {
     try {
@@ -107,6 +153,87 @@ async function saveRawMessage(msgData) {
   }
 
   return record;
+}
+
+/**
+ * Fetch raw inbound messages sorted strictly descending by timestamp (latest first).
+ * Filters out legacy random MSG_* duplicates when deterministic WA_MSG_* records exist.
+ */
+async function getRawMessages(limit = 60, sourceFilter = null) {
+  const fb = getFirebaseDB();
+  if (fb) {
+    try {
+      const snap = await safeFirebaseRead(
+        fb.ref('stocks/raw_messages').orderByChild('timestamp').limitToLast(Math.max(limit * 2, 160)).once('value'),
+        2500
+      );
+      const val = snap ? snap.val() : null;
+      if (val && typeof val === 'object') {
+        memoryDB.rawMessages = { ...(memoryDB.rawMessages || {}), ...val };
+      }
+    } catch (e) {
+      logger.warn('Could not read raw_messages from Firebase, returning memory cache', { error: e.message });
+    }
+  }
+
+  let list = Object.values(memoryDB.rawMessages || {});
+  const hasDeterministicWA = list.some(m => String(m.id || '').startsWith('WA_MSG_'));
+  if (hasDeterministicWA) {
+    list = list.filter(m => !String(m.id || '').startsWith('MSG_'));
+  }
+
+  if (sourceFilter) {
+    const q = sourceFilter.toLowerCase();
+    list = list.filter(m =>
+      (m.source && m.source.toLowerCase().includes(q)) ||
+      (m.sourceType && m.sourceType.toLowerCase().includes(q))
+    );
+  }
+  return sortRawMessagesDesc(list).slice(0, limit);
+}
+
+/**
+ * Save captured Google Sheet tab screenshots & metadata
+ */
+async function saveSheetSnapshots(snapshotsMap = {}) {
+  if (!memoryDB.sheetSnapshots) memoryDB.sheetSnapshots = {};
+  const updatedAt = new Date().toISOString();
+  const payload = {
+    ...memoryDB.sheetSnapshots,
+    ...snapshotsMap,
+    updatedAt
+  };
+  memoryDB.sheetSnapshots = payload;
+  persistLocalDB();
+
+  const fb = getFirebaseDB();
+  if (fb) {
+    try {
+      await fb.ref('stocks/sheet_snapshots').set(payload);
+    } catch (fbErr) {
+      logger.warn('Firebase sheet_snapshots write failed, saved to local fallback', { error: fbErr.message });
+    }
+  }
+  return payload;
+}
+
+/**
+ * Retrieve captured Google Sheet screenshots & metadata
+ */
+async function getSheetSnapshots() {
+  const fb = getFirebaseDB();
+  if (fb) {
+    try {
+      const snap = await safeFirebaseRead(fb.ref('stocks/sheet_snapshots').once('value'), 2500);
+      const val = snap ? snap.val() : null;
+      if (val && typeof val === 'object') {
+        memoryDB.sheetSnapshots = { ...(memoryDB.sheetSnapshots || {}), ...val };
+      }
+    } catch (e) {
+      logger.warn('Could not read sheet_snapshots from Firebase, returning memory cache', { error: e.message });
+    }
+  }
+  return memoryDB.sheetSnapshots || {};
 }
 
 /**
@@ -590,6 +717,7 @@ async function getAllSignals(filters = {}) {
       return {
         id: sib.id,
         symbol: sym,
+        companyName: sib.companyName || sym,
         source: sib.source,
         sourceLabel: isWA ? 'WhatsApp (Source of Truth)' : (sib.source?.includes('Watchlist') ? 'Google Sheet: Watchlist' : sib.source?.includes('Stock list') ? 'Google Sheet: Stock list' : sib.sourceLabel || sib.source),
         sourceType: isWA ? 'whatsapp' : (sib.source?.toLowerCase().includes('sheet') ? 'google_sheet' : 'telegram'),
@@ -602,7 +730,11 @@ async function getAllSignals(filters = {}) {
         isSourceOfTruth: Boolean(isWA),
         timestamp: sib.timestamp || sib.updatedAt,
         sender: sib.sender,
-        rawText: sib.rawText
+        rawHeader: sib.rawHeader || null,
+        rawText: sib.rawText,
+        sheetUrl: sib.sheetUrl || null,
+        sheetTab: sib.sheetTab || null,
+        sheetRow: sib.sheetRow || null
       };
     });
 
@@ -866,20 +998,34 @@ async function getBestInsights() {
 }
 
 /**
- * Save and get Triggered Notifications
+ * Save and get Triggered Notifications (strictly sorted descending by timestamp - latest first)
  */
+function sortNotificationsDesc(list) {
+  return (list || []).sort((a, b) => {
+    const tA = new Date(a.timestamp || a.triggeredAt || 0).getTime() || 0;
+    const tB = new Date(b.timestamp || b.triggeredAt || 0).getTime() || 0;
+    return tB - tA;
+  });
+}
+
 async function saveNotification(notif) {
   if (!memoryDB.notifications) {
     memoryDB.notifications = [];
   }
+  const normalized = {
+    ...notif,
+    timestamp: notif.timestamp || new Date().toISOString()
+  };
+
   // Prevent exact duplicate in memory
-  const existingIdx = memoryDB.notifications.findIndex(n => n.id === notif.id);
+  const existingIdx = memoryDB.notifications.findIndex(n => n.id === normalized.id);
   if (existingIdx >= 0) {
-    memoryDB.notifications[existingIdx] = notif;
+    memoryDB.notifications[existingIdx] = normalized;
   } else {
-    memoryDB.notifications.unshift(notif);
+    memoryDB.notifications.unshift(normalized);
   }
 
+  sortNotificationsDesc(memoryDB.notifications);
   if (memoryDB.notifications.length > 100) {
     memoryDB.notifications = memoryDB.notifications.slice(0, 100);
   }
@@ -888,10 +1034,10 @@ async function saveNotification(notif) {
   const fb = getFirebaseDB();
   if (fb) {
     try {
-      fb.ref(`stocks/notifications/${notif.id}`).set(notif).catch(() => {});
+      fb.ref(`stocks/notifications/${normalized.id}`).set(normalized).catch(() => {});
     } catch (e) {}
   }
-  return notif;
+  return normalized;
 }
 
 async function getNotifications(limit = 50) {
@@ -901,13 +1047,13 @@ async function getNotifications(limit = 50) {
       const snap = await safeFirebaseRead(fb.ref('stocks/notifications').limitToLast(limit).once('value'), 2000);
       const val = snap ? snap.val() : null;
       if (val) {
-        memoryDB.notifications = Object.values(val).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        memoryDB.notifications = sortNotificationsDesc(Object.values(val));
       }
     } catch (e) {
       logger.warn('Could not read notifications from Firebase, returning memory cache', { error: e.message });
     }
   }
-  return (memoryDB.notifications || []).slice(0, limit);
+  return sortNotificationsDesc([...(memoryDB.notifications || [])]).slice(0, limit);
 }
 
 /**
@@ -933,6 +1079,9 @@ function recordAlertSent(cooldownKey) {
 module.exports = {
   getSourcePriority,
   saveRawMessage,
+  getRawMessages,
+  saveSheetSnapshots,
+  getSheetSnapshots,
   saveSignals,
   getAllSignals,
   updateSignal,

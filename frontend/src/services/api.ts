@@ -266,7 +266,9 @@ export const stocksAPI = {
   resolveClarification: (data: { signalId: string; symbol: string; notes?: string }) =>
     api.post('/stocks/equity/resolve-clarification', data),
   getQuote: (symbol: string) => api.get(`/stocks/equity/quote/${symbol}`),
-  getNotifications: () => api.get('/stocks/equity/notifications'),
+  getNotifications: (limit?: number) => api.get('/stocks/equity/notifications', { params: limit ? { limit } : undefined }),
+  getWhatsAppFeed: (limit?: number) => api.get('/stocks/equity/whatsapp-feed', { params: limit ? { limit } : undefined }),
+  getSheetSnapshots: () => api.get('/stocks/equity/sheet-snapshots'),
   triggerCheck: () => api.post('/stocks/equity/trigger-check'),
   refreshQuotes: (force?: boolean) => api.post('/stocks/equity/refresh-quotes', { force }),
   getRefresherStatus: () => api.get('/stocks/equity/refresher-status'),
