@@ -270,7 +270,7 @@ function parseStockMessage(rawText, meta = {}) {
     }
 
     // 4. Action Check: Buy
-    const buyMatch = line.match(/^buy\s+(?:up\s*to|upto|above|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
+    const buyMatch = line.match(/^buy\s+(?:up\s*to|upto|below|under|above|at|around)?\s*[:\-]?\s*(?:₹\s*)?([\d,]+(?:\.\d+)?(?:\/-)?)/i);
     if (buyMatch) {
       currentItem.action = currentItem.action || 'BUY';
       currentItem.price = parsePrice(buyMatch[1]);

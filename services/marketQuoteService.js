@@ -214,10 +214,19 @@ function normalizeSymbol(rawName) {
     return { symbol: COMPANY_TICKER_MAP[cleaned], isMapped: true };
   }
 
-  // Check partial matches in dictionary (guarded against short/empty noise)
+  // Check word-boundary phrase matches in dictionary (prevents 'below' matching 'bel')
+  const words = cleaned.split(' ');
   for (const [key, sym] of Object.entries(COMPANY_TICKER_MAP)) {
-    if (cleaned.includes(key) || (cleaned.length >= 4 && key.includes(cleaned))) {
+    const escKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const keyBoundaryRe = new RegExp(`(?:^|\\s)${escKey}(?:$|\\s)`);
+    if (keyBoundaryRe.test(cleaned)) {
       return { symbol: sym, isMapped: true, matchedAlias: key };
+    }
+    if (cleaned.length >= 4 && key.length > cleaned.length) {
+      const escClean = cleaned.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`(?:^|\\s)${escClean}(?:$|\\s)`).test(key) && words.length >= 1) {
+        return { symbol: sym, isMapped: true, matchedAlias: key };
+      }
     }
   }
 
