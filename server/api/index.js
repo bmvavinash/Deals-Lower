@@ -271,18 +271,18 @@ try {
 // handshakes on single-vCPU containers saturate sockets and cause 5-second health-check timeouts.
 logger.info('API server keep-alive managed by external Oracle VM & cron-job.org pingers.');
 
-// Auto-start Stocks Master Scheduler (SKIP ON API SERVERS to protect RAM & CPU)
-try {
-  if (!isApiOnlyServer) {
+// Auto-start Lightweight Stocks Master Scheduler after boot (runs 24/7 Telegram + 09:00 AM IST Market Start)
+// Puppeteer/Chrome scrapers are lazy-loaded inside job handlers and strictly skipped in Cloud/Render mode
+const stocksBootTimer = setTimeout(() => {
+  try {
     const { startMasterScheduler } = require('../../services/stocksMasterScheduler');
     startMasterScheduler();
     logger.info('🚀 Stocks Master Scheduler auto-started on server boot.');
-  } else {
-    logger.info('API server mode detected. Skipping heavy Stocks Master Scheduler to free 100% CPU/RAM for API requests.');
+  } catch (schedErr) {
+    logger.error('Failed to auto-start Stocks Master Scheduler on boot', { error: schedErr.message });
   }
-} catch (schedErr) {
-  logger.error('Failed to auto-start Stocks Master Scheduler on boot', { error: schedErr.message });
-}
+}, 3000);
+if (stocksBootTimer.unref) stocksBootTimer.unref();
 
 // Auto-start Local Daemon if offline on API startup (SKIP ON CLOUD / API SERVERS)
 try {

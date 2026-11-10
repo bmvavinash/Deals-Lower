@@ -179,8 +179,8 @@ const EquityPage: React.FC = () => {
   // Global banner notification message
   const [bannerNotice, setBannerNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Master Scheduler & Telegram Ingestion State
-  const [schedulerState, setSchedulerState] = useState<any>(null);
+  // Master Scheduler & Telegram Ingestion State (default active while syncing to avoid false PAUSED flash)
+  const [schedulerState, setSchedulerState] = useState<any>({ isMasterActive: true, _syncing: true, environment: 'connecting' });
   const [isSchedulerToggling, setIsSchedulerToggling] = useState(false);
 
   // 1. Fetch dashboard signals & insights
@@ -213,6 +213,13 @@ const EquityPage: React.FC = () => {
       }
       if (schedRes.status === 'fulfilled' && schedRes.value.data?.success) {
         loadedScheduler = schedRes.value.data.data || null;
+        // Self-heal if backend scheduler wasn't running and wasn't explicitly paused
+        if (loadedScheduler && !loadedScheduler.isMasterActive && !loadedScheduler.explicitlyPaused) {
+          try {
+            const startRes = await stocksAPI.startScheduler();
+            if (startRes.data?.state) loadedScheduler = startRes.data.state;
+          } catch (_) {}
+        }
       }
 
       // Resilient Firebase RTDB Fallback:
@@ -273,7 +280,9 @@ const EquityPage: React.FC = () => {
           const fbSchedRes = await fetch('https://lowerdealhub-default-rtdb.asia-southeast1.firebasedatabase.app/stocks/scheduler.json');
           if (fbSchedRes.ok) {
             const fbSched = await fbSchedRes.json();
-            if (fbSched) loadedScheduler = fbSched;
+            if (fbSched) {
+              loadedScheduler = fbSched.explicitlyPaused ? fbSched : { ...fbSched, isMasterActive: true };
+            }
           }
         } catch (_) {}
       }
@@ -870,19 +879,23 @@ const EquityPage: React.FC = () => {
       <div className="scheduler-banner">
         <div className="scheduler-left">
           <div className="scheduler-badge-row">
-            <span className={`status-pill ${schedulerState?.isMasterActive ? 'active' : 'paused'}`}>
+            <span className={`status-pill ${schedulerState?.isMasterActive !== false ? 'active' : 'paused'}`}>
               <span className="pulse-dot"></span>
-              {schedulerState?.isMasterActive ? 'Scheduler: ACTIVE' : 'Scheduler: PAUSED'}
+              {schedulerState?._syncing
+                ? 'Scheduler: SYNCING'
+                : schedulerState?.isMasterActive
+                  ? 'Scheduler: ACTIVE'
+                  : 'Scheduler: PAUSED'}
             </span>
             <span className="scheduler-tag">💬 WA: 3m (9223)</span>
-            <span className="scheduler-tag">⚡ CMP: 2m</span>
+            <span className="scheduler-tag">⚡ CMP: 2m (9AM–3:30PM)</span>
             <span className="scheduler-tag">📊 Sheets: 15m (9223)</span>
             <span className="scheduler-tag tg-tag">📱 TG Fallback: Ingesting 24/7</span>
           </div>
           <div className="scheduler-subtitle">
-            {schedulerState?.isMasterActive 
-              ? 'Auto-polling WhatsApp every 3m on Chrome 9223. Forward or repost trades in Telegram anytime to auto-ingest.'
-              : 'Local scheduler paused. Telegram Ingestion listener active 24/7 for reposted trade calls.'}
+            {schedulerState?.isMasterActive !== false
+              ? `Always-on & auto-waking at 09:00 AM IST (${schedulerState?.environment || '24/7'}). Live CMP updates every 2m in market hours.`
+              : 'Manually paused (will auto-resume at 09:00 AM IST next market start). Click Resume to start immediately.'}
           </div>
         </div>
         <div className="scheduler-actions">
@@ -890,9 +903,9 @@ const EquityPage: React.FC = () => {
             className="btn-outline"
             style={{ fontSize: '11px', padding: '5px 10px', background: '#fff', fontWeight: 600 }}
             onClick={handleToggleScheduler}
-            disabled={isSchedulerToggling}
+            disabled={isSchedulerToggling || schedulerState?._syncing}
           >
-            {schedulerState?.isMasterActive ? '⏸️ Pause' : '▶️ Resume'}
+            {schedulerState?.isMasterActive !== false ? '⏸️ Pause' : '▶️ Resume'}
           </button>
           <button
             className="btn-outline"

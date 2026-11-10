@@ -5,16 +5,15 @@ try {
   // Graceful fallback to setInterval if node-cron is not directly in path
   cron = {
     schedule: (expr, fn) => {
-      let ms = 60000;
       const match = expr.match(/^\*\/(\d+)/);
-      if (match) ms = parseInt(match[1], 10) * 60000;
+      if (!match) return { stop: () => {} };
+      const ms = parseInt(match[1], 10) * 60000;
       const timer = setInterval(fn, ms);
+      if (timer.unref) timer.unref();
       return { stop: () => clearInterval(timer) };
     }
   };
 }
-const { extractActiveWhatsAppChat } = require('./whatsappLiveExtractor');
-const { extractGoogleSheetSignals } = require('./googleSheetLiveExtractor');
 const { refreshQuotesNow } = require('./marketQuoteRefresher');
 const { startTelegramIngestion, getTelegramIngestionStatus } = require('./telegramTradeIngestionService');
 const { getAllSignals, getBestInsights } = require('../database/stocksMultiDB');
@@ -24,13 +23,21 @@ const { getModuleLogger } = require('../logger/logger');
 const logger = getModuleLogger('stocksMasterScheduler');
 
 let isSchedulerRunning = false;
+let explicitlyPausedByUser = false;
 let cronTasks = [];
 let localIntervals = [];
+let marketStartWatcherTimer = null;
+let lastAutoWakeDateIST = null;
+
+function isCloudEnv() {
+  return Boolean(process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.IS_CLOUD);
+}
 
 // Runtime health state
 const schedulerState = {
   startedAt: null,
   isMasterActive: false,
+  explicitlyPaused: false,
   environment: 'idle',
   whatsappPoller: {
     enabled: true,
@@ -66,15 +73,31 @@ const schedulerState = {
 };
 
 /**
+ * Get current Date adjusted to IST (UTC+5:30) regardless of host OS timezone
+ */
+function getISTDate() {
+  const now = new Date();
+  const istOffsetMs = 5.5 * 60 * 60 * 1000;
+  return new Date(now.getTime() + (now.getTimezoneOffset() * 60 * 1000) + istOffsetMs);
+}
+
+/**
+ * Format IST calendar date (YYYY-MM-DD) for once-per-day market start triggers
+ */
+function getISTDateKey(istDate = getISTDate()) {
+  const y = istDate.getFullYear();
+  const m = String(istDate.getMonth() + 1).padStart(2, '0');
+  const d = String(istDate.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
  * Check if current time is within Indian Stock Market Trading Hours
- * Mon-Fri 09:15 to 15:30 IST (UTC+5:30)
+ * Mon-Fri 09:00 to 15:30 IST (UTC+5:30)
  */
 function isIndianMarketOpen() {
-  const now = new Date();
-  // Get time in IST
-  const istOffsetMs = 5.5 * 60 * 60 * 1000;
-  const istDate = new Date(now.getTime() + (now.getTimezoneOffset() * 60 * 1000) + istOffsetMs);
-  
+  const istDate = getISTDate();
+
   const day = istDate.getDay(); // 0 is Sunday, 6 is Saturday
   if (day === 0 || day === 6) {
     return false; // Weekend
@@ -84,18 +107,18 @@ function isIndianMarketOpen() {
   const minutes = istDate.getMinutes();
   const currentTotalMin = hours * 60 + minutes;
 
-  const marketOpenMin = 9 * 60 + 15;  // 09:15 IST
+  const marketOpenMin = 9 * 60;        // 09:00 IST
   const marketCloseMin = 15 * 60 + 30; // 15:30 IST
 
   return currentTotalMin >= marketOpenMin && currentTotalMin <= marketCloseMin;
 }
 
 /**
- * 1. WhatsApp Scheduled Ingestion Job (Every 3 minutes)
+ * 1. WhatsApp Scheduled Ingestion Job (Every 3 minutes on Local PC)
  */
 async function runWhatsAppScheduledJob() {
   const jobState = schedulerState.whatsappPoller;
-  if (!jobState.enabled) return;
+  if (!jobState.enabled || isCloudEnv()) return;
 
   jobState.lastRunAt = new Date().toISOString();
   jobState.totalRuns++;
@@ -104,6 +127,8 @@ async function runWhatsAppScheduledJob() {
   logger.info(`[Scheduler] ⏰ Running 3-min WhatsApp Poller on Chrome Port 9223 (Run #${jobState.totalRuns})...`);
 
   try {
+    // Lazy-loaded only on local PC so cloud never imports puppeteer
+    const { extractActiveWhatsAppChat } = require('./whatsappLiveExtractor');
     const result = await extractActiveWhatsAppChat({ port: 9223 });
     if (result.success) {
       jobState.lastSuccessAt = new Date().toISOString();
@@ -124,19 +149,20 @@ async function runWhatsAppScheduledJob() {
 }
 
 /**
- * 2. Live CMP Quote Refresher Job (Every 2 min in market hours, 15 min outside)
+ * 2. Live CMP Quote Refresher Job (Every 2 min in market hours 09:00-15:30 IST, 30 min outside)
  */
-async function runCMPRefresherJob() {
+async function runCMPRefresherJob(forceMarketCheck = false) {
   const jobState = schedulerState.cmpRefresher;
   if (!jobState.enabled) return;
 
   const marketOpen = isIndianMarketOpen();
   jobState.isMarketHours = marketOpen;
 
-  // Gate market updates: when Indian market is closed, only refresh quotes once every 30 minutes
-  if (!marketOpen && jobState.totalRuns > 0 && jobState.totalRuns % 15 !== 0) {
-    jobState.lastStatus = 'market_closed_skipped';
-    logger.debug('[Scheduler] ⏸️ Indian Market closed. Skipping CMP refresh until next 30-min window.');
+  // Gate high-frequency quote polling outside market hours while keeping master scheduler active
+  if (!forceMarketCheck && !marketOpen && jobState.totalRuns > 0 && jobState.totalRuns % 15 !== 0) {
+    jobState.totalRuns++;
+    jobState.lastStatus = 'standby_outside_market_hours';
+    logger.debug('[Scheduler] Outside 09:00-15:30 IST market window. Keeping scheduler active in low-frequency standby.');
     return;
   }
 
@@ -158,11 +184,11 @@ async function runCMPRefresherJob() {
 }
 
 /**
- * 3. Google Sheets Sync Job (Every 15 minutes)
+ * 3. Google Sheets Sync Job (Every 15 minutes on Local PC)
  */
 async function runGoogleSheetsScheduledJob() {
   const jobState = schedulerState.sheetsSync;
-  if (!jobState.enabled) return;
+  if (!jobState.enabled || isCloudEnv()) return;
 
   jobState.lastRunAt = new Date().toISOString();
   jobState.totalRuns++;
@@ -171,6 +197,8 @@ async function runGoogleSheetsScheduledJob() {
   logger.info(`[Scheduler] 📊 Running 15-min Google Sheet Sync on Chrome Port 9223 (Run #${jobState.totalRuns})...`);
 
   try {
+    // Lazy-loaded only on local PC so cloud never imports puppeteer
+    const { extractGoogleSheetSignals } = require('./googleSheetLiveExtractor');
     const result = await extractGoogleSheetSignals({ port: 9223 });
     if (result.success) {
       jobState.signalsSynced += (result.extractedSignals?.length || 0);
@@ -257,47 +285,118 @@ async function runMarketCloseDigest() {
 }
 
 /**
+ * Pure snapshot builder without side effects
+ */
+function buildSchedulerSnapshot() {
+  return {
+    ...schedulerState,
+    explicitlyPaused: explicitlyPausedByUser,
+    isIndianMarketOpen: isIndianMarketOpen(),
+    telegramIngestionStatus: getTelegramIngestionStatus()
+  };
+}
+
+/**
+ * Trigger morning market open warmup at 09:00 IST Mon-Fri
+ */
+function triggerMorningMarketStart() {
+  const todayKey = getISTDateKey();
+  lastAutoWakeDateIST = todayKey;
+  logger.info(`[Scheduler] 🔔 09:00 AM IST Market Start triggered (${todayKey}). Ensuring active monitoring...`);
+
+  explicitlyPausedByUser = false;
+  schedulerState.explicitlyPaused = false;
+
+  if (!isSchedulerRunning) {
+    startMasterScheduler({ force: true });
+    return;
+  }
+
+  runCMPRefresherJob(true).catch(e => logger.warn('09:00 AM CMP warmup warning:', { error: e.message }));
+  if (!isCloudEnv()) {
+    runWhatsAppScheduledJob().catch(() => {});
+    runGoogleSheetsScheduledJob().catch(() => {});
+  }
+}
+
+/**
+ * Persistent lightweight watcher that guarantees auto-start at 09:00 AM IST Mon-Fri
+ * even if the scheduler was manually paused on a previous day.
+ */
+function ensureMarketStartWatcher() {
+  if (marketStartWatcherTimer) return;
+  marketStartWatcherTimer = setInterval(() => {
+    try {
+      const istDate = getISTDate();
+      const day = istDate.getDay();
+      if (day === 0 || day === 6) return;
+
+      const totalMin = istDate.getHours() * 60 + istDate.getMinutes();
+      const todayKey = getISTDateKey(istDate);
+
+      // Between 09:00 and 09:10 IST, guarantee scheduler is awake and warm once per trading day
+      if (totalMin >= 9 * 60 && totalMin <= 9 * 60 + 10 && lastAutoWakeDateIST !== todayKey) {
+        triggerMorningMarketStart();
+      }
+    } catch (_) {}
+  }, 60 * 1000);
+  if (marketStartWatcherTimer.unref) marketStartWatcherTimer.unref();
+}
+
+/**
  * Start the Master Stocks Scheduler
  */
 function startMasterScheduler(options = {}) {
+  explicitlyPausedByUser = false;
+  schedulerState.explicitlyPaused = false;
+  ensureMarketStartWatcher();
+
   if (isSchedulerRunning) {
     logger.info('Stocks Master Scheduler is already running.');
-    return { success: true, status: 'already_running', state: getSchedulerState() };
+    return { success: true, status: 'already_running', state: buildSchedulerSnapshot() };
   }
 
-  const isCloud = Boolean(options.isCloud || process.env.RENDER || process.env.RENDER_EXTERNAL_URL || process.env.IS_CLOUD);
+  const isCloud = Boolean(options.isCloud || isCloudEnv());
 
   isSchedulerRunning = true;
   schedulerState.isMasterActive = true;
   schedulerState.startedAt = new Date().toISOString();
   schedulerState.environment = isCloud ? 'cloud (Render 24/7)' : 'local (PC Port 9223)';
+  lastAutoWakeDateIST = isIndianMarketOpen() ? getISTDateKey() : lastAutoWakeDateIST;
 
   logger.info(`🚀 Starting Stocks Master Scheduler in [${schedulerState.environment}] mode:`);
-  logger.info('  • Live CMP Refresher: Every 2 minutes (Market hours: Mon-Fri 09:15-15:30 IST)');
+  logger.info('  • Live CMP Refresher: Every 2 minutes (Market hours: Mon-Fri 09:00-15:30 IST)');
+  logger.info('  • Morning Auto-Wake: Every weekday at 09:00 AM IST');
   logger.info('  • Telegram Ingestion Poller: 24/7 continuous (Listening for forwarded trades in @dealsequity)');
 
   // A. Start 24/7 Telegram Ingestion Listener
   startTelegramIngestion();
 
-  // B. CMP Refresher (every 2 minutes during market hours)
+  // B. CMP Refresher (every 2 minutes; high-frequency during 09:00-15:30 IST, 30-min standby off-hours)
   const cmpTask = cron.schedule('*/2 * * * *', () => {
     runCMPRefresherJob().catch(e => logger.warn('CMP job warning:', { error: e.message }));
   });
   cronTasks.push(cmpTask);
 
-  // C. Market Open Digest (09:15 IST Mon-Fri = 03:45 UTC)
-  const openTask = cron.schedule('45 3 * * 1-5', () => {
+  // C. Guaranteed 09:00 AM IST Market Start Wakeup (Mon-Fri Asia/Kolkata)
+  const marketStartTask = cron.schedule('0 9 * * 1-5', () => {
+    triggerMorningMarketStart();
+  }, { timezone: 'Asia/Kolkata' });
+  cronTasks.push(marketStartTask);
+
+  // D. Market Open Digest (09:15 IST Mon-Fri Asia/Kolkata)
+  const openTask = cron.schedule('15 9 * * 1-5', () => {
     runMarketOpenDigest().catch(e => logger.warn('Market open warning:', { error: e.message }));
-  });
+  }, { timezone: 'Asia/Kolkata' });
   cronTasks.push(openTask);
 
-  // D. Market Close Digest (15:30 IST Mon-Fri = 10:00 UTC)
-  const closeTask = cron.schedule('0 10 * * 1-5', () => {
+  // E. Market Close Digest (15:30 IST Mon-Fri Asia/Kolkata)
+  const closeTask = cron.schedule('30 15 * * 1-5', () => {
     runMarketCloseDigest().catch(e => logger.warn('Market close warning:', { error: e.message }));
-  });
+  }, { timezone: 'Asia/Kolkata' });
   cronTasks.push(closeTask);
 
-  // E. Local-Only Browser Scrapers (WhatsApp & Google Sheets via Chrome 9223)
+  // F. Local-Only Browser Scrapers (WhatsApp & Google Sheets via Chrome 9223)
   if (!isCloud) {
     logger.info('  • WhatsApp Ingestion: Every 3 minutes (Port 9223)');
     logger.info('  • Google Sheets Sync: Every 15 minutes (Port 9223)');
@@ -329,10 +428,10 @@ function startMasterScheduler(options = {}) {
 
   // Initial warm-up execution for CMP after 5 seconds
   setTimeout(() => {
-    runCMPRefresherJob().catch(() => {});
+    runCMPRefresherJob(true).catch(() => {});
   }, 5000);
 
-  const state = getSchedulerState();
+  const state = buildSchedulerSnapshot();
   syncSchedulerStateToFirebase(state);
   return { success: true, status: 'started', state };
 }
@@ -350,7 +449,7 @@ function syncSchedulerStateToFirebase(state) {
 }
 
 /**
- * Stop the Master Stocks Scheduler
+ * Stop/Pause the Master Stocks Scheduler (auto-resumes at 09:00 AM IST next market open)
  */
 function stopMasterScheduler() {
   cronTasks.forEach(task => {
@@ -361,14 +460,18 @@ function stopMasterScheduler() {
   localIntervals.forEach(t => clearInterval(t));
   localIntervals = [];
 
+  explicitlyPausedByUser = true;
   isSchedulerRunning = false;
   schedulerState.isMasterActive = false;
-  schedulerState.whatsappPoller.lastStatus = 'stopped';
-  schedulerState.cmpRefresher.lastStatus = 'stopped';
-  schedulerState.sheetsSync.lastStatus = 'stopped';
+  schedulerState.explicitlyPaused = true;
+  schedulerState.whatsappPoller.lastStatus = 'paused';
+  schedulerState.cmpRefresher.lastStatus = 'paused';
+  schedulerState.sheetsSync.lastStatus = 'paused';
 
-  logger.info('🛑 Stocks Master Scheduler stopped.');
-  const state = getSchedulerState();
+  ensureMarketStartWatcher();
+
+  logger.info('⏸️ Stocks Master Scheduler paused manually (will auto-resume at 09:00 AM IST market open).');
+  const state = buildSchedulerSnapshot();
   syncSchedulerStateToFirebase(state);
   return { success: true, status: 'stopped', state };
 }
@@ -377,7 +480,8 @@ function stopMasterScheduler() {
  * Get comprehensive scheduler status and metrics
  */
 function getSchedulerState() {
-  if (!isSchedulerRunning) {
+  // Always auto-start if not running unless explicitly paused by user
+  if (!isSchedulerRunning && !explicitlyPausedByUser) {
     try {
       startMasterScheduler();
     } catch (e) {
@@ -385,12 +489,7 @@ function getSchedulerState() {
     }
   }
 
-  const telegramState = getTelegramIngestionStatus();
-  const state = {
-    ...schedulerState,
-    isIndianMarketOpen: isIndianMarketOpen(),
-    telegramIngestionStatus: telegramState
-  };
+  const state = buildSchedulerSnapshot();
   syncSchedulerStateToFirebase(state);
   return state;
 }
