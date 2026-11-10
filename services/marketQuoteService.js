@@ -34,6 +34,17 @@ const COMPANY_TICKER_MAP = {
   'welcorp': 'WELCORP',
 
   // Watchlist & SOIC Research stocks
+  'ge vernova': 'GVT&D',
+  'ge vernova td': 'GVT&D',
+  'ge vernova td india': 'GVT&D',
+  'ge vernova td india limited': 'GVT&D',
+  'ge td': 'GVT&D',
+  'ge td india': 'GVT&D',
+  'gvtd': 'GVT&D',
+  'redington': 'REDINGTON',
+  'redington india': 'REDINGTON',
+  'redington india limited': 'REDINGTON',
+  'redington limited': 'REDINGTON',
   'aarti pharma': 'AARTIPHARM',
   'aarti pharmalabs': 'AARTIPHARM',
   'aarti pharmalabs limited': 'AARTIPHARM',
@@ -129,27 +140,89 @@ const COMPANY_TICKER_MAP = {
   'rvnl': 'RVNL'
 };
 
+const webSymbolCache = new Map();
+const WEB_CACHE_HIT_MS = 24 * 60 * 60 * 1000;
+const WEB_CACHE_MISS_MS = 30 * 60 * 1000;
+
+const NON_STOCK_CANDIDATES = new Set([
+  'fast', 'now', 'max', 'qty', 'quantity', 'max qty', 'max quantity',
+  'loot', 'deal', 'deals', 'gifting', 'diwali', 'buy', 'sell', 'exit',
+  'hold', 'wait', 'alert', 'note', 'update', 'market', 'stock', 'share'
+]);
+
+/**
+ * Shared lightweight HTTPS JSON getter with timeout and headers.
+ */
+function httpGetJson(url, timeoutMs = 5000) {
+  return new Promise((resolve) => {
+    const req = https.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'application/json'
+      },
+      timeout: timeoutMs
+    }, (res) => {
+      let body = '';
+      res.on('data', chunk => body += chunk);
+      res.on('end', () => {
+        if (res.statusCode && res.statusCode >= 400) return resolve(null);
+        try {
+          resolve(JSON.parse(body));
+        } catch (_) {
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+function cleanCompanyKey(rawName) {
+  return (rawName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function hasTokenOverlap(queryName, targetName) {
+  const stopWords = new Set(['ltd', 'limited', 'india', 'ind', 'corp', 'inc', 'co', 'company', 'and', 'the', 'of']);
+  const qTokens = cleanCompanyKey(queryName).split(' ').filter(t => t.length >= 2 && !stopWords.has(t));
+  const tKey = cleanCompanyKey(targetName);
+  const tCompact = tKey.replace(/\s+/g, '');
+  if (qTokens.length === 0) return false;
+  return qTokens.some(tok => tKey.includes(tok) || tCompact.includes(tok));
+}
+
 /**
  * Normalizes user/advisor company text to standard NSE symbol.
  * Returns { symbol, isMapped, note }
  */
 function normalizeSymbol(rawName) {
   if (!rawName) return { symbol: null, isMapped: false };
-  const cleaned = rawName.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
-  
+  const cleaned = cleanCompanyKey(rawName);
+  if (!cleaned || cleaned.length < 2) {
+    return { symbol: null, isMapped: false };
+  }
+
   if (COMPANY_TICKER_MAP[cleaned]) {
     return { symbol: COMPANY_TICKER_MAP[cleaned], isMapped: true };
   }
 
-  // Check partial matches in dictionary
+  // Check partial matches in dictionary (guarded against short/empty noise)
   for (const [key, sym] of Object.entries(COMPANY_TICKER_MAP)) {
-    if (cleaned.includes(key) || key.includes(cleaned)) {
+    if (cleaned.includes(key) || (cleaned.length >= 4 && key.includes(cleaned))) {
       return { symbol: sym, isMapped: true, matchedAlias: key };
     }
   }
 
-  // If already looks like an uppercase NSE ticker (e.g. INFY, TATAMOTORS, HDFCBANK)
-  const uppercaseCandidate = rawName.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // If already looks like an NSE ticker (preserve & and - for tickers like GVT&D, M&M, BAJAJ-AUTO)
+  const uppercaseCandidate = rawName.trim().toUpperCase().replace(/[^A-Z0-9&-]/g, '');
   if (uppercaseCandidate.length >= 2 && uppercaseCandidate.length <= 15) {
     return { symbol: uppercaseCandidate, isMapped: false, candidate: true };
   }
@@ -159,7 +232,7 @@ function normalizeSymbol(rawName) {
 
 /**
  * Fetch live market quote for a stock from Yahoo Finance
- * @param {string} symbol - NSE Symbol without suffix, e.g. "TATAMOTORS"
+ * @param {string} symbol - NSE Symbol without suffix, e.g. "TATAMOTORS" or "GVT&D"
  * @param {string} [exchange='NS'] - 'NS' for NSE, 'BO' for BSE
  */
 async function getLiveQuote(symbol, exchange = 'NS', forceRefresh = false) {
@@ -175,68 +248,203 @@ async function getLiveQuote(symbol, exchange = 'NS', forceRefresh = false) {
     }
   }
 
-  return new Promise((resolve) => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${yahooTicker}?interval=1d&range=1d`;
-    const options = {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-        'Accept': 'application/json'
-      },
-      timeout: 5000
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooTicker)}?interval=1d&range=1d`;
+  const json = await httpGetJson(url, 5000);
+  if (json?.chart?.result?.[0]?.meta) {
+    const meta = json.chart.result[0].meta;
+    const ltp = meta.regularMarketPrice;
+    if (typeof ltp === 'number' && !isNaN(ltp)) {
+      const prevClose = meta.chartPreviousClose || meta.previousClose || ltp;
+      const dayChange = ltp - prevClose;
+      const dayChangePercent = prevClose > 0 ? (dayChange / prevClose) * 100 : 0;
+
+      const quoteData = {
+        symbol: normalized,
+        ticker: yahooTicker,
+        exchange: exchange === 'NS' ? 'NSE' : 'BSE',
+        ltp: Number(ltp.toFixed(2)),
+        prevClose: Number(prevClose.toFixed(2)),
+        dayChange: Number(dayChange.toFixed(2)),
+        dayChangePercent: Number(dayChangePercent.toFixed(2)),
+        dayHigh: meta.regularMarketDayHigh || null,
+        dayLow: meta.regularMarketDayLow || null,
+        currency: meta.currency || 'INR',
+        updatedAt: new Date().toISOString()
+      };
+
+      quoteCache.set(yahooTicker, { timestamp: Date.now(), data: quoteData });
+      return quoteData;
+    }
+  }
+
+  // If NSE ticker fails, try BSE fallback once
+  if (exchange === 'NS') {
+    return getLiveQuote(normalized, 'BO', forceRefresh);
+  }
+  return null;
+}
+
+/**
+ * Primary trusted web search: Yahoo Finance NSI/BSE equity autocomplete.
+ */
+async function resolveViaYahooSearch(rawName) {
+  const url = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(rawName)}&quotesCount=8&newsCount=0&enableFuzzyQuery=true`;
+  const data = await httpGetJson(url, 5000);
+  const quotes = Array.isArray(data?.quotes) ? data.quotes : [];
+
+  const indianEquities = quotes.filter(q =>
+    q.quoteType === 'EQUITY' &&
+    q.symbol &&
+    (q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO') || q.exchange === 'NSI' || q.exchange === 'BSE' || q.exchange === 'BOM')
+  );
+
+  // Prefer NSE (.NS) matches that share tokens with query
+  indianEquities.sort((a, b) => (b.symbol.endsWith('.NS') ? 1 : 0) - (a.symbol.endsWith('.NS') ? 1 : 0));
+
+  for (const q of indianEquities) {
+    const baseSym = q.symbol.replace(/\.(NS|BO)$/i, '').toUpperCase();
+    const displayName = `${q.longname || ''} ${q.shortname || ''} ${baseSym}`;
+    if (hasTokenOverlap(rawName, displayName)) {
+      return {
+        symbol: baseSym,
+        exchange: q.symbol.endsWith('.BO') ? 'BO' : 'NS',
+        companyName: q.longname || q.shortname || rawName,
+        source: 'yahoo_search'
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Secondary trusted web search: Screener.in Indian equity company search API.
+ */
+async function resolveViaScreenerSearch(rawName) {
+  const url = `https://www.screener.in/api/company/search/?q=${encodeURIComponent(rawName)}`;
+  const items = await httpGetJson(url, 5000);
+  if (!Array.isArray(items)) return null;
+
+  for (const item of items) {
+    const match = (item.url || '').match(/\/company\/([^/]+)\//);
+    if (!match || !item.name) continue;
+    const candidateSym = decodeURIComponent(match[1]).toUpperCase();
+    // Skip purely numeric BSE-only codes unless verified; prefer NSE alphanumeric symbols
+    if (/^\d+$/.test(candidateSym)) continue;
+    if (hasTokenOverlap(rawName, `${item.name} ${candidateSym}`)) {
+      return {
+        symbol: candidateSym,
+        exchange: 'NS',
+        companyName: item.name,
+        source: 'screener_search'
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve an unknown/unmapped stock company name to a verified live NSE/BSE ticker
+ * using trusted web sources (Yahoo Finance Search + Screener.in) + live quote check.
+ */
+async function resolveTickerFromWeb(rawName) {
+  const cleaned = cleanCompanyKey(rawName);
+  if (!cleaned || cleaned.length < 2 || NON_STOCK_CANDIDATES.has(cleaned)) {
+    return null;
+  }
+
+  const local = normalizeSymbol(rawName);
+  if (local.isMapped && local.symbol) {
+    const quote = await getLiveQuote(local.symbol);
+    return {
+      symbol: local.symbol,
+      companyName: rawName,
+      exchange: quote?.exchange || 'NSE',
+      quote,
+      source: 'local_map'
     };
+  }
 
-    const req = https.get(url, options, (res) => {
-      let body = '';
-      res.on('data', chunk => body += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(body);
-          if (json.chart?.result?.[0]?.meta) {
-            const meta = json.chart.result[0].meta;
-            const ltp = meta.regularMarketPrice;
-            const prevClose = meta.chartPreviousClose || meta.previousClose || ltp;
-            const dayChange = ltp - prevClose;
-            const dayChangePercent = prevClose > 0 ? (dayChange / prevClose) * 100 : 0;
+  const cached = webSymbolCache.get(cleaned);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.value;
+  }
 
-            const quoteData = {
-              symbol: normalized,
-              ticker: yahooTicker,
-              exchange: exchange === 'NS' ? 'NSE' : 'BSE',
-              ltp: Number(ltp.toFixed(2)),
-              prevClose: Number(prevClose.toFixed(2)),
-              dayChange: Number(dayChange.toFixed(2)),
-              dayChangePercent: Number(dayChangePercent.toFixed(2)),
-              dayHigh: meta.regularMarketDayHigh || null,
-              dayLow: meta.regularMarketDayLow || null,
-              currency: meta.currency || 'INR',
-              updatedAt: new Date().toISOString()
-            };
+  let match = await resolveViaYahooSearch(rawName);
+  if (!match) {
+    match = await resolveViaScreenerSearch(rawName);
+  }
 
-            quoteCache.set(yahooTicker, { timestamp: Date.now(), data: quoteData });
-            return resolve(quoteData);
-          }
-          // If NSE ticker fails, try BSE fallback once
-          if (exchange === 'NS') {
-            return resolve(getLiveQuote(normalized, 'BO'));
-          }
-          resolve(null);
-        } catch (e) {
-          logger.warn(`Failed to parse Yahoo Finance quote for ${yahooTicker}: ${e.message}`);
-          resolve(null);
-        }
-      });
-    });
+  // Last check: if candidate itself is an exact live NSE symbol, verify with Yahoo quote
+  if (!match && local.candidate && local.symbol) {
+    const directQuote = await getLiveQuote(local.symbol);
+    if (directQuote?.ltp > 0) {
+      match = {
+        symbol: directQuote.symbol,
+        exchange: directQuote.exchange === 'BSE' ? 'BO' : 'NS',
+        companyName: rawName,
+        source: 'yahoo_direct_quote',
+        quote: directQuote
+      };
+    }
+  }
 
-    req.on('error', (err) => {
-      logger.warn(`Network error fetching quote for ${yahooTicker}: ${err.message}`);
-      resolve(null);
-    });
+  if (match && match.symbol) {
+    const quote = match.quote || await getLiveQuote(match.symbol, match.exchange || 'NS');
+    if (quote && quote.ltp > 0) {
+      const result = {
+        symbol: match.symbol,
+        companyName: match.companyName || rawName,
+        exchange: quote.exchange || 'NSE',
+        quote,
+        source: match.source
+      };
+      COMPANY_TICKER_MAP[cleaned] = match.symbol;
+      webSymbolCache.set(cleaned, { value: result, expiresAt: Date.now() + WEB_CACHE_HIT_MS });
+      logger.info(`🌐 Auto-resolved "${rawName}" ➔ ${result.symbol} (₹${quote.ltp}) via ${result.source}`);
+      return result;
+    }
+  }
 
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
+  webSymbolCache.set(cleaned, { value: null, expiresAt: Date.now() + WEB_CACHE_MISS_MS });
+  return null;
+}
+
+/**
+ * Shared helper for all ingestion paths: auto-resolves unmapped/unquoted ticker from web,
+ * clears clarification flags once confirmed, and evaluates signal against live CMP.
+ */
+async function resolveSignalTickerAndQuote(signal) {
+  if (!signal) return signal;
+  let working = { ...signal };
+  let quote = null;
+
+  if (working.requiresClarification || !working.symbol) {
+    const webResolved = await resolveTickerFromWeb(working.companyName || working.symbol);
+    if (webResolved) {
+      working.symbol = webResolved.symbol;
+      working.requiresClarification = false;
+      working.clarificationReason = null;
+      working.tickerResolvedVia = webResolved.source;
+      quote = webResolved.quote;
+    }
+  }
+
+  if (!quote && working.symbol) {
+    quote = await getLiveQuote(working.symbol);
+    // If guessed symbol failed to return a quote (e.g. GEVERNOVATD), try web resolution
+    if (!quote && working.companyName) {
+      const webResolved = await resolveTickerFromWeb(working.companyName);
+      if (webResolved) {
+        working.symbol = webResolved.symbol;
+        working.requiresClarification = false;
+        working.clarificationReason = null;
+        working.tickerResolvedVia = webResolved.source;
+        quote = webResolved.quote;
+      }
+    }
+  }
+
+  return evaluateSignalWithCMP(working, quote) || working;
 }
 
 /**
@@ -332,6 +540,8 @@ module.exports = {
   normalizeSymbol,
   getLiveQuote,
   evaluateSignalWithCMP,
+  resolveTickerFromWeb,
+  resolveSignalTickerAndQuote,
   clearQuoteCache,
   COMPANY_TICKER_MAP
 };

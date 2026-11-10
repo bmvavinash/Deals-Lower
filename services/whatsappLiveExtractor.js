@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer');
-const { parseStockMessage } = require('./stockSignalParser');
-const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
+const { parseStockMessage, generateSignalId } = require('./stockSignalParser');
+const { resolveSignalTickerAndQuote } = require('./marketQuoteService');
 const { saveRawMessage, saveSignals, memoryDB } = require('../database/stocksMultiDB');
 const { dispatchWhatsAppAdvisoryAlert } = require('./genericTelegramDispatcher');
 const { getModuleLogger } = require('../logger/logger');
@@ -176,7 +176,10 @@ async function extractActiveWhatsAppChat(options = {}) {
 
       if (parseResult.isTradeSignal && parseResult.signals.length > 0) {
         for (const sig of parseResult.signals) {
-          candidateSignals.push(sig);
+          const resolvedSig = sig.requiresClarification
+            ? await resolveSignalTickerAndQuote(sig)
+            : sig;
+          candidateSignals.push(resolvedSig);
         }
       }
     }
@@ -190,17 +193,16 @@ async function extractActiveWhatsAppChat(options = {}) {
     // 4. Enrich latest signals with CMP, compare hashes, and notify only on genuine changes
     const extractedSignals = [];
     for (const [sym, sig] of latestBySymbol.entries()) {
+      const id = generateSignalId(sig.symbol, sig.action, sig.entryPrice, sig.timestamp, sig.source || 'WhatsApp');
       const truthSig = {
         ...sig,
+        id,
         sourcePriority: 1,
         isSourceOfTruth: true,
         sourceLabel: 'WhatsApp (Source of Truth)'
       };
 
-      const quote = await getLiveQuote(sig.symbol);
-      const evaluated = evaluateSignalWithCMP(truthSig, quote) || truthSig;
-
-      const id = `WA_SOIC_${truthSig.symbol.toUpperCase()}`;
+      const evaluated = await resolveSignalTickerAndQuote(truthSig);
       const existing = memoryDB.signals ? memoryDB.signals[id] : null;
       const msgHash = `${truthSig.symbol}_${truthSig.action}_${truthSig.entryPrice || truthSig.entryMax}_${truthSig.rating || 0}_${(truthSig.rawText || '').trim()}`;
 

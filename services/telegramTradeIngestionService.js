@@ -1,7 +1,7 @@
 const TelegramBot = require('node-telegram-bot-api');
 const constants = require('../config/constants');
-const { parseStockMessage } = require('./stockSignalParser');
-const { getLiveQuote, evaluateSignalWithCMP } = require('./marketQuoteService');
+const { parseStockMessage, generateSignalId } = require('./stockSignalParser');
+const { resolveSignalTickerAndQuote } = require('./marketQuoteService');
 const { 
   saveRawMessage, 
   saveSignals, 
@@ -216,8 +216,10 @@ function startTelegramIngestion(token = null) {
       const enrichedSignals = [];
       for (const sig of parseResult.signals) {
         try {
-          const quote = await getLiveQuote(sig.symbol);
-          const evaluated = evaluateSignalWithCMP(sig, quote);
+          const evaluated = await resolveSignalTickerAndQuote(sig);
+          if (evaluated?.symbol) {
+            evaluated.id = generateSignalId(evaluated.symbol, evaluated.action, evaluated.entryPrice, evaluated.timestamp, evaluated.source || 'Telegram');
+          }
           enrichedSignals.push(evaluated || sig);
         } catch (e) {
           enrichedSignals.push(sig);

@@ -3,8 +3,8 @@ const router = express.Router();
 const { getModuleLogger } = require('../../../logger/logger');
 // Lazy-loaded getGoogleSheetRecommendations (heavy module)
 const { getAllSignals, updateSignal, getPendingClarifications, resolveClarification, saveSignals, memoryDB } = require('../../../database/stocksMultiDB');
-const { getLiveQuote, evaluateSignalWithCMP } = require('../../../services/marketQuoteService');
-const { parseStockMessage } = require('../../../services/stockSignalParser');
+const { getLiveQuote, resolveSignalTickerAndQuote } = require('../../../services/marketQuoteService');
+const { parseStockMessage, generateSignalId } = require('../../../services/stockSignalParser');
 const { generateBestInsights } = require('../../../services/stockInsightsAggregator');
 // Lazy-loaded extractActiveWhatsAppChat and extractGoogleSheetSignals to respect 512MB RAM cloud budget
 const { 
@@ -141,11 +141,14 @@ router.post('/equity/parse-text', async (req, res, next) => {
     });
 
     if (parseResult.isTradeSignal && parseResult.signals.length > 0) {
-      // Enrich with CMP
+      // Auto-resolve any unmapped tickers via trusted web sources & enrich with CMP
       const enriched = await Promise.all(
         parseResult.signals.map(async (sig) => {
-          const quote = await getLiveQuote(sig.symbol);
-          return evaluateSignalWithCMP(sig, quote) || sig;
+          const resolved = await resolveSignalTickerAndQuote(sig);
+          if (resolved?.symbol) {
+            resolved.id = generateSignalId(resolved.symbol, resolved.action, resolved.entryPrice, resolved.timestamp, resolved.source);
+          }
+          return resolved;
         })
       );
 

@@ -205,7 +205,7 @@ function getWhatsAppStockStates(signals) {
  * - Telegram: TG_${symbol}
  */
 function getDeterministicSignalId(sig) {
-  const sym = (sig.symbol || '').toUpperCase().trim();
+  const sym = (sig.symbol || '').toUpperCase().trim().replace(/[^A-Z0-9_-]/g, '');
   const src = (sig.source || '').toLowerCase();
   if (src.includes('whatsapp')) return `WA_SOIC_${sym}`;
   if (src.includes('watchlist')) return `GS_WATCHLIST_${sym}`;
@@ -325,11 +325,36 @@ async function saveSignals(signals) {
       updatedAt: new Date().toISOString()
     };
 
+    const prevId = sig.previousSignalId;
+    if (record.previousSignalId) delete record.previousSignalId;
+
+    // If ticker was migrated to a new canonical ID, remove stale unmapped signal key
+    if (prevId && prevId !== id) {
+      delete memoryDB.signals[prevId];
+      if (memoryDB.clarifications[prevId]) {
+        memoryDB.clarifications[prevId].status = 'RESOLVED';
+        memoryDB.clarifications[prevId].resolvedSymbol = sym;
+        memoryDB.clarifications[prevId].resolvedAt = new Date().toISOString();
+        memoryDB.clarifications[prevId].notes = `Auto-resolved to canonical ticker ${sym}`;
+      }
+      if (fb) {
+        fb.ref(`stocks/signals/${prevId}`).remove().catch(() => {});
+        if (memoryDB.clarifications[prevId]) {
+          fb.ref(`stocks/clarifications/${prevId}`).update({
+            status: 'RESOLVED',
+            resolvedSymbol: sym,
+            resolvedAt: new Date().toISOString(),
+            notes: `Auto-resolved to canonical ticker ${sym}`
+          }).catch(() => {});
+        }
+      }
+    }
+
     // In-memory single record
     memoryDB.signals[id] = record;
     saved.push(record);
 
-    // If signal needs clarification, also save to clarifications queue
+    // If signal needs clarification, save to clarifications queue; otherwise clear any pending clarification
     if (record.requiresClarification) {
       memoryDB.clarifications[id] = {
         signalId: id,
@@ -341,6 +366,11 @@ async function saveSignals(signals) {
         status: 'PENDING',
         createdAt: new Date().toISOString()
       };
+    } else if (memoryDB.clarifications[id] && memoryDB.clarifications[id].status === 'PENDING') {
+      memoryDB.clarifications[id].status = 'RESOLVED';
+      memoryDB.clarifications[id].resolvedSymbol = sym;
+      memoryDB.clarifications[id].resolvedAt = new Date().toISOString();
+      memoryDB.clarifications[id].notes = record.tickerResolvedVia ? `Auto-resolved via ${record.tickerResolvedVia}` : 'Ticker confirmed';
     }
 
     // Sync to Firebase
@@ -351,6 +381,13 @@ async function saveSignals(signals) {
         if (record.requiresClarification) {
           const cleanClar = JSON.parse(JSON.stringify(memoryDB.clarifications[id]));
           fb.ref(`stocks/clarifications/${id}`).set(cleanClar).catch(() => {});
+        } else if (memoryDB.clarifications[id]) {
+          fb.ref(`stocks/clarifications/${id}`).update({
+            status: 'RESOLVED',
+            resolvedSymbol: sym,
+            resolvedAt: memoryDB.clarifications[id].resolvedAt || new Date().toISOString(),
+            notes: memoryDB.clarifications[id].notes || 'Ticker confirmed'
+          }).catch(() => {});
         }
       } catch (fbErr) {
         logger.warn(`Firebase signal write failed for ${id}, kept in local DB`, { error: fbErr.message });
@@ -683,7 +720,7 @@ async function updateSignal(id, updates) {
 }
 
 /**
- * Get pending clarification requests
+ * Get pending clarification requests (purging bogus/stale entries & auto-resolving via trusted web sources)
  */
 async function getPendingClarifications() {
   const fb = getFirebaseDB();
@@ -694,24 +731,85 @@ async function getPendingClarifications() {
       if (val) memoryDB.clarifications = val;
     } catch (e) {}
   }
-  return Object.values(memoryDB.clarifications || {}).filter(c => c.status === 'PENDING');
+
+  const hasLoadedSignals = Object.keys(memoryDB.signals || {}).length > 0;
+  const remainingPending = [];
+  let dirty = false;
+
+  for (const [key, c] of Object.entries(memoryDB.clarifications || {})) {
+    if (!c || c.status !== 'PENDING') continue;
+
+    const signalId = c.signalId || key;
+    const isOrphan = hasLoadedSignals && !memoryDB.signals[signalId];
+    if (isBogusTicker(c.symbol) || isOrphan) {
+      delete memoryDB.clarifications[key];
+      dirty = true;
+      if (fb) fb.ref(`stocks/clarifications/${key}`).remove().catch(() => {});
+      continue;
+    }
+
+    // Attempt trusted web auto-resolution for real pending signals
+    try {
+      const { resolveTickerFromWeb } = require('../services/marketQuoteService');
+      const webMatch = await resolveTickerFromWeb(c.companyName || c.symbol);
+      if (webMatch && webMatch.symbol) {
+        await resolveClarification(signalId, webMatch.symbol, `Auto-resolved via ${webMatch.source}`);
+        continue;
+      }
+    } catch (_) {}
+
+    remainingPending.push(c);
+  }
+
+  if (dirty) persistLocalDB();
+  return remainingPending;
 }
 
 /**
- * Resolve clarification and update signal ticker
+ * Resolve clarification, migrate canonical signal ID if needed, and update live CMP
  */
 async function resolveClarification(id, resolvedSymbol, resolvedNotes = '') {
+  const upperSym = (resolvedSymbol || '').toUpperCase().trim();
+  const nowIso = new Date().toISOString();
+
   if (memoryDB.clarifications[id]) {
     memoryDB.clarifications[id].status = 'RESOLVED';
-    memoryDB.clarifications[id].resolvedSymbol = resolvedSymbol;
-    memoryDB.clarifications[id].resolvedAt = new Date().toISOString();
+    memoryDB.clarifications[id].resolvedSymbol = upperSym;
+    memoryDB.clarifications[id].resolvedAt = nowIso;
     memoryDB.clarifications[id].notes = resolvedNotes;
   }
 
+  let updatedSig = null;
+  let finalSignalId = id;
+
   if (memoryDB.signals[id]) {
-    memoryDB.signals[id].symbol = resolvedSymbol.toUpperCase();
-    memoryDB.signals[id].requiresClarification = false;
-    memoryDB.signals[id].clarificationReason = null;
+    let sig = {
+      ...memoryDB.signals[id],
+      symbol: upperSym,
+      requiresClarification: false,
+      clarificationReason: null,
+      updatedAt: nowIso
+    };
+
+    try {
+      const { getLiveQuote, evaluateSignalWithCMP, COMPANY_TICKER_MAP } = require('../services/marketQuoteService');
+      if (sig.companyName) {
+        const key = sig.companyName.trim().toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ');
+        if (key && key.length >= 2) COMPANY_TICKER_MAP[key] = upperSym;
+      }
+      const quote = await getLiveQuote(upperSym);
+      if (quote) {
+        sig = evaluateSignalWithCMP(sig, quote) || sig;
+      }
+    } catch (_) {}
+
+    finalSignalId = getDeterministicSignalId(sig);
+    sig.id = finalSignalId;
+    if (finalSignalId !== id) {
+      delete memoryDB.signals[id];
+    }
+    memoryDB.signals[finalSignalId] = sig;
+    updatedSig = sig;
   }
 
   persistLocalDB();
@@ -721,21 +819,20 @@ async function resolveClarification(id, resolvedSymbol, resolvedNotes = '') {
     try {
       await fb.ref(`stocks/clarifications/${id}`).update({
         status: 'RESOLVED',
-        resolvedSymbol: resolvedSymbol.toUpperCase(),
-        resolvedAt: new Date().toISOString(),
+        resolvedSymbol: upperSym,
+        resolvedAt: nowIso,
         notes: resolvedNotes
       });
-      if (memoryDB.signals[id]) {
-        await fb.ref(`stocks/signals/${id}`).update({
-          symbol: resolvedSymbol.toUpperCase(),
-          requiresClarification: false,
-          clarificationReason: null
-        });
+      if (updatedSig) {
+        if (finalSignalId !== id) {
+          await fb.ref(`stocks/signals/${id}`).remove().catch(() => {});
+        }
+        await fb.ref(`stocks/signals/${finalSignalId}`).set(JSON.parse(JSON.stringify(updatedSig)));
       }
     } catch (e) {}
   }
 
-  return memoryDB.signals[id] || null;
+  return updatedSig;
 }
 
 /**

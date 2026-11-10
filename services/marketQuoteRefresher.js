@@ -1,6 +1,6 @@
 const { getModuleLogger } = require('../logger/logger');
 const { getAllSignals, saveSignals } = require('../database/stocksMultiDB');
-const { getLiveQuote, evaluateSignalWithCMP, clearQuoteCache } = require('./marketQuoteService');
+const { getLiveQuote, evaluateSignalWithCMP, resolveSignalTickerAndQuote, clearQuoteCache } = require('./marketQuoteService');
 const { evaluateAndDispatchBatch } = require('./stockAlertNotificationService');
 const { generateBestInsights } = require('./stockInsightsAggregator');
 
@@ -66,15 +66,19 @@ async function refreshQuotesNow(forceRefresh = true) {
       }));
     }
 
-    // Re-evaluate signals with updated quotes
+    // Re-evaluate signals with updated quotes (auto-resolving any unmapped/unquoted tickers via web)
     const updatedSignals = [];
     for (const sig of allSignals) {
       const q = quoteMap.get(sig.symbol?.toUpperCase());
-      if (q) {
+      if (sig.requiresClarification || !q) {
+        const resolved = await resolveSignalTickerAndQuote(sig);
+        if (resolved && resolved.symbol && resolved.symbol !== sig.symbol) {
+          resolved.previousSignalId = sig.id;
+        }
+        updatedSignals.push(resolved || sig);
+      } else {
         const evaluated = evaluateSignalWithCMP(sig, q) || sig;
         updatedSignals.push(evaluated);
-      } else {
-        updatedSignals.push(sig);
       }
     }
 

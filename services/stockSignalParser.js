@@ -72,7 +72,7 @@ function isNoiseLine(line) {
 }
 
 function generateSignalId(symbol, action, price, dateStr, source = '') {
-  const sym = (symbol || 'UNKNOWN').toUpperCase().trim();
+  const sym = (symbol || 'UNKNOWN').toUpperCase().trim().replace(/[^A-Z0-9_-]/g, '');
   const src = (source || '').toLowerCase();
   if (src.includes('whatsapp')) return `WA_SOIC_${sym}`;
   if (src.includes('watchlist')) return `GS_WATCHLIST_${sym}`;
@@ -134,7 +134,7 @@ function parseStockMessage(rawText, meta = {}) {
   function flushCurrentItem() {
     if (currentItem.companyName && (currentItem.price || currentItem.action || defaultAction)) {
       const normalized = normalizeSymbol(currentItem.companyName);
-      const symbol = (normalized.symbol || currentItem.companyName.toUpperCase().replace(/[^A-Z0-9]/g, '')).trim();
+      const symbol = (normalized.symbol || currentItem.companyName.toUpperCase().replace(/[^A-Z0-9&-]/g, '')).trim();
       
       // Reject non-ticker words or deals chatter
       if (!symbol || symbol.length < 2 || symbol.length > 15 || NON_TICKER_BLACKLIST.has(symbol) || symbol.includes('WHEREWEEXPECT') || symbol.includes('MAXQTY')) {
