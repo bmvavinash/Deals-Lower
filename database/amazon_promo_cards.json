@@ -1,37 +1,37 @@
 [
   {
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&bbn=222729359031&rh=n%3A222729359031%2Cp_36%3A-49999&dc=&qid=1792520214&rnid=3444809031&ref=sr_nr_p_36_0&pd_rd_w=F5YaQ&content-id=amzn1.sym.fb865709-30e6-4d59-b7a6-4a30988f543d&pf_rd_p=fb865709-30e6-4d59-b7a6-4a30988f543d&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=kitchen&bbn=222850916031&rh=n%3A1380447031%2Cp_36%3A-50000&s=exact-aware-popularity-rank&dc=&qid=1791387827&rnid=3444809031&ref=sr_st_exact-aware-popularity-rank&ds=v1%3AQMj5SzCtFqBIGgHl7G%2FDCPjs82uvkRqZURGItgGJJaQ&pd_rd_w=dsWU6&content-id=amzn1.sym.9b91a704-ffe6-4bce-8a78-61f012913301&pf_rd_p=9b91a704-ffe6-4bce-8a78-61f012913301&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_2",
-    "imageUrl": "/banners/card_scraped_1.png",
+    "imageUrl": "/banners/card_scraped_14.png",
     "isActive": true,
     "isCompleted": false,
     "isExpired": false,
-    "lastUpdated": "2026-11-11T18:45:03.984Z",
+    "lastUpdated": "2026-11-12T01:04:10.469Z",
     "platform": "amazon",
     "priceBadge": "Under ₹499",
-    "title": "Under ₹499 Festive décor",
-    "videoUrl": "https://m.media-amazon.com/images/I/B1cPVGq6DtL.mp4"
+    "title": "Under ₹499 Bedsheets",
+    "videoUrl": "https://m.media-amazon.com/images/I/C10ljfyb6JL.mp4"
   },
   {
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=hpc&srs=218392697031&rh=n%3A218392697031&s=price-asc-rank&fs=true&qid=1790674362&ref=sr_st_price-asc-rank&ds=v1%3Aj4pPOH6zxVTGyfAdLHEYLvdh6bTff90TiBk2cPf0x3c&pd_rd_w=8AI41&content-id=amzn1.sym.28a4ab84-4f7f-41fe-a1ab-8b3cf1eba27c&pf_rd_p=28a4ab84-4f7f-41fe-a1ab-8b3cf1eba27c&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=apparel&bbn=1968253031&rh=n%3A1968255031%2Cp_36%3A-40000%2Cp_85%3A10440599031%2Cp_28%3AKurta%257CKurtis%257Ckurta%257Ckurtas%257Ckurti%257Ckurtis%257Clehenga%257Csalwar&s=exact-aware-popularity-rank&hidden-keywords=-girl-B0D9DPYLZG-pant-trousers-shirt-tshirt&pd_rd_w=Mk8ff&content-id=amzn1.sym.10fb79bf-e7ec-4826-a3d2-3e8c9e1c4304&pf_rd_p=10fb79bf-e7ec-4826-a3d2-3e8c9e1c4304&pf_rd_r=9YNM4NFZB8G3QCEP1F78&pd_rd_wg=InDs2&pd_rd_r=f52db198-8097-4198-af7b-3d6116d4034f&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_3",
     "imageUrl": "/banners/card_scraped_3.png",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z",
+    "lastUpdated": "2026-11-12T01:04:10.468Z",
     "platform": "amazon",
-    "priceBadge": "Starting ₹299",
-    "title": "Starting ₹299 Intimate trimmers"
+    "priceBadge": "Under ₹399",
+    "title": "Under ₹399 Bestselling kurtas"
   },
   {
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=apparel&bbn=1968253031&rh=n%3A1968255031%2Cp_85%3A10440599031%2Cp_28%3AKurta%257CKurtis%257Ckurta%257Ckurtas%257Ckurti%257Ckurtis%257Clehenga%257Csalwar%2Cp_36%3A-40000&s=exact-aware-popularity-rank&hidden-keywords=-girl-B0D9DPYLZG-pant-trousers-shirt-tshirt&qid=1792505355&rnid=4595083031&ref=sr_nr_p_36_0_0&pd_rd_w=7msfh&content-id=amzn1.sym.16ebabe7-d775-4f86-9e9f-ba26cb06f445&pf_rd_p=16ebabe7-d775-4f86-9e9f-ba26cb06f445&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=FiU2d&pd_rd_r=c63988ce-5a81-42b9-b4d3-85f4c5cac219&ref_=pd_hp_d_r_stg_unk",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=212432087031&ref_=pd_hp_d_r_stg_unk&pd_rd_w=6p7gI&content-id=amzn1.sym.5ef19cd9-7def-480f-b67a-2aa06297c483&pf_rd_p=5ef19cd9-7def-480f-b67a-2aa06297c483&pf_rd_r=9YNM4NFZB8G3QCEP1F78&pd_rd_wg=iuCL1&pd_rd_r=f52db198-8097-4198-af7b-3d6116d4034f",
     "id": "amazon_promo_scraped_4",
     "imageUrl": "/banners/card_scraped_4.png",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z",
+    "lastUpdated": "2026-11-12T01:04:10.468Z",
     "platform": "amazon",
-    "priceBadge": "Under ₹399",
-    "title": "Under ₹399 Kurta & kurta sets",
-    "videoUrl": "https://m.media-amazon.com/images/I/D1j6pe89LAL.mp4"
+    "priceBadge": "up to ₹300",
+    "title": "Win up to ₹300 back *Terms & conditions apply Play",
+    "videoUrl": "https://m.media-amazon.com/images/I/A1Ju0auGTAL.mp4"
   },
   {
     "id": "amazon_promo_scraped_15",
@@ -41,7 +41,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=219533528031&pd_rd_w=OVobl&content-id=amzn1.sym.7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_p=7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z",
+    "lastUpdated": "2026-11-12T01:04:10.468Z",
     "videoUrl": "https://m.media-amazon.com/images/I/A1DtVMWgFUL.mp4"
   },
   {
@@ -52,7 +52,7 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&_encoding=UTF8&i=sporting&bbn=222409240031&rh=n%3A1984443031%2Cn%3A222409240031%2Cn%3A3403635031%2Cn%3A3403925031&dc=&ds=v1%3AKWrO6vX%2F2BGHAzlEgJ5l2cELhV1xsrDKYKjuWFa37m0&qid=1793332810&rnid=3403635031&ref=sr_nr_n_2&ref_=pd_hp_d_r_atf_unk&pd_rd_w=Ucl1u&content-id=amzn1.sym.2736f591-4de0-4cc9-8d59-772078f79abb&pf_rd_p=2736f591-4de0-4cc9-8d59-772078f79abb&pf_rd_r=VX8ECS5CVKSK14Z2YDRG&pd_rd_wg=kyapu&pd_rd_r=ea4cc834-de11-4a22-8a95-9ce926b385f6",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z",
+    "lastUpdated": "2026-11-12T01:04:10.468Z",
     "videoUrl": "https://m.media-amazon.com/images/I/B1oKLD8SZbL.mp4"
   },
   {
@@ -63,7 +63,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=1389409031&pd_rd_w=Kuv7z&content-id=amzn1.sym.44b7ed71-894f-46eb-b9ea-f204a98a46eb&pf_rd_p=44b7ed71-894f-46eb-b9ea-f204a98a46eb&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z"
+    "lastUpdated": "2026-11-12T01:04:10.468Z"
   },
   {
     "id": "amazon_promo_scraped_13",
@@ -73,29 +73,29 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=baby%20diapers&dc=&crid=I9JVIVXUY2Q3&qid=1792312390&rnid=2485523031&sprefix=baby%20diapers%2Bw%2Caps%2C1016&ref=sr_nr_p_36_0_0&low-price=&high-price=480&pd_rd_w=umzNL&content-id=amzn1.sym.18592815-1d73-43f9-a618-652e9c0a88cd&pf_rd_p=18592815-1d73-43f9-a618-652e9c0a88cd&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z",
+    "lastUpdated": "2026-11-12T01:04:10.468Z",
     "videoUrl": "https://m.media-amazon.com/images/I/C1mHRmbUZzL.mp4"
   },
   {
     "id": "amazon_promo_scraped_6",
-    "title": "Starting ₹169 Festive cleaning made easy Play",
-    "priceBadge": "Starting ₹169",
+    "title": "Under ₹999 Casseroles Play",
+    "priceBadge": "Under ₹999",
     "imageUrl": "/banners/card_scraped_6.png",
-    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=223489930031&ref_=pd_hp_d_r_atf_unk&pd_rd_w=SjnLk&content-id=amzn1.sym.2af3760c-742c-4b14-a125-bebebd2f1f7f&pf_rd_p=2af3760c-742c-4b14-a125-bebebd2f1f7f&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&_encoding=UTF8&k=casseroles&i=kitchen&rh=n%3A1380151031%2Cp_36%3A-99900&s=exact-aware-popularity-rank&qid=1794332455&rnid=3444809031&ref=sr_nr_p_36_0_0&ref_=pd_hp_d_r_atf_unk&pd_rd_w=UdbN8&content-id=amzn1.sym.d47b07e8-04fa-41a2-b26f-ea1521beb0ac&pf_rd_p=d47b07e8-04fa-41a2-b26f-ea1521beb0ac&pf_rd_r=9YNM4NFZB8G3QCEP1F78&pd_rd_wg=InDs2&pd_rd_r=f52db198-8097-4198-af7b-3d6116d4034f",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z",
-    "videoUrl": "https://m.media-amazon.com/images/I/B1Y2rsxlnRL.mp4"
+    "lastUpdated": "2026-11-12T01:04:10.469Z",
+    "videoUrl": "https://m.media-amazon.com/images/I/C1NKuyA09+L.mp4"
   },
   {
     "id": "amazon_promo_scraped_7",
-    "title": "Under ₹599 Crush on cashews",
-    "priceBadge": "Under ₹599",
+    "title": "Starting ₹199 Lighting essentials",
+    "priceBadge": "Starting ₹199",
     "imageUrl": "/banners/card_scraped_7.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=grocery&rh=n%3A4860232031&dc=&qid=1791719563&rnid=2485523031&ref=sr_nr_p_36_0_0&low-price=150&high-price=600&pd_rd_w=gTxy7&content-id=amzn1.sym.1b46dd83-293c-4be9-b102-829b8f9b2e0f&pf_rd_p=1b46dd83-293c-4be9-b102-829b8f9b2e0f&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=wall%20lamps&i=kitchen&rh=n%3A976442031%2Cp_72%3A1318476031&dc=&ds=v1%3AMlGThrW4o1gaH%2F2PNTi7YUtDG3eg8MGG3S1xqCPqg1A&crid=KEYJKBMZ2AME&qid=1775072476&rnid=1318475031&sprefix=wall%20lamps%2Ckitchen%2C524&ref=sr_nr_p_72_1&pd_rd_w=XAKN5&content-id=amzn1.sym.e7ef1e08-9609-40e2-81da-0e8e7aadf84e&pf_rd_p=e7ef1e08-9609-40e2-81da-0e8e7aadf84e&pf_rd_r=9YNM4NFZB8G3QCEP1F78&pd_rd_wg=InDs2&pd_rd_r=f52db198-8097-4198-af7b-3d6116d4034f&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z"
+    "lastUpdated": "2026-11-12T01:04:10.469Z"
   },
   {
     "id": "amazon_promo_scraped_9",
@@ -105,7 +105,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=223489848031&pd_rd_w=YaETn&content-id=amzn1.sym.0beb3833-fac3-4316-a9c1-5c0bd2ce143b&pf_rd_p=0beb3833-fac3-4316-a9c1-5c0bd2ce143b&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z"
+    "lastUpdated": "2026-11-12T01:04:10.469Z"
   },
   {
     "id": "amazon_promo_scraped_10",
@@ -116,16 +116,17 @@
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/D1znS6P4D1L.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.984Z"
+    "lastUpdated": "2026-11-12T01:04:10.469Z"
   },
   {
-    "id": "amazon_promo_scraped_14",
-    "title": "Under ₹499 Bedsheets",
-    "priceBadge": "Under ₹499",
-    "imageUrl": "/banners/card_scraped_14.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=kitchen&bbn=222850916031&rh=n%3A1380447031%2Cp_36%3A-50000&s=exact-aware-popularity-rank&dc=&qid=1791387827&rnid=3444809031&ref=sr_st_exact-aware-popularity-rank&ds=v1%3AQMj5SzCtFqBIGgHl7G%2FDCPjs82uvkRqZURGItgGJJaQ&pd_rd_w=dsWU6&content-id=amzn1.sym.9b91a704-ffe6-4bce-8a78-61f012913301&pf_rd_p=9b91a704-ffe6-4bce-8a78-61f012913301&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
+    "id": "amazon_promo_scraped_5",
+    "title": "Starting ₹299 Jars & more Get up to ₹150 cashback* Play",
+    "priceBadge": "Starting ₹299",
+    "imageUrl": "/banners/card_scraped_5.png",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=223281262031&ref_=pd_hp_d_r_atf_unk&pd_rd_w=WGM8Z&content-id=amzn1.sym.2356ad19-b968-4dba-962d-7bc7c62300bb&pf_rd_p=2356ad19-b968-4dba-962d-7bc7c62300bb&pf_rd_r=9YNM4NFZB8G3QCEP1F78&pd_rd_wg=InDs2&pd_rd_r=f52db198-8097-4198-af7b-3d6116d4034f",
     "platform": "amazon",
+    "videoUrl": "https://m.media-amazon.com/images/I/B18cAFJGnFL.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-11T18:45:03.985Z"
+    "lastUpdated": "2026-11-12T01:04:10.470Z"
   }
 ]
