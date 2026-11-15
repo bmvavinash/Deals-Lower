@@ -1,33 +1,46 @@
 [
   {
-    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=223489972031&ref_=pd_hp_d_r_atf_unk&pd_rd_w=sTK3T&content-id=amzn1.sym.4af2a10a-926e-4b43-95ac-d2a502b39783&pf_rd_p=4af2a10a-926e-4b43-95ac-d2a502b39783&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc",
+    "id": "amazon_8pm_promo",
+    "title": "8PM Deals Live Now",
+    "tagline": "Powered by SAMSUNG Galaxy | intel Core ULTRA",
+    "priceBadge": "Live Now",
+    "category": "Festive Deals",
+    "imageUrl": "/banners/amazon_8pm_deals.gif",
+    "clickRedirectUrl": "https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM",
+    "platform": "amazon",
+    "videoUrl": "https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4",
+    "isActive": true,
+    "lastUpdated": "2026-11-15T17:15:40.643Z"
+  },
+  {
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&_encoding=UTF8&i=kitchen&bbn=220561432031&rh=n%3A220561432031%2Cp_85%3A10440599031%2Cp_36%3A-100000&dc=&qid=1794331795&rnid=3444809031&ref=sr_nr_p_36_0_0&ref_=pd_hp_d_r_atf_unk&pd_rd_w=l1XNu&content-id=amzn1.sym.8e2b5bfa-3e5a-497f-b488-18d631fd069d&pf_rd_p=8e2b5bfa-3e5a-497f-b488-18d631fd069d&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=HLnUO&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d",
     "id": "amazon_promo_scraped_2",
     "imageUrl": "/banners/card_scraped_2.png",
     "isActive": true,
     "isCompleted": false,
     "isExpired": false,
-    "lastUpdated": "2026-11-15T09:59:51.019Z",
+    "lastUpdated": "2026-11-15T17:15:40.643Z",
     "platform": "amazon",
-    "priceBadge": "Starting ₹99",
-    "title": "Starting ₹99 Colourful wall makeover Play",
-    "videoUrl": "https://m.media-amazon.com/images/I/D1W382tqaKL.mp4"
+    "priceBadge": "Under ₹999",
+    "title": "Under ₹999 Everyday kitchen essentials Play Unmute",
+    "videoUrl": "https://m.media-amazon.com/images/I/C10ljfyb6JL.mp4"
   },
   {
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=shoes&rh=n%3A1983569031%2Cp_36%3A-50000%2Cp_28%3AClog%257CClogs%257CCrocs%257CSandal%257CSlider%257CSliders%257Cclog%257Cclogs%257Csliders&s=exact-aware-popularity-rank&pd_rd_w=LXKW4&content-id=amzn1.sym.0f5f4145-e0aa-4081-9686-607d5ebb1875&pf_rd_p=0f5f4145-e0aa-4081-9686-607d5ebb1875&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&hidden-keywords=B0H875KBDT%7CB08LHTJTBB%7CB0CQRNWJM2%7CB0DXNY14GL%7CB0DF38F64P%7CB0FGVQBNSB%7CB0BG8LZNYL%7CB009LJ2BXA%7CB0DM8W78M8%7CB0BP71RWGF%7CB01HJI0FS2%7CB083DY9RXW%7CB0F73SVVZH%7CB00ZYLMQH0%7CB0BT179DV6%7CB0D18192T2%7CB07JPX9CR7%7CB00Y4ORQ46%7CB08NXD7MHC%7CB0DXNTYWHV%7CB0C376RWQP%7CB0DXPQ9XHT%7CB0827J697Z%7CB099SD8PRP%7CB0B296NTFV%7CB0CKW71QPF%7CB0BKPMD1BN%7CB0D8354479%7CB08PFSZ7FH%7CB0H7MKDG6H%7CB099ZXYCWP%7CB00EU6TXC6%7CB01M72LILF%7CB0G2S6FRWS%7CB0DB29X1YX%7CB0CFTZQ8JB%7CB0B24W3DJZ%7CB0G2SHQ5XV%7CB0H2PT19C4%7CB087FXHB6J%7CB0DBPCSWX5%7CB0CRDRHHKR%7CB07XCM6T4N%7CB0GDTSH5BW%7CB0FFN8C3KW%7CB0FSCS6592%7CB0BL6S8KHM%7CB0FDQ9M1SD%7CB0765B3TH7%7CB0G7D9DV3M%7CB0B5RMKMJL%7CB0FRSLDQ5H%7CB0C52ZF43S%7CB0CFDZ2HBF%7CB08VK11P24%7CB0FN87F535%7CB0H2PR4PLP%7CB01EHB38YC%7CB0FF4XBM5N%7CB0DM8HD3SF&pd_rd_w=5EcCb&content-id=amzn1.sym.f4f81882-9a1a-4525-b60f-6d4b50407eae&pf_rd_p=f4f81882-9a1a-4525-b60f-6d4b50407eae&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_3",
-    "imageUrl": "/banners/card_scraped_12.png",
+    "imageUrl": "/banners/card_scraped_11.png",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.019Z",
+    "lastUpdated": "2026-11-15T17:15:40.644Z",
     "platform": "amazon",
-    "priceBadge": "Under ₹499",
-    "title": "Under ₹499 Clogs & sandals"
+    "priceBadge": "From ₹299",
+    "title": "From ₹299 Deals on PC Accessories Get up to ₹150 cashback*"
   },
   {
-    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=212432087031&ref_=pd_hp_d_r_stg_unk&pd_rd_w=RkjZe&content-id=amzn1.sym.4506419f-32f6-4bb6-86e9-3b93d94ac1a0&pf_rd_p=4506419f-32f6-4bb6-86e9-3b93d94ac1a0&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=BLHCn&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=212432087031&ref_=pd_hp_d_r_stg_unk&pd_rd_w=UofTV&content-id=amzn1.sym.4506419f-32f6-4bb6-86e9-3b93d94ac1a0&pf_rd_p=4506419f-32f6-4bb6-86e9-3b93d94ac1a0&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=8apJd&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d",
     "id": "amazon_promo_scraped_4",
     "imageUrl": "/banners/card_scraped_4.png",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.019Z",
+    "lastUpdated": "2026-11-15T17:15:40.643Z",
     "platform": "amazon",
     "priceBadge": "up to ₹300",
     "title": "Win up to ₹300 back *Terms & conditions apply Play",
@@ -41,29 +54,29 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=219533528031&pd_rd_w=OVobl&content-id=amzn1.sym.7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_p=7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.019Z",
+    "lastUpdated": "2026-11-15T17:15:40.643Z",
     "videoUrl": "https://m.media-amazon.com/images/I/A1DtVMWgFUL.mp4"
   },
   {
     "id": "amazon_promo_scraped_12",
-    "title": "Starting ₹99 Budget Store",
-    "priceBadge": "Starting ₹99",
-    "imageUrl": "/banners/card_scraped_8.png",
-    "clickRedirectUrl": "https://www.amazon.in/l/21557580031/?_encoding=UTF8&pd_rd_w=EIFvf&content-id=amzn1.sym.68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_p=68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc&ref_=pd_hp_d_r_atf_unk",
+    "title": "Shop deals ending soon 70% off 24% off 25% off 42% off",
+    "priceBadge": "Live Now",
+    "imageUrl": "/banners/card_scraped_12.png",
+    "clickRedirectUrl": "https://www.amazon.in/events/deals/?_encoding=UTF8&_encoding=UTF8&ref_=dealz_wd_des_see_more&bubble-id=deals-contextual-link&dynamicBubble=%7B%2522collectionId%2522%3A%2522deals-contextual-link%2522%2C%2522departmentsIncluded%2522%3A%5B27232312031%2C1380401031%2C1374336031%2C6395584031%5D%7D&pd_rd_w=8rmed&content-id=amzn1.sym.38cc893f-13a3-4ba4-87c0-60d1ba1e86ed&pf_rd_p=38cc893f-13a3-4ba4-87c0-60d1ba1e86ed&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=HLnUO&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.019Z",
-    "videoUrl": "https://m.media-amazon.com/images/I/B1oKLD8SZbL.mp4"
+    "lastUpdated": "2026-11-15T17:15:40.643Z",
+    "videoUrl": "https://m.media-amazon.com/images/I/C1NKuyA09+L.mp4"
   },
   {
     "id": "amazon_promo_scraped_13",
-    "title": "Starting ₹199 Laundry essentials",
-    "priceBadge": "Starting ₹199",
+    "title": "Starting ₹99 Budget Store",
+    "priceBadge": "Starting ₹99",
     "imageUrl": "/banners/card_scraped_13.png",
-    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=86460301031&pd_rd_w=M6Dqo&content-id=amzn1.sym.caca679a-0d37-44d2-aa1b-7608c2101c60&pf_rd_p=caca679a-0d37-44d2-aa1b-7608c2101c60&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/l/21557580031/?_encoding=UTF8&pd_rd_w=qSzhx&content-id=amzn1.sym.68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_p=68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=HLnUO&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.019Z",
+    "lastUpdated": "2026-11-15T17:15:40.643Z",
     "videoUrl": "https://m.media-amazon.com/images/I/C1mHRmbUZzL.mp4"
   },
   {
@@ -74,60 +87,50 @@
     "clickRedirectUrl": "https://www.amazon.in/b/ref=pullupbarGW/?_encoding=UTF8&_encoding=UTF8&node=218627974031&ref_=pd_hp_d_r_atf_unk&pd_rd_w=uS8Ez&content-id=amzn1.sym.9c9f49f8-2674-4422-825c-f981270c8804&pf_rd_p=9c9f49f8-2674-4422-825c-f981270c8804&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.019Z",
+    "lastUpdated": "2026-11-15T17:15:40.643Z",
     "videoUrl": "https://m.media-amazon.com/images/I/B1kX5oAA4YL.mp4"
   },
   {
     "id": "amazon_promo_scraped_10",
-    "title": "Up to 80% off Clearance store",
-    "priceBadge": "Up to 80%",
+    "title": "Under ₹499 Trendy sneakers",
+    "priceBadge": "Under ₹499",
     "imageUrl": "/banners/card_scraped_10.png",
-    "clickRedirectUrl": "https://www.amazon.in/l/37303949031/?_encoding=UTF8&pd_rd_w=N9eMN&content-id=amzn1.sym.98eaa781-12d7-4f22-bfb8-45568a86084d&pf_rd_p=98eaa781-12d7-4f22-bfb8-45568a86084d&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=shoes&rh=n%3A1983396031%2Cp_28%3ASneakers%257Csneaker&s=exact-aware-popularity-rank&hidden-keywords=-sponsored-formal-sandal-slipper-slide-flip-baby-chappal-kids-baby-generic-socks-jutti-mojari-ethnic-doctor&qid=1785404166&rnid=4516629031&ref=sr_nr_p_36_0_0&low-price=&high-price=500&pd_rd_w=5Y8pu&content-id=amzn1.sym.c841c6fe-f395-40fb-bbdc-664eb96a0763&pf_rd_p=c841c6fe-f395-40fb-bbdc-664eb96a0763&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=HLnUO&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/D1znS6P4D1L.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.020Z"
+    "lastUpdated": "2026-11-15T17:15:40.643Z"
   },
   {
     "id": "amazon_promo_scraped_1",
     "title": "Everything under ₹499 Fashion, home & more",
     "priceBadge": "under ₹499",
     "imageUrl": "/banners/card_scraped_1.png",
-    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&_encoding=UTF8&node=217099008031&ref_=pd_hp_mw_btf_unk&pd_rd_w=hsBMe&content-id=amzn1.sym.440616ef-15f5-42aa-8c33-dcfea0a264c4&pf_rd_p=440616ef-15f5-42aa-8c33-dcfea0a264c4&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&_encoding=UTF8&node=217099008031&ref_=pd_hp_mw_btf_unk&pd_rd_w=TZUwa&content-id=amzn1.sym.440616ef-15f5-42aa-8c33-dcfea0a264c4&pf_rd_p=440616ef-15f5-42aa-8c33-dcfea0a264c4&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=HLnUO&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d",
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/B1bBfqqJnsL.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.020Z"
+    "lastUpdated": "2026-11-15T17:15:40.643Z"
   },
   {
     "id": "amazon_promo_scraped_6",
     "title": "Starting ₹199 Lighting essentials",
     "priceBadge": "Starting ₹199",
-    "imageUrl": "/banners/card_scraped_7.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=wall%20lamps&i=kitchen&rh=n%3A976442031%2Cp_72%3A1318476031&dc=&ds=v1%3AMlGThrW4o1gaH%2F2PNTi7YUtDG3eg8MGG3S1xqCPqg1A&crid=KEYJKBMZ2AME&qid=1775072476&rnid=1318475031&sprefix=wall%20lamps%2Ckitchen%2C524&ref=sr_nr_p_72_1&pd_rd_w=B4MLg&content-id=amzn1.sym.82b17ca5-14fa-4a9b-ae0c-13425d3f46af&pf_rd_p=82b17ca5-14fa-4a9b-ae0c-13425d3f46af&pf_rd_r=Q554QC76TAHED69GA29W&pd_rd_wg=7KNY0&pd_rd_r=1e4cf6c7-1392-46f3-bdfc-c01d5df6b4f6&ref_=pd_hp_d_r_atf_unk",
+    "imageUrl": "/banners/card_scraped_6.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=wall%20lamps&i=kitchen&rh=n%3A976442031%2Cp_72%3A1318476031&dc=&ds=v1%3AMlGThrW4o1gaH%2F2PNTi7YUtDG3eg8MGG3S1xqCPqg1A&crid=KEYJKBMZ2AME&qid=1775072476&rnid=1318475031&sprefix=wall%20lamps%2Ckitchen%2C524&ref=sr_nr_p_72_1&pd_rd_w=COeah&content-id=amzn1.sym.82b17ca5-14fa-4a9b-ae0c-13425d3f46af&pf_rd_p=82b17ca5-14fa-4a9b-ae0c-13425d3f46af&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=HLnUO&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/C1NKuyA09+L.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.021Z"
+    "lastUpdated": "2026-11-15T17:15:40.644Z"
   },
   {
     "id": "amazon_promo_scraped_5",
-    "title": "Under ₹399 T-shirts & polos",
-    "priceBadge": "Under ₹399",
+    "title": "Shop popular deals 25% off 38% off 26% off 76% off",
+    "priceBadge": "Live Now",
     "imageUrl": "/banners/card_scraped_5.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=apparel&bbn=1968120031&rh=n%3A1968120031%2Cp_85%3A10440599031%2Cp_36%3A-40000%2Cp_28%3AT-shirt%257Cpolos%257Ctshirt%257Ctshirts&s=exact-aware-popularity-rank&hidden-keywords=-Sleeveless-tank-vest-woman-women-boy-girl-kid-Epaulettes-pack-holder-accessories-B08L858NGB-kids-girls-B0DZP58D3L-formal-accessories-eyewear-band-button-socks-formal&pd_rd_w=l5MY1&content-id=amzn1.sym.1bc9a8bb-c525-458e-997f-a4d18e5a178b&pf_rd_p=1bc9a8bb-c525-458e-997f-a4d18e5a178b&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/events/deals/?_encoding=UTF8&_encoding=UTF8&ref_=dealz_wd_pd_see_more&bubble-id=deals-contextual-link&dynamicBubble=%7B%2522collectionId%2522%3A%2522deals-contextual-link%2522%2C%2522departmentsIncluded%2522%3A%5B22484918031%2C6612025031%2C1389175031%2C3639313031%5D%7D&pd_rd_w=k1d3p&content-id=amzn1.sym.30f99614-79d7-4c06-9657-812ef583ee6e&pf_rd_p=30f99614-79d7-4c06-9657-812ef583ee6e&pf_rd_r=Z51Z1DEMH9N14NF6SBDV&pd_rd_wg=HLnUO&pd_rd_r=0c656153-19e2-4b59-bd3e-fbfea1d3a43d",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.021Z"
-  },
-  {
-    "id": "amazon_promo_scraped_11",
-    "title": "From ₹299 Deals on PC Accessories Get up to ₹150 cashback*",
-    "priceBadge": "From ₹299",
-    "imageUrl": "/banners/card_scraped_11.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&hidden-keywords=B0H875KBDT%7CB08LHTJTBB%7CB0CQRNWJM2%7CB0DXNY14GL%7CB0DF38F64P%7CB0FGVQBNSB%7CB0BG8LZNYL%7CB009LJ2BXA%7CB0DM8W78M8%7CB0BP71RWGF%7CB01HJI0FS2%7CB083DY9RXW%7CB0F73SVVZH%7CB00ZYLMQH0%7CB0BT179DV6%7CB0D18192T2%7CB07JPX9CR7%7CB00Y4ORQ46%7CB08NXD7MHC%7CB0DXNTYWHV%7CB0C376RWQP%7CB0DXPQ9XHT%7CB0827J697Z%7CB099SD8PRP%7CB0B296NTFV%7CB0CKW71QPF%7CB0BKPMD1BN%7CB0D8354479%7CB08PFSZ7FH%7CB0H7MKDG6H%7CB099ZXYCWP%7CB00EU6TXC6%7CB01M72LILF%7CB0G2S6FRWS%7CB0DB29X1YX%7CB0CFTZQ8JB%7CB0B24W3DJZ%7CB0G2SHQ5XV%7CB0H2PT19C4%7CB087FXHB6J%7CB0DBPCSWX5%7CB0CRDRHHKR%7CB07XCM6T4N%7CB0GDTSH5BW%7CB0FFN8C3KW%7CB0FSCS6592%7CB0BL6S8KHM%7CB0FDQ9M1SD%7CB0765B3TH7%7CB0G7D9DV3M%7CB0B5RMKMJL%7CB0FRSLDQ5H%7CB0C52ZF43S%7CB0CFDZ2HBF%7CB08VK11P24%7CB0FN87F535%7CB0H2PR4PLP%7CB01EHB38YC%7CB0FF4XBM5N%7CB0DM8HD3SF&pd_rd_w=5EcCb&content-id=amzn1.sym.f4f81882-9a1a-4525-b60f-6d4b50407eae&pf_rd_p=f4f81882-9a1a-4525-b60f-6d4b50407eae&pf_rd_r=B5KJGEA7NB2YXB3XV0PJ&pd_rd_wg=UumUm&pd_rd_r=3d489c21-b8e8-4a29-9210-e61fe5836edc&ref_=pd_hp_d_r_atf_unk",
-    "platform": "amazon",
-    "isActive": true,
-    "lastUpdated": "2026-11-15T09:59:51.021Z"
+    "lastUpdated": "2026-11-15T17:15:40.644Z"
   }
 ]
