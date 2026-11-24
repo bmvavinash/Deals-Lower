@@ -1,12 +1,25 @@
 [
   {
+    "id": "amazon_8pm_promo",
+    "title": "8PM Deals Live Now",
+    "tagline": "Powered by SAMSUNG Galaxy | intel Core ULTRA",
+    "priceBadge": "Live Now",
+    "category": "Festive Deals",
+    "imageUrl": "/banners/amazon_8pm_deals.gif",
+    "clickRedirectUrl": "https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM",
+    "platform": "amazon",
+    "videoUrl": "https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4",
+    "isActive": true,
+    "lastUpdated": "2026-11-24T18:23:46.677Z"
+  },
+  {
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=apparel&rh=n%3A1968076031%2Cp_36%3A-50000%2Cp_28%3ADenims%257CJeans%257Cdenim%257Cdenims%257Cjeans&s=exact-aware-popularity-rank&hidden-keywords=-B0CR1V62RM-women-kids-accessories-innerwear-girl&qid=1785388179&xpid=SOA60-YDEhyD-&ref=sr_pg_1&pd_rd_w=KPOB8&content-id=amzn1.sym.c6192d15-8a62-4984-a378-51a458548530&pf_rd_p=c6192d15-8a62-4984-a378-51a458548530&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_2",
     "imageUrl": "/banners/card_scraped_1.png",
     "isActive": true,
     "isCompleted": false,
     "isExpired": false,
-    "lastUpdated": "2026-11-24T06:29:28.490Z",
+    "lastUpdated": "2026-11-24T18:23:46.677Z",
     "platform": "amazon",
     "priceBadge": "Under ₹499",
     "title": "Under ₹499 Jeans",
@@ -17,7 +30,7 @@
     "id": "amazon_promo_scraped_3",
     "imageUrl": "/banners/card_scraped_3.png",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.490Z",
+    "lastUpdated": "2026-11-24T18:23:46.677Z",
     "platform": "amazon",
     "priceBadge": "under ₹299",
     "title": "Everything under ₹299 Fashion, home & more",
@@ -28,7 +41,7 @@
     "id": "amazon_promo_scraped_4",
     "imageUrl": "/banners/card_scraped_4.png",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.490Z",
+    "lastUpdated": "2026-11-24T18:23:46.677Z",
     "platform": "amazon",
     "priceBadge": "up to ₹300",
     "title": "Win up to ₹300 back *Terms & conditions apply",
@@ -42,7 +55,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=219533528031&pd_rd_w=OVobl&content-id=amzn1.sym.7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_p=7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.490Z",
+    "lastUpdated": "2026-11-24T18:23:46.677Z",
     "videoUrl": "https://m.media-amazon.com/images/I/A1DtVMWgFUL.mp4"
   },
   {
@@ -54,7 +67,7 @@
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/C10ljfyb6JL.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.491Z"
+    "lastUpdated": "2026-11-24T18:23:46.677Z"
   },
   {
     "id": "amazon_promo_scraped_6",
@@ -65,7 +78,7 @@
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/C1NKuyA09+L.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.491Z"
+    "lastUpdated": "2026-11-24T18:23:46.677Z"
   },
   {
     "id": "amazon_promo_scraped_7",
@@ -75,7 +88,7 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=mini%20dress%20%7C%20bodycon%20dress%20%7C%20summer%20dress&i=bazaar&rh=n%3A28166270031%2Cp_36%3A-30000&s=popularity-rank&pd_rd_w=bUhNJ&content-id=amzn1.sym.07e24dda-2118-4030-952e-130ff63f3066&pf_rd_p=07e24dda-2118-4030-952e-130ff63f3066&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.491Z"
+    "lastUpdated": "2026-11-24T18:23:46.677Z"
   },
   {
     "id": "amazon_promo_scraped_11",
@@ -85,7 +98,7 @@
     "clickRedirectUrl": "https://www.amazon.in/l/21557580031/?_encoding=UTF8&pd_rd_w=SG7rj&content-id=amzn1.sym.68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_p=68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.491Z"
+    "lastUpdated": "2026-11-24T18:23:46.678Z"
   },
   {
     "id": "amazon_promo_scraped_9",
@@ -95,7 +108,7 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=Ride%20on%20%26%20electric%20ride%20ons&i=toys&s=exact-aware-popularity-rank&crid=1CPGGXPE3EJTW&qid=1794403244&sprefix=ride%20on%20%26%20electric%20ride%20%2Ctoys%2C495&ref=sr_st_exact-aware-popularity-rank&ds=v1%3APElCagF1ZsYUUmoobG0d%2FtXGTGCKuZY2RLRZKXOBIRk&pd_rd_w=YitWV&content-id=amzn1.sym.a17a5146-d6b1-4779-8900-d051a865dfbf&pf_rd_p=a17a5146-d6b1-4779-8900-d051a865dfbf&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.491Z"
+    "lastUpdated": "2026-11-24T18:23:46.678Z"
   },
   {
     "id": "amazon_promo_scraped_12",
@@ -106,7 +119,7 @@
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/B1kX5oAA4YL.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.491Z"
+    "lastUpdated": "2026-11-24T18:23:46.678Z"
   },
   {
     "id": "amazon_promo_scraped_13",
@@ -116,6 +129,6 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=86460301031&pd_rd_w=sHmNZ&content-id=amzn1.sym.3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_p=3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-24T06:29:28.492Z"
+    "lastUpdated": "2026-11-24T18:23:46.678Z"
   }
 ]
