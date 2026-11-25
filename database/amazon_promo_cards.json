@@ -1,15 +1,15 @@
 [
   {
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=apparel&rh=n%3A1968076031%2Cp_36%3A-50000%2Cp_28%3ADenims%257CJeans%257Cdenim%257Cdenims%257Cjeans&s=exact-aware-popularity-rank&hidden-keywords=-B0CR1V62RM-women-kids-accessories-innerwear-girl&qid=1785388179&xpid=SOA60-YDEhyD-&ref=sr_pg_1&pd_rd_w=KPOB8&content-id=amzn1.sym.c6192d15-8a62-4984-a378-51a458548530&pf_rd_p=c6192d15-8a62-4984-a378-51a458548530&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=86460301031&pd_rd_w=sHmNZ&content-id=amzn1.sym.3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_p=3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_2",
-    "imageUrl": "/banners/card_scraped_1.png",
+    "imageUrl": "/banners/card_scraped_13.png",
     "isActive": true,
     "isCompleted": false,
     "isExpired": false,
-    "lastUpdated": "2026-11-25T02:50:36.847Z",
+    "lastUpdated": "2026-11-25T13:02:22.494Z",
     "platform": "amazon",
-    "priceBadge": "Under ₹499",
-    "title": "Under ₹499 Jeans",
+    "priceBadge": "Starting ₹199",
+    "title": "Starting ₹199 Laundry essentials",
     "videoUrl": "https://m.media-amazon.com/images/I/B1bBfqqJnsL.mp4"
   },
   {
@@ -17,18 +17,18 @@
     "id": "amazon_promo_scraped_3",
     "imageUrl": "/banners/card_scraped_3.png",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.847Z",
+    "lastUpdated": "2026-11-25T13:02:22.492Z",
     "platform": "amazon",
     "priceBadge": "under ₹299",
     "title": "Everything under ₹299 Fashion, home & more",
     "videoUrl": "https://m.media-amazon.com/images/I/C1NKuyA09+L.mp4"
   },
   {
-    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=212432087031&ref_=pd_hp_d_r_stg_unk&pd_rd_w=9vK9P&content-id=amzn1.sym.6e1d90e6-f715-4b9d-88d6-3e7055533190&pf_rd_p=6e1d90e6-f715-4b9d-88d6-3e7055533190&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=Ev3kB&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=212432087031&ref_=pd_hp_d_r_stg_unk&pd_rd_w=IzO01&content-id=amzn1.sym.6e1d90e6-f715-4b9d-88d6-3e7055533190&pf_rd_p=6e1d90e6-f715-4b9d-88d6-3e7055533190&pf_rd_r=GX7YHH677F4GRS9XXHA9&pd_rd_wg=X4C6N&pd_rd_r=46982c6d-91f9-4232-85aa-3fe0be79f580",
     "id": "amazon_promo_scraped_4",
     "imageUrl": "/banners/card_scraped_4.png",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.847Z",
+    "lastUpdated": "2026-11-25T13:02:22.492Z",
     "platform": "amazon",
     "priceBadge": "up to ₹300",
     "title": "Win up to ₹300 back *Terms & conditions apply",
@@ -42,50 +42,51 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=219533528031&pd_rd_w=OVobl&content-id=amzn1.sym.7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_p=7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.847Z",
+    "lastUpdated": "2026-11-25T13:02:22.492Z",
     "videoUrl": "https://m.media-amazon.com/images/I/A1DtVMWgFUL.mp4"
   },
   {
     "id": "amazon_promo_scraped_10",
-    "title": "Starting ₹699 Speakers & soundbars",
-    "priceBadge": "Starting ₹699",
-    "imageUrl": "/banners/card_scraped_8.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&s=price-asc-rank&hidden-keywords=B09YV5LC7F%7CB0CH3G9VR2%7CB0DY1BW5Q3%7CB0H4VRBSFK%7CB0FFHCZPWC%7CB0DY15J4X3%7CB0C29CL98P%7CB0BZ4DJ7GZ%7CB0F7XNF1QF%7CB0B3XX8P9C%7CB0DJ3FFC8R%7CB0FLYDHYY4%7CB0BYZ26QGB%7CB0H1RD7GTK%7CB0H6J5JY3W%7CB0DBHC8CDQ%7CB0H4VZ7K86%7CB0FB44F3NZ%7CB0DNFV8YQB%7CB0DY19MFFB%7CB0H1RFPVC1%7CB0D772K8X8%7CB0DWWY1FVV%7CB0DQYCCQ53%7CB0FLYBJB9Z%7CB0FB42F3JF%7CB09NCFVNK9%7CB0H26HF7FW%7CB0G5DQ5377%7CB0CCPCBW65%7CB0DH8FHY3S%7CB0F8BKS7HR%7CB0CVQDJCYL%7CB0BYYZQNWZ%7CB097D69GJ1%7CB0F8W3VKDZ%7CB0FLYBFZL5%7CB09V2J596T%7CB0FVG8H8SM%7CB0FHHQQNZY%7CB0F5BC2161%7CB0C29BL8BS%7CB0CX5C6WP3%7CB095HBHKHB%7CB0C29CMM4R%7CB0FCFWGB8V%7CB0CR1NWYLD%7CB0HCNP5GLC%7CB0FM43FR9D%7CB0GF1JPL8C%7CB0GVK5LN9Y%7CB0GL7QWQF1%7CB0G3B5T67N%7CB0GPPRPRM5%7CB09P53B3M5%7CB0FMNPVZVJ%7CB0FXRH3QJ6%7CB0DN1WCLXG%7CB0FD7TMLJP%7CB0G3PZ3QKV%7CB0FB44M9W6%7CB07W41VQ91%7CB0G3PY1FVG%7CB0G7K5J9D8%7CB0DFHTFTQB%7CB0DMT42WXV%7CB0GDGR4Q2K%7CB098JVB1WD%7CB0D76YBGP6%7CB0CC5VH2LW%7CB0CL2HP1J4%7CB08FB2H6Y4%7CB08FB396L1%7CB0F8W13YTS%7CB0GSF8FB2X%7CB0F5BDTR4K%7CB0791H74NT%7CB0CVQ75VM2%7CB0H367SSG2%7CB0D7Q6QMJR%7CB0H5CB188W%7CB0H5C79Y63%7CB08F57GSJ7%7CB0H26DYD8L%7CB0D76YMVZ6%7CB0FYNW4CJV%7CB09NCG2YF1%7CB0DJP7ZFTW%7CB0CX5BL4R1%7CB0C296VD7T%7CB0C6T54WWJ%7CB07NYS5TTT%7CB0F8W13YV4%7CB0CW38T5QK%7CB099S7MRFH%7CB0CHP6D4SC%7CB09RPC4J7K%7CB0GFWNYHR1%7CB0CC5Y2PZW%7CB0FYFGJRVB&pd_rd_w=kkh6b&content-id=amzn1.sym.d23febd5-6190-4969-9db6-d03770ebdc8c&pf_rd_p=d23febd5-6190-4969-9db6-d03770ebdc8c&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
+    "title": "Starting ₹299 Fun finds for little ones",
+    "priceBadge": "Starting ₹299",
+    "imageUrl": "/banners/card_scraped_10.png",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=retro%20games&i=toys&s=exact-aware-popularity-rank&crid=2N3PS6RUZRCD&qid=1794401611&rnid=2485523031&sprefix=rretro%20game%2Ctoys%2C359&ref=sr_nr_p_36_0_0&low-price=135&high-price=&pd_rd_w=GDMOs&content-id=amzn1.sym.766f4b27-a639-439a-a8f3-bb4c1f920a37&pf_rd_p=766f4b27-a639-439a-a8f3-bb4c1f920a37&pf_rd_r=GX7YHH677F4GRS9XXHA9&pd_rd_wg=NUwL3&pd_rd_r=46982c6d-91f9-4232-85aa-3fe0be79f580&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
-    "videoUrl": "https://m.media-amazon.com/images/I/C10ljfyb6JL.mp4",
+    "videoUrl": "https://m.media-amazon.com/images/I/C1Z+DqusgML.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.847Z"
+    "lastUpdated": "2026-11-25T13:02:22.493Z"
   },
   {
     "id": "amazon_promo_scraped_6",
-    "title": "All Under ₹299 T-shirt & polos",
-    "priceBadge": "Under ₹299",
+    "title": "Shop popular deals 25% off 55% off 8% off 51% off",
+    "priceBadge": "Live Now",
     "imageUrl": "/banners/card_scraped_6.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=Men%20T-Shirts&i=bazaar&bbn=28166270031&rh=n%3A28166270031%2Cp_28%3A-capss%2Cp_36%3A-31000&s=popularity-rank&_encoding=UTF8&qid=1773045560&rnid=4595083031&ref=is_r_p_36_0_0&pd_rd_w=iws8u&content-id=amzn1.sym.a9903bce-5ae6-4b01-ad37-6cfd43676808&pf_rd_p=a9903bce-5ae6-4b01-ad37-6cfd43676808&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/events/deals/?_encoding=UTF8&_encoding=UTF8&ref_=dealz_wd_pd_see_more&bubble-id=deals-contextual-link&dynamicBubble=%7B%2522collectionId%2522%3A%2522deals-contextual-link%2522%2C%2522departmentsIncluded%2522%3A%5B22484918031%2C1389291031%2C1983575031%2C3723380031%5D%7D&pd_rd_w=AK0vb&content-id=amzn1.sym.30f99614-79d7-4c06-9657-812ef583ee6e&pf_rd_p=30f99614-79d7-4c06-9657-812ef583ee6e&pf_rd_r=GX7YHH677F4GRS9XXHA9&pd_rd_wg=NUwL3&pd_rd_r=46982c6d-91f9-4232-85aa-3fe0be79f580",
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/C1NKuyA09+L.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.848Z"
+    "lastUpdated": "2026-11-25T13:02:22.493Z"
   },
   {
     "id": "amazon_promo_scraped_7",
-    "title": "Trending dresses under ₹299",
-    "priceBadge": "under ₹299",
+    "title": "Starting ₹99 Colourful wall makeover",
+    "priceBadge": "Starting ₹99",
     "imageUrl": "/banners/card_scraped_7.png",
-    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=mini%20dress%20%7C%20bodycon%20dress%20%7C%20summer%20dress&i=bazaar&rh=n%3A28166270031%2Cp_36%3A-30000&s=popularity-rank&pd_rd_w=bUhNJ&content-id=amzn1.sym.07e24dda-2118-4030-952e-130ff63f3066&pf_rd_p=07e24dda-2118-4030-952e-130ff63f3066&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&_encoding=UTF8&node=223489972031&ref_=pd_hp_d_r_atf_unk&pd_rd_w=mcOJt&content-id=amzn1.sym.ad4a34ad-630e-4e3b-9e49-547f755878c5&pf_rd_p=ad4a34ad-630e-4e3b-9e49-547f755878c5&pf_rd_r=GX7YHH677F4GRS9XXHA9&pd_rd_wg=NUwL3&pd_rd_r=46982c6d-91f9-4232-85aa-3fe0be79f580",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.848Z"
+    "lastUpdated": "2026-11-25T13:02:22.493Z",
+    "videoUrl": "https://m.media-amazon.com/images/I/D1W382tqaKL.mp4"
   },
   {
     "id": "amazon_promo_scraped_11",
-    "title": "Starting ₹99 Budget Store",
-    "priceBadge": "Starting ₹99",
+    "title": "Starting ₹199 Laundry essentials",
+    "priceBadge": "Starting ₹199",
     "imageUrl": "/banners/card_scraped_11.png",
-    "clickRedirectUrl": "https://www.amazon.in/l/21557580031/?_encoding=UTF8&pd_rd_w=SG7rj&content-id=amzn1.sym.68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_p=68f0b53b-f21a-4ed7-b985-1b56c5fed2ad&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
+    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=86460301031&pd_rd_w=pXgrg&content-id=amzn1.sym.3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_p=3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_r=GX7YHH677F4GRS9XXHA9&pd_rd_wg=NUwL3&pd_rd_r=46982c6d-91f9-4232-85aa-3fe0be79f580&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.848Z"
+    "lastUpdated": "2026-11-25T13:02:22.493Z"
   },
   {
     "id": "amazon_promo_scraped_9",
@@ -95,27 +96,17 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=Ride%20on%20%26%20electric%20ride%20ons&i=toys&s=exact-aware-popularity-rank&crid=1CPGGXPE3EJTW&qid=1794403244&sprefix=ride%20on%20%26%20electric%20ride%20%2Ctoys%2C495&ref=sr_st_exact-aware-popularity-rank&ds=v1%3APElCagF1ZsYUUmoobG0d%2FtXGTGCKuZY2RLRZKXOBIRk&pd_rd_w=YitWV&content-id=amzn1.sym.a17a5146-d6b1-4779-8900-d051a865dfbf&pf_rd_p=a17a5146-d6b1-4779-8900-d051a865dfbf&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.848Z"
+    "lastUpdated": "2026-11-25T13:02:22.494Z"
   },
   {
     "id": "amazon_promo_scraped_12",
-    "title": "Trending right now Starting ₹499 Pull up bars",
-    "priceBadge": "Starting ₹499",
+    "title": "Up to 50% off Elevate your gaming experience",
+    "priceBadge": "Up to 50%",
     "imageUrl": "/banners/card_scraped_12.png",
-    "clickRedirectUrl": "https://www.amazon.in/b/ref=pullupbarGW/?_encoding=UTF8&_encoding=UTF8&node=218627974031&ref_=pd_hp_d_r_atf_unk&pd_rd_w=UKz52&content-id=amzn1.sym.9c9f49f8-2674-4422-825c-f981270c8804&pf_rd_p=9c9f49f8-2674-4422-825c-f981270c8804&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a",
+    "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&hidden-keywords=B013DYX7BS%7CB0GBRGLPMP%7CB08X76DKVR%7CB0CW2VHDS4%7CB0C5XNRVWM%7CB083X24CFF%7CB0FPXD9ZDX%7CB0CBCPB2T1%7CB0CYZHC69C%7CB08R8CSCWP%7CB097F8H1MC%7CB0CQXNQYFP%7CB0CX8MH9XN%7CB0B9XXJ3LC%7CB0GMLBSSTD%7CB0F4K8KZS8%7CB08GLTSGQ9%7CB0CLP4YYFS%7CB07G98H6PM%7CB00Z0UWV3O%7CB09X5G16ZM%7CB07GBZ4Q68%7CB0BGS1KQ68%7CB0C3BV19Q3%7CB0FPFZNX16%7CB0F8QW9RWY%7CB0D8HY8CT8%7CB09BVCVTBC%7CB0GMLD33GY%7CB0CFTZQ8JB%7CB00SAYCXWG%7CB0BXBC26X8%7CB0F4XQ4TQR%7CB0C3BSZ56D%7CB0DBLFQ6SX%7CB08LT9BMPP%7CB0916VGQFC%7CB0GN86M96C%7CB0D6NLHV8N%7CB09X5FSQDN%7CB0FMF1QPX4%7CB07F2GC4S9%7CB092R71V77%7CB0DK59YKRS%7CB0B119XZBK%7CB0BCFKG49M%7CB0BSTNXYHR%7CB0FLJ5QFZQ%7CB0BX52C4LN%7CB07S4JRHNJ&pd_rd_w=VTWpy&content-id=amzn1.sym.f311c500-419f-49d5-ac2b-b335d38f3a39&pf_rd_p=f311c500-419f-49d5-ac2b-b335d38f3a39&pf_rd_r=GX7YHH677F4GRS9XXHA9&pd_rd_wg=NUwL3&pd_rd_r=46982c6d-91f9-4232-85aa-3fe0be79f580&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/B1kX5oAA4YL.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.849Z"
-  },
-  {
-    "id": "amazon_promo_scraped_13",
-    "title": "Starting ₹199 Laundry essentials",
-    "priceBadge": "Starting ₹199",
-    "imageUrl": "/banners/card_scraped_13.png",
-    "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=86460301031&pd_rd_w=sHmNZ&content-id=amzn1.sym.3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_p=3467082a-ff8c-4df1-a956-76b1a8c0a52b&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
-    "platform": "amazon",
-    "isActive": true,
-    "lastUpdated": "2026-11-25T02:50:36.849Z"
+    "lastUpdated": "2026-11-25T13:02:22.494Z"
   }
 ]
