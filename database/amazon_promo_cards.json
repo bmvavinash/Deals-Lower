@@ -1,25 +1,12 @@
 [
   {
-    "id": "amazon_8pm_promo",
-    "title": "8PM Deals Live Now",
-    "tagline": "Powered by SAMSUNG Galaxy | intel Core ULTRA",
-    "priceBadge": "Live Now",
-    "category": "Festive Deals",
-    "imageUrl": "/banners/amazon_8pm_deals.gif",
-    "clickRedirectUrl": "https://www.amazon.in/events/greatindianfestival/15/?_encoding=UTF8&ref_=wd8PM",
-    "platform": "amazon",
-    "videoUrl": "https://m.media-amazon.com/images/I/B1nvkccQ3cL.mp4",
-    "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.875Z"
-  },
-  {
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=apparel&bbn=1968120031&rh=n%3A1968120031%2Cp_85%3A10440599031%2Cp_36%3A-40000%2Cp_28%3AT-shirt%257Cpolos%257Ctshirt%257Ctshirts&s=exact-aware-popularity-rank&hidden-keywords=-Sleeveless-tank-vest-woman-women-boy-girl-kid-Epaulettes-pack-holder-accessories-B08L858NGB-kids-girls-B0DZP58D3L-formal-accessories-eyewear-band-button-socks-formal&pd_rd_w=J0qXy&content-id=amzn1.sym.78f0bae9-c787-4b07-9fc0-61fc86ef7d44&pf_rd_p=78f0bae9-c787-4b07-9fc0-61fc86ef7d44&pf_rd_r=4MJ903ZY5XTDANX3A6QV&pd_rd_wg=BO8jP&pd_rd_r=b1fd8c2b-8e07-422e-bb2d-0e9495bf6ff5&ref_=pd_hp_d_r_atf_unk",
     "id": "amazon_promo_scraped_2",
     "imageUrl": "/banners/card_scraped_2.png",
     "isActive": true,
     "isCompleted": false,
     "isExpired": false,
-    "lastUpdated": "2026-11-27T15:39:45.875Z",
+    "lastUpdated": "2026-11-27T23:46:54.822Z",
     "platform": "amazon",
     "priceBadge": "Under ₹399",
     "title": "Under ₹399 T-shirts & polos",
@@ -30,7 +17,7 @@
     "id": "amazon_promo_scraped_3",
     "imageUrl": "/banners/card_scraped_3.png",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.875Z",
+    "lastUpdated": "2026-11-27T23:46:54.822Z",
     "platform": "amazon",
     "priceBadge": "up to ₹300",
     "title": "Win up to ₹300 back *Terms & conditions apply Play",
@@ -41,7 +28,7 @@
     "id": "amazon_promo_scraped_4",
     "imageUrl": "/banners/card_scraped_4.png",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.875Z",
+    "lastUpdated": "2026-11-27T23:46:54.822Z",
     "platform": "amazon",
     "priceBadge": "under ₹499",
     "title": "Best deals under ₹499",
@@ -55,7 +42,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/?_encoding=UTF8&node=219533528031&pd_rd_w=OVobl&content-id=amzn1.sym.7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_p=7d73f450-ce80-4530-93a7-6c63a5ad859a&pf_rd_r=81CR8CVYH04FB3KN7WTZ&pd_rd_wg=mPRH1&pd_rd_r=42a67bc2-2be5-4224-80eb-d7655dca7312&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.875Z",
+    "lastUpdated": "2026-11-27T23:46:54.822Z",
     "videoUrl": "https://m.media-amazon.com/images/I/A1DtVMWgFUL.mp4"
   },
   {
@@ -67,7 +54,7 @@
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/C1Z+DqusgML.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.875Z"
+    "lastUpdated": "2026-11-27T23:46:54.822Z"
   },
   {
     "id": "amazon_promo_scraped_6",
@@ -78,7 +65,7 @@
     "platform": "amazon",
     "videoUrl": "https://m.media-amazon.com/images/I/B1kX5oAA4YL.mp4",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.875Z"
+    "lastUpdated": "2026-11-27T23:46:54.822Z"
   },
   {
     "id": "amazon_promo_scraped_7",
@@ -88,7 +75,7 @@
     "clickRedirectUrl": "https://www.amazon.in/b/ref=pullupbarGW/?_encoding=UTF8&_encoding=UTF8&node=218627974031&ref_=pd_hp_d_r_atf_unk&pd_rd_w=TDv6Q&content-id=amzn1.sym.8cc146f0-f56a-4adc-9a22-947f3075e50a&pf_rd_p=8cc146f0-f56a-4adc-9a22-947f3075e50a&pf_rd_r=GEF0K0NZS7GAESF9RJ56&pd_rd_wg=2jmhc&pd_rd_r=4470c378-c334-45d5-91a2-d6aec9617da6",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.875Z",
+    "lastUpdated": "2026-11-27T23:46:54.822Z",
     "videoUrl": "https://m.media-amazon.com/images/I/B1y8nTh+TaL.mp4"
   },
   {
@@ -99,7 +86,7 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&k=Ride%20on%20%26%20electric%20ride%20ons&i=toys&s=exact-aware-popularity-rank&crid=1CPGGXPE3EJTW&qid=1794403244&sprefix=ride%20on%20%26%20electric%20ride%20%2Ctoys%2C495&ref=sr_st_exact-aware-popularity-rank&ds=v1%3APElCagF1ZsYUUmoobG0d%2FtXGTGCKuZY2RLRZKXOBIRk&pd_rd_w=YitWV&content-id=amzn1.sym.a17a5146-d6b1-4779-8900-d051a865dfbf&pf_rd_p=a17a5146-d6b1-4779-8900-d051a865dfbf&pf_rd_r=9XFF66VB9704A6G7BKY7&pd_rd_wg=89DHd&pd_rd_r=c71080ec-4add-48b5-ba81-d14275a5ae0a&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.876Z"
+    "lastUpdated": "2026-11-27T23:46:54.822Z"
   },
   {
     "id": "amazon_promo_scraped_1",
@@ -109,7 +96,7 @@
     "clickRedirectUrl": "https://www.amazon.in/events/blackfriday/?_encoding=UTF8&_encoding=UTF8&ref_=bfswdedleo&pd_rd_w=WpkeA&content-id=amzn1.sym.a8313cbf-0529-49ae-96b0-e8f38b3831f8&pf_rd_p=a8313cbf-0529-49ae-96b0-e8f38b3831f8&pf_rd_r=4MJ903ZY5XTDANX3A6QV&pd_rd_wg=BO8jP&pd_rd_r=b1fd8c2b-8e07-422e-bb2d-0e9495bf6ff5",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.876Z",
+    "lastUpdated": "2026-11-27T23:46:54.822Z",
     "videoUrl": "https://m.media-amazon.com/images/I/A1-GFoV8WeL.mp4"
   },
   {
@@ -120,6 +107,6 @@
     "clickRedirectUrl": "https://www.amazon.in/s/?_encoding=UTF8&i=toys&bbn=1350380031&rh=n%3A51396081031%2Cp_85%3A10440599031&s=exact-aware-popularity-rank&dc=&ds=v1%3Acj%2FkGfgEg80LqCaFKNGL%2FMx4OJJIqq%2BqLKZz1VefJxs&qid=1795591840&rnid=10440598031&ref=sr_st_exact-aware-popularity-rank&pd_rd_w=d27KH&content-id=amzn1.sym.b390fded-e266-4123-a6b7-e0b029e915e0&pf_rd_p=b390fded-e266-4123-a6b7-e0b029e915e0&pf_rd_r=4MJ903ZY5XTDANX3A6QV&pd_rd_wg=BO8jP&pd_rd_r=b1fd8c2b-8e07-422e-bb2d-0e9495bf6ff5&ref_=pd_hp_d_r_atf_unk",
     "platform": "amazon",
     "isActive": true,
-    "lastUpdated": "2026-11-27T15:39:45.876Z"
+    "lastUpdated": "2026-11-27T23:46:54.823Z"
   }
 ]
